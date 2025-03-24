@@ -1,11 +1,12 @@
 """
-Phase 9c implementation: Full Task with waiting period.
+Phase 9c implementation: Full Task with waiting period and success statistics tracking.
 """
 
 import time
 import random
 import keyboard
 from colorama import Fore
+from datetime import datetime
 
 from common.arduino import setup_arduino_case, wait_for_start_signal, check_port_was_received
 from common.scales import weight, pressure_plate
@@ -16,6 +17,7 @@ ARDUINO_CASE = 6
 EXIT_KEY = 'esc'
 TRIAL_TIMEOUT = 11
 TRIAL_PRINT_DELIMITER = "----------------------------------------"
+MOVING_WINDOW_SIZE = 20  # Last 20 trials for moving success rate
 
 def get_phase_params(params):
     """
@@ -102,9 +104,209 @@ def setup_trial_order(audio, number_of_trials, proportion_audio=6, ports_in_use=
     
     return None, ports_in_use
 
+def print_success_stats(success_data, cue_type=None):
+    """
+    Print success statistics based on the current data.
+    
+    Args:
+        success_data (dict): Dictionary containing success statistics
+        cue_type (str, optional): Current trial cue type ('audio' or None for visual)
+    """
+    # Calculate overall success rates
+    success_rate = (success_data["successes"] / success_data["total_attempts"]) * 100 if success_data["total_attempts"] > 0 else 0
+    print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({success_data['successes']}/{success_data['total_attempts']})")
+    
+    # Calculate recent overall success rate
+    recent_trials = success_data["all_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["all_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["all_trial_results"]
+    if recent_trials:
+        recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100
+        print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+    
+    # Print stats based on trial type
+    if cue_type == "audio":
+        audio_success_rate = (success_data["audio_successes"] / success_data["audio_attempts"]) * 100 if success_data["audio_attempts"] > 0 else 0
+        print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({success_data['audio_successes']}/{success_data['audio_attempts']})")
+        
+        recent_audio_trials = success_data["audio_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["audio_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["audio_trial_results"]
+        if recent_audio_trials:
+            recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100
+            print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+    else:
+        visual_success_rate = (success_data["visual_successes"] / success_data["visual_attempts"]) * 100 if success_data["visual_attempts"] > 0 else 0
+        print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({success_data['visual_successes']}/{success_data['visual_attempts']})")
+        
+        recent_visual_trials = success_data["visual_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["visual_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["visual_trial_results"]
+        if recent_visual_trials:
+            recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100
+            print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+
+def print_final_stats(success_data, audio_cue):
+    """
+    Print final success statistics at the end of the experiment.
+    
+    Args:
+        success_data (dict): Dictionary containing success statistics
+        audio_cue (str): 'y' or 'n' for audio cue
+    """
+    # Overall statistics
+    final_success_rate = (success_data["successes"] / success_data["total_attempts"]) * 100 if success_data["total_attempts"] > 0 else 0
+    print(Fore.GREEN + f"\nFinal Results:")
+    print(Fore.CYAN + f"Total Trials: {success_data['trial_count']}")
+    print(Fore.CYAN + f"Total Attempts: {success_data['total_attempts']}")
+    print(Fore.CYAN + f"Total Successes: {success_data['successes']}")
+    print(Fore.CYAN + f"Final Success Rate: {final_success_rate:.1f}% ({success_data['successes']}/{success_data['total_attempts']})")
+    
+    # Recent success rate
+    recent_trials = success_data["all_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["all_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["all_trial_results"]
+    if recent_trials:
+        recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100
+        print(Fore.CYAN + f"Recent Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+    
+    # Audio/visual breakdown
+    if audio_cue == "y":
+        final_audio_success_rate = (success_data["audio_successes"] / success_data["audio_attempts"]) * 100 if success_data["audio_attempts"] > 0 else 0
+        final_visual_success_rate = (success_data["visual_successes"] / success_data["visual_attempts"]) * 100 if success_data["visual_attempts"] > 0 else 0
+        
+        print(Fore.GREEN + f"\nBreakdown by Trial Type:")
+        print(Fore.CYAN + f"Audio Trials: {success_data['audio_attempts']}")
+        print(Fore.CYAN + f"Audio Successes: {success_data['audio_successes']}")
+        print(Fore.CYAN + f"Audio Success Rate: {final_audio_success_rate:.1f}% ({success_data['audio_successes']}/{success_data['audio_attempts']})")
+        
+        # Recent audio success rate
+        recent_audio_trials = success_data["audio_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["audio_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["audio_trial_results"]
+        if recent_audio_trials:
+            recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100
+            print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+        
+        if success_data["visual_attempts"] > 0:
+            print(Fore.CYAN + f"Visual Trials: {success_data['visual_attempts']}")
+            print(Fore.CYAN + f"Visual Successes: {success_data['visual_successes']}")
+            print(Fore.CYAN + f"Visual Success Rate: {final_visual_success_rate:.1f}% ({success_data['visual_successes']}/{success_data['visual_attempts']})")
+            
+            # Recent visual success rate
+            recent_visual_trials = success_data["visual_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["visual_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["visual_trial_results"]
+            if recent_visual_trials:
+                recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100
+                print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+        
+        # Performance comparison
+        if success_data["audio_attempts"] > 0 and success_data["visual_attempts"] > 0:
+            if final_audio_success_rate > final_visual_success_rate:
+                performance_diff = final_audio_success_rate - final_visual_success_rate
+                print(Fore.YELLOW + f"Performance Analysis: Audio trials had {performance_diff:.1f}% higher success rate")
+            elif final_visual_success_rate > final_audio_success_rate:
+                performance_diff = final_visual_success_rate - final_audio_success_rate
+                print(Fore.YELLOW + f"Performance Analysis: Visual trials had {performance_diff:.1f}% higher success rate")
+            else:
+                print(Fore.YELLOW + f"Performance Analysis: Audio and visual trials had equal success rates")
+            
+            # Compare recent performance
+            if recent_audio_trials and recent_visual_trials:
+                if recent_audio_success_rate > recent_visual_success_rate:
+                    recent_diff = recent_audio_success_rate - recent_visual_success_rate
+                    print(Fore.YELLOW + f"Recent Performance: Audio trials performed {recent_diff:.1f}% better in the last {MOVING_WINDOW_SIZE} trials")
+                elif recent_visual_success_rate > recent_audio_success_rate:
+                    recent_diff = recent_visual_success_rate - recent_audio_success_rate
+                    print(Fore.YELLOW + f"Recent Performance: Visual trials performed {recent_diff:.1f}% better in the last {MOVING_WINDOW_SIZE} trials")
+                else:
+                    print(Fore.YELLOW + f"Recent Performance: Audio and visual trials had equal success rates in the last {MOVING_WINDOW_SIZE} trials")
+
+def update_success_data(success_data, is_success, port, cue_type):
+    """
+    Update success statistics based on trial outcome.
+    
+    Args:
+        success_data (dict): Dictionary containing success statistics
+        is_success (bool): Whether the trial was successful
+        port (int): The port number
+        cue_type (str): 'audio' or port number string for visual
+        
+    Returns:
+        dict: Updated success_data
+    """
+    # Increment total attempts
+    success_data["total_attempts"] += 1
+    
+    # Update success count if trial was successful
+    if is_success:
+        success_data["successes"] += 1
+    
+    # Calculate success rate
+    success_data["success_rate"] = (success_data["successes"] / success_data["total_attempts"]) * 100
+    
+    # Add trial result to overall results list (1 for success, 0 for failure)
+    success_data["all_trial_results"].append(1 if is_success else 0)
+    
+    # Update trial type specific data
+    if cue_type == "audio":
+        success_data["audio_attempts"] += 1
+        if is_success:
+            success_data["audio_successes"] += 1
+        success_data["audio_success_rate"] = (success_data["audio_successes"] / success_data["audio_attempts"]) * 100
+        success_data["audio_trial_results"].append(1 if is_success else 0)
+    else:
+        success_data["visual_attempts"] += 1
+        if is_success:
+            success_data["visual_successes"] += 1
+        success_data["visual_success_rate"] = (success_data["visual_successes"] / success_data["visual_attempts"]) * 100
+        success_data["visual_trial_results"].append(1 if is_success else 0)
+    
+    return success_data
+
+def update_metadata_with_stats(metadata, success_data, audio_cue):
+    """
+    Update metadata with success statistics.
+    
+    Args:
+        metadata (dict): Metadata dictionary to update
+        success_data (dict): Dictionary containing success statistics
+        audio_cue (str): 'y' or 'n' for audio cue
+        
+    Returns:
+        dict: Updated metadata
+    """
+    # Overall statistics
+    final_success_rate = (success_data["successes"] / success_data["total_attempts"]) * 100 if success_data["total_attempts"] > 0 else 0
+    metadata["Total Trials"] = success_data["trial_count"]
+    metadata["Total Attempts"] = success_data["total_attempts"]
+    metadata["Total Successes"] = success_data["successes"]
+    metadata["Success Rate"] = f"{final_success_rate:.1f}%"
+    metadata["Moving Window Size"] = MOVING_WINDOW_SIZE
+    
+    # Recent success rate
+    recent_trials = success_data["all_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["all_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["all_trial_results"]
+    if recent_trials:
+        recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100
+        metadata["Recent Success Rate"] = f"{recent_success_rate:.1f}%"
+    
+    # Audio/visual breakdown
+    if audio_cue == "y":
+        final_audio_success_rate = (success_data["audio_successes"] / success_data["audio_attempts"]) * 100 if success_data["audio_attempts"] > 0 else 0
+        metadata["Audio Trials"] = success_data["audio_attempts"]
+        metadata["Audio Successes"] = success_data["audio_successes"]
+        metadata["Audio Success Rate"] = f"{final_audio_success_rate:.1f}%"
+        
+        recent_audio_trials = success_data["audio_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["audio_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["audio_trial_results"]
+        if recent_audio_trials:
+            recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100
+            metadata["Recent Audio Success Rate"] = f"{recent_audio_success_rate:.1f}%"
+        
+        if success_data["visual_attempts"] > 0:
+            final_visual_success_rate = (success_data["visual_successes"] / success_data["visual_attempts"]) * 100
+            metadata["Visual Trials"] = success_data["visual_attempts"]
+            metadata["Visual Successes"] = success_data["visual_successes"]
+            metadata["Visual Success Rate"] = f"{final_visual_success_rate:.1f}%"
+            
+            recent_visual_trials = success_data["visual_trial_results"][-MOVING_WINDOW_SIZE:] if len(success_data["visual_trial_results"]) >= MOVING_WINDOW_SIZE else success_data["visual_trial_results"]
+            if recent_visual_trials:
+                recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100
+                metadata["Recent Visual Success Rate"] = f"{recent_visual_success_rate:.1f}%"
+    
+    return metadata
+
 def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
     """
-    Run Phase 9c experiment.
+    Run Phase 9c experiment with success statistics tracking.
     
     Args:
         ser: Serial connection to Arduino
@@ -173,10 +375,25 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
     if audio == "n":
         metadata["Port"] = [(port + 1) for port in ports_in_use]
     
+    # Initialize success tracking data
+    success_data = {
+        "trial_count": 0,
+        "total_attempts": 0,
+        "successes": 0,
+        "success_rate": 0.0,
+        "audio_attempts": 0,
+        "audio_successes": 0,
+        "audio_success_rate": 0.0,
+        "visual_attempts": 0,
+        "visual_successes": 0,
+        "visual_success_rate": 0.0,
+        "all_trial_results": [],
+        "audio_trial_results": [],
+        "visual_trial_results": []
+    }
+    
     # Main experiment loop
     m_break = False
-    trial_count = 0
-    successes = 0
     pause_time = 1
     
     rd.clear_buffer()
@@ -196,7 +413,7 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
             # Select port
             if number_of_trials != 0 and trial_order is not None:
                 try:
-                    port = trial_order[trial_count]
+                    port = trial_order[success_data["trial_count"]]
                 except IndexError:
                     port = random.choice(ports_in_use)
             else:
@@ -205,7 +422,7 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
             # Send port to Arduino
             ser.write(f"{port+1}".encode())
             log.append(f"OUT;{timer():0.4f}")
-            trial_count += 1
+            success_data["trial_count"] += 1
             
             if port == 6:
                 cue = "audio"
@@ -234,12 +451,18 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
                     weight(rd, timer, scales_data)
                     if timer() - activation_time > wait_time + 1:
                         print(Fore.RED + "wait time timeout")
+                        
+                        # Handle timeout as a failure for stats
+                        success_data = update_success_data(success_data, False, port, cue)
+                        print_success_stats(success_data, cue)
+                        print(TRIAL_PRINT_DELIMITER)
                         break
                     
                     if weight(rd, timer, scales_data) > mouse_weight - mouse_weight_offset and timer() - activation_time > wait_time and timer() - activation_time < wait_time + 1:
                         if not wait_complete:
                             ser.write("s".encode())
                             wait_complete = True
+                            print(Fore.CYAN + "Wait time complete")
                             log.append(f"OUT;{timer():0.4f}")
                         
                         time.sleep(0.01)
@@ -255,40 +478,48 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
                                 if incoming[0] == "C":
                                     ser.read_all()
                                     if incoming[1] == str(port + 1):
+                                        # Successful trial
+                                        success_data = update_success_data(success_data, True, port, cue)
+                                        
                                         print(Fore.GREEN + "Reward taken")
-                                        print(Fore.CYAN + f"Trials: {trial_count}")
-                                        successes += 1
-                                        print(Fore.CYAN + f"Successes: {successes}")
+                                        print(Fore.CYAN + f"Trials: {success_data['trial_count']}")
+                                        print(Fore.CYAN + f"Successes: {success_data['successes']}")
+                                        print_success_stats(success_data, cue)
+                                        
                                         log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};T")
                                         
-                                        if trial_count >= number_of_trials and number_of_trials != 0:
+                                        if success_data['trial_count'] >= number_of_trials and number_of_trials != 0:
                                             m_break = True
                                             
                                         print(TRIAL_PRINT_DELIMITER)
                                         break
                                     
                                     if incoming[1] != str(port + 1):
+                                        # Failed trial
+                                        success_data = update_success_data(success_data, False, port, cue)
+                                        
                                         if incoming[1] == "F":
                                             print(Fore.RED + "Trial timeout")
                                             log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
-                                            
-                                            if trial_count >= number_of_trials and number_of_trials != 0:
-                                                m_break = True
-                                                
-                                            print(TRIAL_PRINT_DELIMITER)
-                                            break
                                         else:
                                             print(Fore.RED + f"Port {incoming[1]} touched, reward not given")
                                             log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
+                                        
+                                        print_success_stats(success_data, cue)
+                                        
+                                        if success_data['trial_count'] >= number_of_trials and number_of_trials != 0:
+                                            m_break = True
                                             
-                                            if trial_count >= number_of_trials and number_of_trials != 0:
-                                                m_break = True
-                                                
-                                            print(TRIAL_PRINT_DELIMITER)
-                                            break
+                                        print(TRIAL_PRINT_DELIMITER)
+                                        break
                             
                             if time.perf_counter() - receive_time > TRIAL_TIMEOUT:
                                 print(Fore.RED + '\a' + f"Serial error, timeout: {incoming}")
+                                
+                                # Count timeout as a failure for stats
+                                success_data = update_success_data(success_data, False, port, cue)
+                                print_success_stats(success_data, cue)
+                                
                                 print(TRIAL_PRINT_DELIMITER)
                                 break
                                 
@@ -310,4 +541,9 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
         if m_break:
             break
     
-    return trial_count
+    # Print final statistics if any trials were completed
+    if success_data["total_attempts"] > 0:
+        print_final_stats(success_data, audio)
+        metadata = update_metadata_with_stats(metadata, success_data, audio)
+    
+    return success_data["trial_count"]
