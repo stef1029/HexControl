@@ -19,15 +19,17 @@ class Scales():
             self.intercept = -5617.39 
         else:
             if rig == 1:
-                self.port = "COM11"
+                self.port = "COM7"
                 self.scale = float(0.22375971500351627)       # these values are found by running Calibrate() and copying the output
                 self.intercept = -5617.39 
                 baudrate = 115200
+                print(f"using com port {self.port}")
             elif rig == 2:
-                self.port = "COM14"     ## These port numbers need checking
+                self.port = "COM5"     ## These port numbers need checking
                 self.scale = float(0.27978473586250524)       # these values are found by running Calibrate() and copying the output            ## Calibrated 16th July '24
                 self.intercept = 475.86
                 baudrate = 115200
+                print(f"using com port {self.port}")
             elif rig == 3:
                 self.port = "COM10"
                 self.scale = float(0.1725046376146776)

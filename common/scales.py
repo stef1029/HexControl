@@ -125,7 +125,7 @@ def test_scales(rd):
         return
         
     print("Scales test. Press Q to exit")
-    print("Current reading: ", end="")
+    # print("Current reading: ", end="")
     
     try:
         while True:

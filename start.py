@@ -9,13 +9,13 @@ import json
 # Edit these values before running the script
 
 # Config path - location of the global configuration file
-CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
+CONFIG_PATH = r"C:\dev\projects\config.json"
 
 # Rigs to use (comma-separated)
-RIGS_IN_USE = "4"
+RIGS_IN_USE = "1,2"
 
 # Output directory where data will be saved
-OUTPUT_FOLDER = r"D:\test_output"
+OUTPUT_FOLDER = r"E:\test_output"
 
 # Mouse IDs for each rig (same order as rigs)
 MICE = ["test1", "test2"]
