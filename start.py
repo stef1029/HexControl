@@ -19,8 +19,8 @@ OUTPUT_FOLDER = r"E:\Pitx2_Ephys"
 
 # Mouse IDs for each rig (same order as rigs)
 
-# MICE = ["mtaq14-1i", "mtaq14-1j"]
-MICE = ["mtaq11-3b", "mtaq13-3a"]
+MICE = ["mtaq14-1i", "mtaq14-1j"]
+# MICE = ["mtaq11-3b", "mtaq13-3a"]
 
 # Mouse weights (in grams) for each rig (same order as rigs)
 WEIGHTS = [15, 15]
