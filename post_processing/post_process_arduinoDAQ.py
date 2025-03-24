@@ -13,14 +13,14 @@ from datetime import datetime
 from typing import Dict, Union, List, Optional
 
 # Append the path to the directory containing the modules
-sys.path.append(r'C:\Dev\projects\July_cohort_scripts')
+# sys.path.append(r'C:\dev\projects\hex_behav_analysis')
 
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
 from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
 
 # Import the video processing functions
-from bmp_to_video import bmp_to_avi_MP, clear_BMP_files
-from bin_to_vid_MP import convert_binary_to_video
+from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_files
+from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video
 
 # Function to get a list of sessions that have unprocessed data
 def get_sessions_to_process(directory_info):

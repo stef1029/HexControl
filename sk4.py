@@ -3,7 +3,6 @@ import time
 import serial
 from datetime import datetime
 import random
-from Scripts.read import Scales
 import csv
 import os
 import json
@@ -12,6 +11,8 @@ from pathlib import Path
 import argparse
 import traceback
 from colorama import init, Fore, Style
+
+from peripherals.read import Scales
 
 # Initialize colorama
 init(autoreset=True)
