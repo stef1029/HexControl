@@ -12,9 +12,6 @@ import json
 from datetime import datetime
 from typing import Dict, Union, List, Optional
 
-# Append the path to the directory containing the modules
-# sys.path.append(r'C:\dev\projects\hex_behav_analysis')
-
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
 from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
 
