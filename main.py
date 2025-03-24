@@ -288,10 +288,50 @@ def main():
             "--path", output_path,
             "--rig", str(session_params["rig"])
         ]
-        p1 = start_subprocess(serial_listen_command, "ArduinoDAQ")
-        time.sleep(10)
+        
+        print(Fore.YELLOW + "Starting Arduino DAQ process...")
+        arduino_daq_process = start_subprocess(serial_listen_command, "ArduinoDAQ")
+        
+        # Define the expected signal file path for Arduino connection
+        rig_value = session_params["rig"]
+        if rig_value is None:
+            connection_signal_file = os.path.join(output_path, "arduino_connected.signal")
+        else:
+            connection_signal_file = os.path.join(output_path, f"rig_{rig_value}_arduino_connected.signal")
+        
+        # Wait for the connection signal file with timeout
+        print(Fore.CYAN + f"Waiting for Arduino connection signal file...")
+        connection_timeout = 30  # seconds
+        connection_wait_start = time.time()
+        connection_established = False
+        
+        while time.time() - connection_wait_start < connection_timeout:
+            if os.path.exists(connection_signal_file):
+                connection_established = True
+                print(Fore.GREEN + f"Arduino connection confirmed after {time.time() - connection_wait_start:.1f} seconds")
+                break
+            time.sleep(0.5)  # Check every half second
+        
+        if not connection_established:
+            print(Fore.RED + f"Warning: Arduino connection signal not detected after {connection_timeout} seconds")
+            print(Fore.YELLOW + "Checking Arduino process status...")
+            
+            # Check if the Arduino process is still running
+            if arduino_daq_process.poll() is not None:
+                print(Fore.RED + f"Error: Arduino DAQ process has terminated with exit code {arduino_daq_process.poll()}")
+                input(Fore.RED + "Press Enter to exit.")
+                return
+            
+            # Ask user if they want to continue anyway
+            continue_anyway = input(Fore.YELLOW + "Do you want to continue anyway? (not recommended) (y/[n]): ")
+            if continue_anyway.lower() != 'y':
+                print(Fore.RED + "Terminating process...")
+                arduino_daq_process.terminate()
+                input(Fore.RED + "Press Enter to exit.")
+                return
         
         # Start camera tracking
+        print(Fore.YELLOW + "Starting camera tracking...")
         tracker_command = [
             camera_exe,
             "--id", mouse_id,
@@ -302,14 +342,28 @@ def main():
             "--windowWidth", str(session_params["window_width"]),
             "--windowHeight", str(session_params["window_height"])
         ]
-        p0 = start_subprocess(tracker_command, "Camera Script")
+        camera_process = start_subprocess(tracker_command, "Camera Script")
         
         # Run the behavior session
+        print(Fore.GREEN + "Starting behavior session...")
         behaviour(session_params)
         
+        print(Fore.GREEN + "Behavior session completed. Waiting for processes to finish...")
+        
+        # Wait for camera and Arduino processes to complete
+        print(Fore.YELLOW + "Waiting for camera tracking to complete...")
+        camera_process.wait()
+        
+        print(Fore.YELLOW + "Waiting for Arduino DAQ to complete...")
+        arduino_daq_process.wait()
+        
+        print(Fore.GREEN + "All processes completed successfully.")
+        input(Fore.GREEN + "Press Enter to exit.")
+        
     except Exception as e:
-        print("Error in main function")
+        print(Fore.RED + "Error in main function")
         traceback.print_exc()
+        input(Fore.RED + "Take note of error message. Press Enter to exit")
 
 if __name__ == "__main__":
     main()
