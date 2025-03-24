@@ -11,7 +11,7 @@ import json
 # Config path - location of the global configuration file
 CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
 
-# Rigs to use (comma-separated)
+# Rigs to use (comma-separated eg "1,2")
 RIGS_IN_USE = "4"
 
 # Output directory where data will be saved
