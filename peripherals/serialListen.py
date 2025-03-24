@@ -123,9 +123,10 @@ def save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, messages
         "error_messages": error_messages  # Already in list form
     }
 
-    # Write to JSON file
-    with open(json_output_file, 'w') as json_file:
-        json.dump(data_to_save, json_file, indent=4)
+    # Write to JSON file        # Stopped saving to Json file as well on 27/1/25 SRC
+
+    # with open(json_output_file, 'w') as json_file:
+    #     json.dump(data_to_save, json_file, indent=4)
 
     with h5py.File(output_file, 'w') as h5f:
         # Save metadata as attributes
@@ -185,6 +186,12 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     else:
         output_path = Path(new_path)
 
+    # Create signal file path
+    if rig is None:
+        connection_signal_file = output_path / "arduino_connected.signal"
+    else:
+        connection_signal_file = output_path / f"rig_{rig}_arduino_connected.signal"
+
     backup_csv_path = output_path / f"{foldername}-backup.csv"
 
     if rig is None:
@@ -201,16 +208,43 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
         raise ValueError("Rig number not recognised")
 
     try:
-        ser = serial.Serial(COM_PORT, 115200, timeout = 1)  # open serial port
+        print(f"Connecting to Arduino on {COM_PORT}...")
+        ser = serial.Serial(COM_PORT, 115200, timeout=1)  # open serial port
         time.sleep(3)
     except serial.SerialException:
         print("Serial-listen connection not found, trying again...")
-        ser = serial.Serial(COM_PORT, 115200, timeout = 1)
-        time.sleep(3)
+        try:
+            ser = serial.Serial(COM_PORT, 115200, timeout=1)
+            time.sleep(3)
+        except serial.SerialException:
+            print("Failed to connect to Arduino after retry.")
+            return
 
-    ser.write("s".encode("utf-8"))  # send start signal to Arduino
-    ser.reset_input_buffer()
-    ser.read_until(b"s")
+    # Test connection by sending start signal and waiting for response
+    try:
+        ser.write("s".encode("utf-8"))  # send start signal to Arduino
+        ser.reset_input_buffer()
+        response = ser.read_until(b"s", 5)  # Wait up to 5 seconds for response
+        
+        if b"s" in response:
+            print("Arduino connection established successfully.")
+            connection_established = True
+            
+            # Create signal file to indicate connection is established
+            with open(connection_signal_file, 'w') as f:
+                f.write(f"Arduino connection established at {datetime.now()}")
+                
+            # print(f"Connection signal file created at: {connection_signal_file}")
+        else:
+            print(f"Arduino did not respond correctly. Response: {response}")
+            return
+    except Exception as e:
+        print(f"Error during Arduino communication: {e}")
+        return
+
+    if not connection_established:
+        print("Failed to establish proper connection with Arduino.")
+        return
 
     start = time.perf_counter()
     message_counter = 0
@@ -290,11 +324,13 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
 
     print("Signal file detected, stopping loop.")
     ser.write(b"e")  # Send end signal as a byte string
-
+    time.sleep(1)
+    ser.close()  # close port
+    
     # Call the save function
     save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, list(messages_from_arduino), message_counter, full_messages, start, end, error_messages)
 
-    ser.close()  # close port
+    
 
 def main():
     parser = argparse.ArgumentParser(description='Listen to serial port and save data.')
@@ -319,6 +355,7 @@ def main():
     except Exception as e:
         print("Error in main function")
         traceback.print_exc()
+        input("ArduinoDAQ error, take note of printed statment. Press Enter to close.")
 
 if __name__ == '__main__':
     main()
