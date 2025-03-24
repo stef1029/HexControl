@@ -15,7 +15,7 @@ CONFIG_PATH = r"C:\dev\projects\config.json"
 RIGS_IN_USE = "1,2"
 
 # Output directory where data will be saved
-OUTPUT_FOLDER = r"E:\test_output"
+OUTPUT_FOLDER = r"c:\test_output"
 
 # Mouse IDs for each rig (same order as rigs)
 MICE = ["test1", "test2"]
@@ -33,8 +33,8 @@ PHASES = [None, None]
 
 # Common parameters for all rigs
 FPS = 30
-WINDOW_WIDTH = 640
-WINDOW_HEIGHT = 512
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 1024
 
 # ======================================================
 

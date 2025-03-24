@@ -190,7 +190,7 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     if rig is None:
         COM_PORT = "COM2"
     elif rig == "1":
-        COM_PORT = "COM12"
+        COM_PORT = "COM17"
     elif rig == "2":
         COM_PORT = "COM18"
     elif rig == "3":

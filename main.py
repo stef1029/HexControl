@@ -290,7 +290,8 @@ def main():
         ]
         p1 = start_subprocess(serial_listen_command, "ArduinoDAQ")
         time.sleep(10)
-        
+        serial_number = get_cam_serial_number(session_params["rig"])
+        print(serial_number)
         # Start camera tracking
         tracker_command = [
             camera_exe,
