@@ -18,10 +18,11 @@ RIGS_IN_USE = "1,2"
 OUTPUT_FOLDER = r"c:\test_output"
 
 # Mouse IDs for each rig (same order as rigs)
-MICE = ["test1", "test2"]
+# MICE = ["mtaq14-1i", "mtaq14-1j"]
+MICE = ["mtaq11-3b", "mtaq13-3a"]
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [24.3, 24.2]
+WEIGHTS = [15, 15]
 
 # Optional: Saved configuration names to load (same order as rigs)
 # Use empty string "" or None if no config should be loaded for a particular rig
