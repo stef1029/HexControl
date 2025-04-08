@@ -229,7 +229,7 @@ def run_analysis_on_local(cohort_directory):
     print(f"Processing {len(sessions_to_process)} sessions...")
 
     for session in sessions_to_process:
-        print(f"Processing {session.get('directory')}...")
+        print(f"\n\nProcessing {session.get('directory')}...")
         Process_Raw_Behaviour_Data(session, logger=logger)
 
     directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
@@ -355,7 +355,7 @@ def main():
                        'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\250317_New_rigs_test"),
+    cohort_directory = {'local': Path(r"D:\2504_pitx2_ephys_cohort"),
                        'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
                        'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
                        'rsync_local': r"/cygdrive/d/test_output/",

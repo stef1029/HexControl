@@ -23,7 +23,7 @@ def get_rig_port(rig):
         None: "COM4",
         1: "COM4",
         2: "COM11",
-        3: "COM21",
+        3: "COM39",
         4: "COM6"
     }
     

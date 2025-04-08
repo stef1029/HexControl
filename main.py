@@ -40,21 +40,6 @@ def get_user_input_for_session(params=None):
     if params is None:
         params = {}
     
-    print("Proceed until 'waiting for start signal from arduino.'")
-    
-    # First, offer to test scales (separate from the parameters dictionary)
-    do_scales_test = input("Do scales test? (y/[n]): ").lower() or "n"
-    if do_scales_test == "y":
-        if rd is None:
-            # Make sure scales are initialized if they haven't been already
-            rig = params.get("rig", 3)
-            try:
-                rd = Scales(rig=rig)
-                print(f"Initialized scales for rig {rig}")
-            except Exception as e:
-                print(f"Error initializing scales: {e}")
-        test_scales(rd)
-    
     # Get basic parameters
     params["mouse_id"] = params.get("mouse_id") or input("Enter mouse ID: ")
     
@@ -107,6 +92,25 @@ def get_user_input_for_session(params=None):
             print(f"Configuration saved as 'configs/{config_name}.json'")
     
     return params
+
+def setup_scales_after_arduino(rig):
+    """Setup scales and optionally perform a scales test after Arduino has started"""
+    global rd
+    
+    try:
+        rd = Scales(rig=rig)
+        print(f"Initialized scales for rig {rig}")
+        
+        # Offer to test scales
+        do_scales_test = input("Do scales test? (y/[n]): ").lower() or "n"
+        if do_scales_test == "y":
+            test_scales(rd)
+            
+        return True
+    except Exception as e:
+        print(f"Error initializing scales: {e}")
+        print(f"Proceeding with no scales. Some functionality may be limited.")
+        return False
 
 def behaviour(session_params):
     """Main behavior function using the session parameters dictionary"""
@@ -181,12 +185,40 @@ def behaviour(session_params):
         trial_count = 0
     
     finally:
-        # Save session data
+        # Send termination signal with a shorter command
+        try:
+            # Send shorter termination command to Arduino
+            ser.write(b'E')
+            print(Fore.YELLOW + "Termination signal sent to Arduino.")
+            # Wait a moment for Arduino to process
+            time.sleep(0.5)
+            
+            # Wait for acknowledgment
+            ack_received = False
+            ack_timeout = time.perf_counter() + 3.0  # 3 second timeout
+            
+            while time.perf_counter() < ack_timeout:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode('utf-8').strip()
+                    if response == "OK":
+                        print(Fore.GREEN + "Arduino acknowledged termination.")
+                        ack_received = True
+                        break
+                time.sleep(0.1)
+            
+            if not ack_received:
+                print(Fore.RED + "Warning: No acknowledgment received from Arduino.")
+        except Exception as e:
+            print(Fore.RED + f"Error in termination process: {e}")
+            
+        
+        # Save session data (your existing code)
         metadata["Total trials"] = trial_count
         metadata["End time"] = datetime.now().strftime("%y%m%d%H%M%S")
         metadata["Logs"] = log
         metadata["Scales data"] = scales_data
         
+        # Existing code to save metadata and close connection
         filename = f"{foldername}_Phase_{phase}_behaviour_data.json"
         try:
             with open(f"{str(Path(output_path) / filename)}", "w") as f:
@@ -241,18 +273,6 @@ def main():
                 user_params["mouse_weight"] = args.weight
             if args.phase:
                 user_params["phase"] = args.phase
-        
-        # Initialize behavior function with scale
-        global rd
-        rig = runtime_params["rig"]
-        
-        # Initialize scales at the beginning
-        try:
-            rd = Scales(rig=rig)
-            print(f"Initialized scales for rig {rig}")
-        except Exception as e:
-            print(f"Error initializing scales: {e}")
-            print(f"Proceeding with no scales. Some functionality may be limited.")
         
         # Get user inputs to complete the session setup
         # Merge with existing user_params
@@ -329,6 +349,11 @@ def main():
                 arduino_daq_process.terminate()
                 input(Fore.RED + "Press Enter to exit.")
                 return
+        
+        # MOVED: Initialize scales AFTER Arduino is confirmed connected
+        print(Fore.CYAN + "Setting up scales now that Arduino is connected...")
+        print("Proceed with scales test if needed.")
+        setup_scales_after_arduino(session_params["rig"])
         
         # Start camera tracking
         print(Fore.YELLOW + "Starting camera tracking...")
