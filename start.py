@@ -12,21 +12,30 @@ import json
 CONFIG_PATH = r"C:\dev\projects\config.json"
 
 # Rigs to use (comma-separated)
-RIGS_IN_USE = "1,2"
+RIGS_IN_USE = "1, 2"
 
 # Output directory where data will be saved
-OUTPUT_FOLDER = r"E:\Pitx2_Ephys"
+OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
 
 # Mouse IDs for each rig (same order as rigs)
 
-MICE = ["mtaq14-1i", "mtaq14-1j"]
+# MICE = ["mtaq14-1i", "mtaq14-1j"]
 # MICE = ["mtaq11-3b", "mtaq13-3a"]
+# MICE = ["test","mtaq13-3a"]
+
+
+# MICE = ["mtao107-2a", "mtao106-3a"]
+# MICE = ["mtao101-3b", "mtao101-3c"]
+# MICE = ["mtao102-3c", "mtao102-3e"]
+# MICE = ["mtao106-3b", "mtao101-3g"]
+MICE = ["mtao106-3e", "mtao108-1e"]
+
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [15, 15]
+WEIGHTS = [20,20]
 
 # Optional: Saved configuration names to load (same order as rigs)
-# Use empty string "" or None if no config should be loaded for a particular rig
+# Use empty string "" or None if no config should be loaded for a particular rig 
 LOAD_CONFIGS = [None, None]
 
 # Optional: Phases to run (same order as rigs)

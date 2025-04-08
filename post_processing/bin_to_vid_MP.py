@@ -14,7 +14,7 @@ def convert_binary_to_video(binary_filename, json_filename, output_directory):
             metadata = json.load(json_file)
     except Exception as e:
         print(f"Error reading JSON file: {e}")
-        return
+        return False
 
     # Extract metadata
     try:
@@ -32,13 +32,15 @@ def convert_binary_to_video(binary_filename, json_filename, output_directory):
         # Since images are always Mono8, set bytes_per_pixel accordingly
         bytes_per_pixel = 1
 
-        # Generate output video filename
-        date_time = f"{datetime.now():%y%m%d_%H%M%S}"
-        video_filename = output_directory / f"{date_time}_output.avi"
+        # Extract session ID from the output directory name
+        session_id = Path(output_directory).name
+        
+        # Generate output video filename using session ID
+        video_filename = output_directory / f"{session_id}_video.avi"
 
     except KeyError as e:
         print(f"Missing key in JSON file: {e}")
-        return
+        return False
 
     # Calculate image size
     image_size = image_width * image_height * bytes_per_pixel
@@ -77,6 +79,7 @@ def convert_binary_to_video(binary_filename, json_filename, output_directory):
     temp_video_dir.rmdir()
 
     print(f"Video saved as {video_filename}")
+    return True
 
 def process_video_chunk(binary_filename, image_size, image_width, image_height,
                         frame_IDs_chunk, chunk_index, temp_video_dir, bytes_per_pixel, frame_rate):
@@ -174,6 +177,77 @@ def concatenate_videos(temp_video_dir, output_filename):
 
     # Remove the list file
     list_file.unlink()
+
+def delete_binary_files(session_directory, binary_file_path):
+    """
+    Deletes binary video files after confirming that any AVI file exists in the directory.
+    
+    Args:
+        session_directory (Path): Directory containing the session data
+        binary_file_path (Path): Path to the binary file that was processed
+        
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Check if any AVI files exist in the directory
+        avi_files = list(session_directory.glob('*.avi'))
+        
+        # If any AVI file exists, delete the binary file
+        if avi_files:
+            binary_file_path.unlink()
+            print(f"Binary file {binary_file_path} deleted successfully.")
+            return True
+        else:
+            # If no AVI exists, don't delete the binary
+            print(f"No AVI files found in {session_directory}. Binary file not deleted.")
+            return False
+    except Exception as e:
+        print(f"Error deleting binary file {binary_file_path}: {e}")
+        return False
+
+
+def cleanup_binary_files(cohort_info):
+    """
+    Cleans up binary files for all sessions that have any AVI files.
+    Will delete binary files as long as any .avi file exists in the directory.
+    
+    Args:
+        cohort_info (dict): Dictionary containing cohort information
+        
+    Returns:
+        int: Number of binary files deleted
+    """
+    deleted_count = 0
+    
+    # Iterate over each mouse in the directory information
+    for mouse in cohort_info["mice"]:
+        # Iterate over each session for the mouse
+        for session in cohort_info["mice"][mouse]["sessions"]:
+            session_data = cohort_info["mice"][mouse]["sessions"][session]
+            session_directory = Path(session_data["directory"])
+            
+            # Look for binary files to clean up
+            binary_files = list(session_directory.glob('*binary_video*'))
+            
+            # Only proceed if there are binary files to clean
+            if binary_files:
+                # Check if there are any AVI files in the directory
+                avi_files = list(session_directory.glob('*.avi'))
+                
+                # If any AVI files exist, delete the binary files
+                if avi_files:
+                    for binary_file in binary_files:
+                        try:
+                            binary_file.unlink()
+                            print(f"Cleaned up: Binary file {binary_file} deleted successfully.")
+                            deleted_count += 1
+                        except Exception as e:
+                            print(f"Error deleting binary file {binary_file}: {e}")
+                else:
+                    print(f"Skipping cleanup in {session_directory}: No AVI files found.")
+    
+    return deleted_count
 
 if __name__ == "__main__":
     # Define the paths

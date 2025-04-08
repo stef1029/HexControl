@@ -14,10 +14,11 @@ from typing import Dict, Union, List, Optional
 
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
 from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
+from hex_behav_analysis.utils.recover_crashed_sessions_test import recover_crashed_sessions
 
 # Import the video processing functions
 from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_files
-from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video
+from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video, cleanup_binary_files, delete_binary_files
 
 # Function to get a list of sessions that have unprocessed data
 def get_sessions_to_process(directory_info):
@@ -68,19 +69,19 @@ def get_sessions_to_process(directory_info):
     return sessions_to_process
 
 # Function to process a single video session using the appropriate method
-def process_video_session(session_directory, fps, processing_method, num_processes=8):
-    """
-    Processes a video session by either processing BMP files or processing the binary file.
+# def process_video_session(session_directory, fps, processing_method, num_processes=8):
+#     """
+#     Processes a video session by either processing BMP files or processing the binary file.
 
-    Args:
-        session_directory (Path): The directory containing the data for this session.
-        fps (int): The frames per second to use for the video (used for BMP method).
-        processing_method (str): The method to use for processing ('bmp' or 'binary').
-        num_processes (int): Number of processes to use for multiprocessing (for 'bmp' method).
+#     Args:
+#         session_directory (Path): The directory containing the data for this session.
+#         fps (int): The frames per second to use for the video (used for BMP method).
+#         processing_method (str): The method to use for processing ('bmp' or 'binary').
+#         num_processes (int): Number of processes to use for multiprocessing (for 'bmp' method).
 
-    Returns:
-        None
-    """
+#     Returns:
+#         None
+#     """
 
 def process_video_session(session_directory, fps, processing_method, num_processes=8):
     """
@@ -125,8 +126,15 @@ def process_video_session(session_directory, fps, processing_method, num_process
         print(f"Processing session in {session_directory} using binary method...")
         try:
             # Call the convert_binary_to_video function from the new script
-            convert_binary_to_video(str(binary_file_path), str(metadata_file_path), output_directory)
-            print(f"Processing of {session_directory} completed successfully.")
+            success = convert_binary_to_video(str(binary_file_path), str(metadata_file_path), output_directory)
+            if success:
+                print(f"Successfully compressed: {binary_file_path} to AVI in {output_directory}.")
+            else:
+                print(f"Failed to compress {binary_file_path}.")
+            
+            # After successful conversion, delete the binary file if the AVI exists
+            delete_binary_files(session_directory, binary_file_path)
+            
         except Exception as e:
             print(f"Error processing {session_directory}: {e}")
 
@@ -141,24 +149,31 @@ def process_video_session(session_directory, fps, processing_method, num_process
 
 
 # Function to process all sessions in a cohort directory
-def process_cohort_directory(cohort_directory, num_processes=8):
+def process_cohort_directory(cohort_directory, num_processes=8, cleanup=True):
     """
     Processes all sessions within a cohort directory by determining the appropriate method.
 
     Args:
         cohort_directory (str or Path): The root directory containing cohort data.
         num_processes (int): Number of processes to use for multiprocessing (for BMP processing).
+        cleanup (bool): Whether to clean up binary files in sessions that already have AVI files.
 
     Returns:
         None
     """
     cohort_directory = Path(cohort_directory)
-    # Load cohort directory information (assuming Cohort_folder is defined elsewhere)
+    # Load cohort directory information
     directory_info = Cohort_folder(cohort_directory, 
                                    multi=True, 
                                    plot=False, 
                                    OEAB_legacy=False,
                                    ignore_tests=ignore_test_sessions).cohort
+
+    # Optionally clean up binary files in sessions that already have AVI files
+    if cleanup:
+        deleted_count = cleanup_binary_files(directory_info)
+        if deleted_count > 0:
+            print(f"Cleaned up {deleted_count} binary files from sessions with existing AVI files.")
 
     # Get all sessions that need processing
     sessions_to_process = get_sessions_to_process(directory_info)
@@ -229,7 +244,7 @@ def run_analysis_on_local(cohort_directory):
     print(f"Processing {len(sessions_to_process)} sessions...")
 
     for session in sessions_to_process:
-        print(f"Processing {session.get('directory')}...")
+        print(f"\n\nProcessing {session.get('directory')}...")
         Process_Raw_Behaviour_Data(session, logger=logger)
 
     directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
@@ -348,19 +363,37 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\test_output"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
-                       'rsync_local': r"/cygdrive/d/test_output/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    # cohort_directory = {'local': Path(r"D:\test_output"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
+    #                    'rsync_local': r"/cygdrive/d/test_output/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    # cohort_directories.append(cohort_directory)
+
+    # cohort_directory = {'local': Path(r"D:\250317_New_rigs_test"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
+    #                    'rsync_local': r"/cygdrive/d/test_output/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    # cohort_directories.append(cohort_directory)
+
+    # cohort_directory = {'local': Path(r"E:\Pitx2_Ephys"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Ephys\03-03_Optetrodes"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Ephys/03-03_Optetrodes",
+    #                    'rsync_local': r"/cygdrive/e/Pitx2_Ephys/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
+    # cohort_directories.append(cohort_directory)
+
+    cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
+                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
+                       'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
+                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
     cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\250317_New_rigs_test"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
-                       'rsync_local': r"/cygdrive/d/test_output/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
-    cohort_directories.append(cohort_directory)
+    for cohort_directory in cohort_directories:
+        # Recover backups:
+        recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
     for cohort_directory in cohort_directories:
         # Process uncompressed videos:
@@ -375,16 +408,16 @@ def main():
         run_analysis_on_local(cohort_directory['local'])
 
         # Sync files to cephfs:
-        # print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
-        # sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
+        print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
+        sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
         
-        # # Run DeepLabCut analysis on the videos in CephFS:
-        # make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
-        # slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
-        # remote_host = "hex"
-        # remote_user = "srogers"
-        # remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
-        # run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
+        # Run DeepLabCut analysis on the videos in CephFS:
+        make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
+        slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
+        remote_host = "hex"
+        remote_user = "srogers"
+        remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
+        run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
         
         # Report time taken:
         total_time_taken = time.perf_counter() - total_start_time
