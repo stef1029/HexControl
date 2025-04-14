@@ -15,10 +15,67 @@ from typing import Dict, Union, List, Optional
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
 from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
 from hex_behav_analysis.utils.recover_crashed_sessions_test import recover_crashed_sessions
+from hex_behav_analysis.ephys import get_axona_events
 
 # Import the video processing functions
 from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_files
 from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video, cleanup_binary_files, delete_binary_files
+
+
+def process_ephys_data(cohort_directory, target_pin=0):
+    """
+    Process electrophysiology data by finding .inp files in the parent directories
+    of all session directories within a cohort.
+    
+    Args:
+        cohort_directory (Path): The root directory containing cohort data.
+        target_pin (int): The pin number to extract events for (default: 0).
+        
+    Returns:
+        int: Number of .inp files processed
+    """
+    from pathlib import Path
+    from hex_behav_analysis.ephys import get_axona_events
+    from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
+    
+    print(f"Processing ephys data in cohort: {cohort_directory}")
+    
+    # Load cohort directory information
+    directory_info = Cohort_folder(cohort_directory, 
+                                  multi=True, 
+                                  plot=False, 
+                                  OEAB_legacy=False,
+                                  ignore_tests=False).cohort
+                                  
+    processed_count = 0
+    
+    # Iterate over each mouse in the directory information
+    for mouse in directory_info["mice"]:
+        # Iterate over each session for the mouse
+        for session in directory_info["mice"][mouse]["sessions"]:
+            session_data = directory_info["mice"][mouse]["sessions"][session]
+            session_directory = Path(session_data["directory"])
+            
+            # Check for ephys data in parent folder
+            parent_directory = session_directory.parent
+            inp_files = list(parent_directory.glob('*.inp'))
+            
+            if inp_files:
+                print(f"Found ephys data files for {session} in parent directory: {parent_directory}")
+                print(f"Ephys data files: {[f.name for f in inp_files]}")
+                
+                if len(inp_files) > 0:
+                    inp_file = inp_files[0]
+                    try:
+                        # Process the ephys data
+                        get_axona_events.process_file(inp_file, session_directory, target_pin=target_pin)
+                        print(f"Successfully processed ephys sync file from {inp_file} for session {session_directory.name}")
+                        processed_count += 1
+                    except Exception as e:
+                        print(f"Error processing ephys data for {session_directory}: {e}")
+    
+    print(f"Completed ephys processing. Processed {processed_count} .inp files.")
+    return processed_count
 
 # Function to get a list of sessions that have unprocessed data
 def get_sessions_to_process(directory_info):
@@ -86,6 +143,7 @@ def get_sessions_to_process(directory_info):
 def process_video_session(session_directory, fps, processing_method, num_processes=8):
     """
     Processes a video session by either processing BMP files or processing the binary file.
+    First checks if ephys data exists in the parent folder.
 
     Args:
         session_directory (Path): The directory containing the data for this session.
@@ -96,7 +154,7 @@ def process_video_session(session_directory, fps, processing_method, num_process
     Returns:
         None
     """
-
+    # Continue with normal processing
     if processing_method == 'binary':
         # Search for the binary video file
         binary_files = list(session_directory.glob('*binary_video*'))
@@ -208,7 +266,7 @@ def sync_with_cephfs(local_dir, remote_dir):
     except Exception as e:
         print(f"Error occurred during rsync: {e}")
 
-def run_analysis_on_local(cohort_directory):
+def run_analysis_on_local(cohort_directory, refresh=False):
     total_start_time = time.perf_counter()
 
     # ---- Logging setup -----
@@ -233,7 +291,6 @@ def run_analysis_on_local(cohort_directory):
     directory_info = Cohort.cohort
 
     sessions_to_process = []
-    refresh = False
 
     for mouse in directory_info["mice"]:
         for session in directory_info["mice"][mouse]["sessions"]:
@@ -245,8 +302,8 @@ def run_analysis_on_local(cohort_directory):
 
     for session in sessions_to_process:
         print(f"\n\nProcessing {session.get('directory')}...")
-        Process_Raw_Behaviour_Data(session, logger=logger)
-
+        Process_Raw_Behaviour_Data(session, logger=logger, sync_with_ephys=False)
+   
     directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
 
     total_time_taken = time.perf_counter() - total_start_time
@@ -352,6 +409,7 @@ def wait_until_time(target_hour):
             time.sleep(60)  # Sleep for 60 seconds before checking again
 
 ignore_test_sessions = False
+
 def main():
     total_start_time = time.perf_counter()
 
@@ -363,12 +421,12 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    # cohort_directory = {'local': Path(r"D:\test_output"),
-    #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
-    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
-    #                    'rsync_local': r"/cygdrive/d/test_output/",
-    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
-    # cohort_directories.append(cohort_directory)
+    cohort_directory = {'local': Path(r"D:\test_output"),
+                       'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
+                       'rsync_local': r"/cygdrive/d/test_output/",
+                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    cohort_directories.append(cohort_directory)
 
     # cohort_directory = {'local': Path(r"D:\250317_New_rigs_test"),
     #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
@@ -384,51 +442,65 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
-                       'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
-    cohort_directories.append(cohort_directory)
+    # cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
+    #                    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
+    # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\2504_pitx2_ephys_cohort"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
-                       'rsync_local': r"/cygdrive/d/test_output/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
-    cohort_directories.append(cohort_directory)
+    # cohort_directory = {'local': Path(r"D:\2504_pitx2_ephys_cohort"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
+    #                    'rsync_local': r"/cygdrive/d/test_output/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    # cohort_directories.append(cohort_directory)
+
+
+    # Step 2: Process ephys data
+    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
     for cohort_directory in cohort_directories:
-        # Recover backups:
+        process_ephys_data(cohort_directory['local'], target_pin=0)
+
+    # Step 1: Recover crashed sessions
+    print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
+    for cohort_directory in cohort_directories:
         recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
+    # Step 3: Process uncompressed videos
+    print("\n===== STEP 3: PROCESSING VIDEOS =====")
     for cohort_directory in cohort_directories:
-        # Process uncompressed videos:
         processes = mp.cpu_count()
         process_cohort_directory(cohort_directory['local'], processes)
 
     # Wait until after 10 PM before running the main part
     # wait_until_time(22)  # 22:00 is 10 PM
 
+    # Step 4: Run analysis on the local files
+    print("\n===== STEP 4: RUNNING ANALYSIS =====")
     for cohort_directory in cohort_directories:
-        # Run analysis on the local files:
-        run_analysis_on_local(cohort_directory['local'])
+        run_analysis_on_local(cohort_directory['local'], refresh=True)
 
-        # Sync files to cephfs:
-        print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
-        sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
+    # # Step 5: Sync files to cephfs 
+    # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
+    # for cohort_directory in cohort_directories:
+    #     print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
+    #     sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
         
-        # Run DeepLabCut analysis on the videos in CephFS:
-        make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
-        slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
-        remote_host = "hex"
-        remote_user = "srogers"
-        remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
-        run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
+    # # Step 6: Run DeepLabCut analysis
+    # print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
+    # for cohort_directory in cohort_directories:
+    #     make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
+    #     slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
+    #     remote_host = "hex"
+    #     remote_user = "srogers"
+    #     remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
+    #     run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
         
-        # Report time taken:
-        total_time_taken = time.perf_counter() - total_start_time
-        hours, remainder = divmod(total_time_taken, 3600)
-        minutes, seconds = divmod(remainder, 60)
+    # Report time taken
+    total_time_taken = time.perf_counter() - total_start_time
+    hours, remainder = divmod(total_time_taken, 3600)
+    minutes, seconds = divmod(remainder, 60)
 
     print(f"Total time taken: {int(hours)} hours, {int(minutes)} minutes, {int(seconds)} seconds")
 
