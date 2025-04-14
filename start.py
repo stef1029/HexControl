@@ -9,17 +9,21 @@ import json
 # Edit these values before running the script
 
 # Config path - location of the global configuration file
-# CONFIG_PATH = r"C:\dev\projects\config.json"
-CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
+CONFIG_PATH = r"C:\dev\projects\config.json"
+# CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
 
 
-# Rigs to use (comma-separated)
-RIGS_IN_USE = "3"
+# # Rigs to use (comma-separated)
+# RIGS_IN_USE = "3"
 
 # Output directory where data will be saved
 # OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
 OUTPUT_FOLDER = r"D:\test_output"
 # RIGS_IN_USE = "1, 2"
+# # Output directory where data will be saved
+# OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
+# OUTPUT_FOLDER = r"D:\test_output"
+RIGS_IN_USE = "1, 2"
 
 # Output directory where data will be saved
 # OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
@@ -35,6 +39,7 @@ OUTPUT_FOLDER = r"D:\test_output"
 # MICE = ["mtaq14-1i"]
 # MICE = ["mtaq14-1j"]
 MICE = ["test"]
+MICE = ["test1","test2"]
 
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
@@ -57,8 +62,11 @@ PHASES = [None, None]
 
 # Common parameters for all rigs
 FPS = 30
-WINDOW_WIDTH = 640
-WINDOW_HEIGHT = 512
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 1024
+
+# WINDOW_WIDTH = 640
+# WINDOW_HEIGHT = 512
 
 # ======================================================
 
