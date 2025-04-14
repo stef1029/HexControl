@@ -57,9 +57,9 @@ class Scales():
         self.mouse_weight = 20
 
         if self.rig == 3 or self.rig == 4:
-            self.most_recent_scales_value = (0, 0)
+            self.most_recent_scales_value = {'ID': None, 'value': 0}
         elif self.rig == 1 or self.rig == 2:
-            self.most_recent_scales_value = 0
+            self.most_recent_scales_value = {'value': 0}
         else:
             raise ValueError("Rig number not recognised")
 
@@ -166,7 +166,8 @@ class Scales():
         iterations = 50
         no_of_reads = 0
         while True:
-            data = self.raw_read()
+            raw = self.raw_read()
+            data = raw['value']
             if data != None:
                 sum += data
                 no_of_reads += 1
@@ -184,7 +185,8 @@ class Scales():
         iterations = 50
         no_of_reads = 0
         while True:
-            data = self.raw_read()
+            raw = self.raw_read()
+            data = raw['value']
             if data != None:
                 sum += data
                 no_of_reads += 1
@@ -306,22 +308,9 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
-    scales = Scales(rig=2)
+    scales = Scales(rig=1)
 
     # scales.calibrate()
-
-    # scales.ser.write(b't')  # Explicitly send 's' as a byte
-
-    # while True:
-
-    #     print(scales.weight())
-        # print(data)
-
-        # if data > mouse_weight:
-            
-        #     print("threshold")
-        
-        # print(data)
         
     while True:
         # id, data = scales.weight()

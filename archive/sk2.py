@@ -110,6 +110,7 @@ def timer():
     return toc - tic
 
 def check_port_was_received(ser, receive_time):
+    time.sleep(0.1)
     while True:
         time.sleep(0.001)
         error = False
@@ -128,6 +129,9 @@ def check_port_was_received(ser, receive_time):
 def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = None, fps = 30, mouse_weight = None):
 
     try: 
+
+        # time.sleep(5)
+        # raise ValueError("Test error")
 
         exit_key = 'esc'    
 
@@ -942,105 +946,6 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                 if m_break == True:
                     break
 
-        # ------------------------ PHASE 6 ------------------------#
-        if phase == "6":
-            # In phase 6, port 3 the reward port, and incorrect touches are penalised.
-            print("Phase 6: Port 3. Incorrect touches are penalised.")
-            print("In phase 6, reward is only given at one port.")
-            print("Use setting 3 on arduino")
-            port = int(input("Enter port number (1-6): ")) - 1
-            metadata["Port"] = port + 1
-
-            # Startup finished, now waits for start signal from arduino
-            print("Waiting for start signal from arduino.")
-            ser.read_all()                      # Clear serial buffer
-            while True:
-                incoming = ser.read().decode()          # Arduino code: " Serial.print('S'); "
-                if incoming == "S":
-                    break
-            print(f"Start signal received {datetime.now().strftime('%H%M%S')}") 
-
-            ser.read_all()                      # Clear serial buffer
-
-            # Once start signal received, start timer and create filename at beginning of experiment.
-            tic = time.perf_counter()           # Start timer. time.perf_counter() gives time since start of program in seconds.
-
-            metadata["Mouse weight threshold"] = mouse_weight - mouse_weight_offset
-            # Set wait time for mouse to pause on platform before reward cue given.
-            pause_time = 1
-
-            metadata["Platform pause time"] = pause_time
-
-            metadata["Headers"] = ["message direction (IN/OUT)", "computer time (s)", "confirmation or new message (R/C)", "port (1-6/F)", "arduino time (ms)", "success or failure (T/F)"]
-
-            rd.clear_buffer()
-            while True:
-                state, activation_time = pressure_plate(mouse_weight - mouse_weight_offset, pause_time)               # If mouse_weight is above threshold for 0 seconds, returns True.
-                if state:   
-                    ser.write(f"{port+1}".encode())                          # Send reward port number to arduino.
-                    log.append(f"OUT;{timer():0.4f}")                                   # Add time to log.      
-
-                    trial_count += 1
-                    print("Cue given")
-                    receive_time = time.perf_counter()
-
-                    incoming, error = check_port_was_received(ser, receive_time)
-                    try:
-                        log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};R")
-                    except IndexError:
-                        pass
-                    if error == False:
-                        if incoming[0] == "R":
-                            ser.read_all()                      # Clear serial buffer
-
-                        while True:
-                            time.sleep(0.001)
-                            # Wait for arduino to say that reward has been taken.
-                            weight()                                 # Call pressure_plate to continue updating scales_data list.
-                            incoming = ser.readline().decode("utf-8").strip()                                          # Read arduino port number.
-                            if len(incoming) > 1:
-                                if incoming[0] == "C":
-                                    ser.read_all() 
-                                    if incoming[1] == str(port+1):
-                                        print("Reward taken")
-                                        print(f"Trials: {trial_count}")
-                                        successes += 1
-                                        print(f"Successes: {successes}")
-                                        log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};T")                        # Add time to log.
-                                        if trial_count >= number_of_trials and number_of_trials != 0:
-                                            m_break = True
-                                        print(trial_print_delimiter)
-                                        break      
-                                    if incoming[1] != str(port+1):
-                                        if incoming[1] == "F":
-                                            print("Trial timeout")
-                                            log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
-                                            if trial_count >= number_of_trials and number_of_trials != 0:
-                                                m_break = True
-                                            print(trial_print_delimiter)
-                                            break
-                                        else:
-                                            print(f"Port {incoming[1]} touched, reward not given")
-                                            log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F") 
-                                            if trial_count >= number_of_trials and number_of_trials != 0:   
-                                                m_break = True
-                                            print(trial_print_delimiter)
-                                            break
-                            if time.perf_counter() - receive_time > trial_timeout:
-                                print(f"Serial error, timeout: {incoming}")
-                                print(trial_print_delimiter)
-                                break
-                            if keyboard.is_pressed(exit_key):                                            # If m is pressed, end program.
-                                m_break = True
-
-                            if m_break == True:
-                                break
-                    
-                if keyboard.is_pressed(exit_key):                                            # If m is pressed, end program.
-                    m_break = True
-
-                if m_break == True:
-                    break
 
 
         # ------------------------ PHASE 7 ------------------------#
@@ -1159,132 +1064,6 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                 if m_break == True:
                     break                               
 
-        # ------------------------ PHASE 8 ------------------------#
-        if phase == "8":
-            print("In phase 8, reward is given at x ports randomly, set below. Incorrect touches are penalised.")
-            print("Use setting 3 on arduino")
-            try: number_of_ports = int(input("Enter number of ports to use (1-6): "))
-            except ValueError: number_of_ports = int(input("Error: Enter an integer. Enter number of ports to use (1-6): "))
-            
-            ports_in_use = []
-            if number_of_ports > 6:
-                number_of_ports = 6
-            if number_of_ports == 6:
-                ports_in_use = [0, 1, 2, 3, 4, 5]
-            else:
-                for i in range(0, number_of_ports):
-                    port = int(input(f"Enter port {i+1} number (1-6): ")) - 1
-                    ports_in_use.append(port)
-
-            
-            
-            metadata["Port"] = [(port + 1) for port in ports_in_use]
-
-
-            if number_of_trials != 0:       # If number_of_trials has been set:
-                trial_order = []
-                for i in range(number_of_trials):             # Generates a random sequence but with equal proportions of port A and port B.
-                    trial_order.append(i % number_of_ports)
-
-                random.shuffle(trial_order)
-
-            # Startup finished, now waits for start signal from arduino
-            print("Waiting for start signal from arduino.")
-            ser.read_all()                      # Clear serial buffer
-            while True:
-                incoming = ser.read().decode()          # Arduino code: " Serial.print('S'); "
-                if incoming == "S":
-                    break
-            print(f"Start signal received {datetime.now().strftime('%H%M%S')}") 
-
-            ser.read_all()                      # Clear serial buffer
-
-            # Once start signal received, start timer and create filename at beginning of experiment.
-            tic = time.perf_counter()           # Start timer. time.perf_counter() gives time since start of program in seconds.
-
-            metadata["Mouse weight threshold"] = mouse_weight - mouse_weight_offset
-            # Set wait time for mouse to pause on platform before reward cue given.
-            pause_time = 1
-
-            metadata["Platform pause time"] = pause_time
-
-            metadata["Headers"] = ["message direction (IN/OUT)", "computer time (s)", "confirmation or new message (R/C)", "port (1-6/F)", "arduino time (ms)", "success or failure (T/F)"]
-
-            rd.clear_buffer()
-            while True:
-                state, activation_time = pressure_plate(mouse_weight - mouse_weight_offset, pause_time)               # If mouse_weight is above threshold for 0 seconds, returns True.
-                if state:   
-                    # Select the port to give cue at either from shuffled list or randomly:
-                    if number_of_trials != 0:
-                        port = trial_order[trial_count]
-                    else:
-                        port = random.choice(ports_in_use)
-
-                    ser.write(f"{port+1}".encode())                          # Send reward port number to arduino.
-                    log.append(f"OUT;{timer():0.4f}")                                   # Add time to log.      
-
-                    trial_count += 1
-                    print("Cue given")
-                    receive_time = time.perf_counter()
-
-                    incoming, error = check_port_was_received(ser, receive_time)
-                    try:
-                        log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};R")
-                    except IndexError:
-                        pass
-                    if error == False:
-                        if incoming[0] == "R":
-                            ser.read_all()                      # Clear serial buffer
-
-                        while True:
-                            time.sleep(0.001)
-                            # Wait for arduino to say that reward has been taken.
-                            weight()                                 # Call pressure_plate to continue updating scales_data list.
-                            incoming = ser.readline().decode("utf-8").strip()                                          # Read arduino port number.
-                            if len(incoming) > 1:
-                                if incoming[0] == "C":
-                                    ser.read_all() 
-                                    if incoming[1] == str(port+1):
-                                        print("Reward taken")
-                                        print(f"Trials: {trial_count}")
-                                        successes += 1
-                                        print(f"Successes: {successes}")
-                                        log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};T")                        # Add time to log.
-                                        if trial_count >= number_of_trials and number_of_trials != 0:
-                                            m_break = True
-                                        print(trial_print_delimiter)
-                                        break      
-                                    if incoming[1] != str(port+1):
-                                        if incoming[1] == "F":
-                                            print("Trial timeout")
-                                            log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
-                                            if trial_count >= number_of_trials and number_of_trials != 0:
-                                                m_break = True
-                                            print(trial_print_delimiter)
-                                            break
-                                        else:
-                                            print(f"Port {incoming[1]} touched, reward not given")
-                                            log.append(f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F") 
-                                            if trial_count >= number_of_trials and number_of_trials != 0:
-                                                m_break = True
-                                            print(trial_print_delimiter)
-                                            break
-                            if time.perf_counter() - receive_time > trial_timeout:
-                                print(f"Serial error, timeout: {incoming}")
-                                print(trial_print_delimiter)
-                                break
-
-                            if keyboard.is_pressed(exit_key):                                            # If m is pressed, end program.
-                                m_break = True
-
-                            if m_break == True:
-                                break
-                    
-                if keyboard.is_pressed(exit_key):                                            # If m is pressed, end program.
-                    m_break = True
-
-                if m_break == True:
-                    break            
 
 
         # ------------------------ PHASE 9 ------------------------#
@@ -2057,7 +1836,7 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
             print(Fore.CYAN + "Waiting for start signal from arduino.")
             ser.read_all()  # Clear serial buffer
             while True:
-                incoming = ser.read().decode()  # Arduino code: " Serial.print('S'); "
+                incoming = ser.read().decode('utf-8', errors='replace')  # Arduino code: " Serial.print('S'); "
                 if incoming == "S":
                     break
 
@@ -2067,7 +1846,7 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
             start = time.perf_counter()
             while True:
                 time.sleep(0.001)
-                incoming = ser.readline().decode("utf-8").strip()
+                incoming = ser.readline().decode("utf-8", errors='replace').strip()
                 if len(incoming) > 0:  # waits for second "S" from arduino after cue_duration has been downloaded
                     print(Fore.GREEN + f"Start signal received {datetime.now().strftime('%H%M%S')}")
                     break
@@ -2089,6 +1868,28 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
             metadata["Wait duration"] = wait_duration
 
             metadata["Headers"] = ["message direction (IN/OUT)", "computer time (s)", "confirmation or new message (R/C)", "port (1-6/F)", "success or failure (T/F)"]
+
+            # Initialize variables to track success rate
+            total_attempts = 0
+            successes = 0  # Reset successes counter to ensure consistency
+            success_rate = 0.0
+            
+            # Initialize separate tracking for audio and visual trials
+            audio_attempts = 0
+            audio_successes = 0
+            audio_success_rate = 0.0
+            
+            visual_attempts = 0
+            visual_successes = 0
+            visual_success_rate = 0.0
+            
+            # Use a fixed moving window size of 20 trials
+            moving_window_size = 20  # Last 20 trials to consider for moving success rate
+            
+            # Lists to store results of each trial (1 for success, 0 for failure)
+            audio_trial_results = []
+            visual_trial_results = []
+            all_trial_results = []
 
             rd.clear_buffer()
             while True:  # loop that waits for the pressure plate to be activated
@@ -2133,12 +1934,117 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                             weight()
                             if timer() - activation_time > wait_time + 1:
                                 print(Fore.RED + "wait time timeout")
+
+                                # Wait for Arduino to send timeout acknowledgement ("CF")
+                                ack_received = False
+                                wait_start = time.perf_counter()
+                                while True:
+                                    # If Arduino sends something
+                                    if ser.in_waiting > 0:
+                                        incoming = ser.readline().decode("utf-8", errors='replace').strip()
+                                        # Check if the incoming message starts with "CF" (the Arduino timeout message)
+                                        if incoming.startswith("CF"):
+                                            print(Fore.RED + f"Comfirmed: {incoming}")
+                                            ack_received = True
+                                            # Count this as an attempt but not a success
+                                            total_attempts += 1
+                                            success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                                            
+                                            # Update trial result lists (0 = failure)
+                                            all_trial_results.append(0)
+                                            
+                                            # Track by trial type (the current value of port indicates trial type)
+                                            if port == 0 and cue == "audio":  # Audio trial
+                                                audio_attempts += 1
+                                                audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                                                audio_trial_results.append(0)
+                                                
+                                                # Calculate moving success rate for audio
+                                                recent_audio_trials = audio_trial_results[-moving_window_size:] if len(audio_trial_results) >= moving_window_size else audio_trial_results
+                                                recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100 if recent_audio_trials else 0
+                                                
+                                                print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                                print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                                print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                                            else:  # Visual trial
+                                                visual_attempts += 1
+                                                visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                                                visual_trial_results.append(0)
+                                                
+                                                # Calculate moving success rate for visual
+                                                recent_visual_trials = visual_trial_results[-moving_window_size:] if len(visual_trial_results) >= moving_window_size else visual_trial_results
+                                                recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100 if recent_visual_trials else 0
+                                                
+                                                print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                                print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                                print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                                            
+                                            # Calculate overall recent success rate
+                                            recent_trials = all_trial_results[-moving_window_size:] if len(all_trial_results) >= moving_window_size else all_trial_results
+                                            recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100 if recent_trials else 0
+                                            print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                                            
+                                            print(trial_print_delimiter)
+                                            break
+
+                                    # Optional: Secondary timeout in case Arduino never sends "CF"
+                                    if time.perf_counter() - wait_start > 5:
+                                        print(Fore.RED + "Not confirmed")
+                                        # Count this as an attempt but not a success
+                                        total_attempts += 1
+                                        success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                                        
+                                        # Update trial result lists (0 = failure)
+                                        all_trial_results.append(0)
+                                        
+                                        # Track by trial type (the current value of port indicates trial type)
+                                        if port == 0 and cue == "audio":  # Audio trial
+                                            audio_attempts += 1
+                                            audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                                            audio_trial_results.append(0)
+                                            
+                                            # Calculate moving success rate for audio
+                                            recent_audio_trials = audio_trial_results[-moving_window_size:] if len(audio_trial_results) >= moving_window_size else audio_trial_results
+                                            recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100 if recent_audio_trials else 0
+                                            
+                                            print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                            print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                            print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                                        else:  # Visual trial
+                                            visual_attempts += 1
+                                            visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                                            visual_trial_results.append(0)
+                                            
+                                            # Calculate moving success rate for visual
+                                            recent_visual_trials = visual_trial_results[-moving_window_size:] if len(visual_trial_results) >= moving_window_size else visual_trial_results
+                                            recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100 if recent_visual_trials else 0
+                                            
+                                            print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                            print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                            print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                                        
+                                        # Calculate overall recent success rate
+                                        recent_trials = all_trial_results[-moving_window_size:] if len(all_trial_results) >= moving_window_size else all_trial_results
+                                        recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100 if recent_trials else 0
+                                        print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                                        
+                                        print(trial_print_delimiter)
+                                        break
+
+                                    # If at any point the user wants to exit
+                                    if keyboard.is_pressed(exit_key):
+                                        m_break = True
+                                        break
+
+                                # After receiving acknowledgement or timing out again, break from the current trial loop
                                 break
+                            # if the mouse is still on the platform after the wait time, send signal to arduino to give make reward available
                             if weight() > mouse_weight - mouse_weight_offset and timer() - activation_time > wait_time and timer() - activation_time < wait_time + 1:
 
                                 if not wait_complete:
                                     ser.write("s".encode())
                                     wait_complete = True
+                                    print(Fore.CYAN + "Wait time complete")
                                     log.append(Fore.MAGENTA + f"OUT;{timer():0.4f}")
 
                                 time.sleep(0.01)  # an attempt at making sure no random junk from the arduino makes it into the next bit of code
@@ -2148,23 +2054,105 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                                     time.sleep(0.001)
                                     # Wait for arduino to say that reward has been taken.
                                     weight()  # Call pressure_plate to continue updating scales_data list.
-                                    incoming = ser.readline().decode("utf-8").strip()  # Read arduino port number.
+                                    incoming = ser.readline().decode("utf-8", errors='replace').strip()  # Read arduino port number.
                                     if len(incoming) > 1:
                                         if incoming[0] == "C":
                                             ser.read_all()
                                             if incoming[1] == str(port + 1):
+                                                total_attempts += 1
+                                                successes += 1
+                                                success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                                                
+                                                # Update trial result lists (1 = success)
+                                                all_trial_results.append(1)
+                                                
+                                                # Track by trial type
+                                                if port == 0 and cue == "audio":  # Audio trial
+                                                    audio_attempts += 1
+                                                    audio_successes += 1
+                                                    audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                                                    audio_trial_results.append(1)
+                                                    
+                                                    # Calculate moving success rate for audio
+                                                    recent_audio_trials = audio_trial_results[-moving_window_size:] if len(audio_trial_results) >= moving_window_size else audio_trial_results
+                                                    recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100 if recent_audio_trials else 0
+                                                else:  # Visual trial
+                                                    visual_attempts += 1
+                                                    visual_successes += 1
+                                                    visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                                                    visual_trial_results.append(1)
+                                                    
+                                                    # Calculate moving success rate for visual
+                                                    recent_visual_trials = visual_trial_results[-moving_window_size:] if len(visual_trial_results) >= moving_window_size else visual_trial_results
+                                                    recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100 if recent_visual_trials else 0
+                                                
                                                 print(Fore.GREEN + "Reward taken")
                                                 print(Fore.CYAN + f"Trials: {trial_count}")
-                                                successes += 1
                                                 print(Fore.CYAN + f"Successes: {successes}")
+                                                print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                                
+                                                # Calculate overall recent success rate
+                                                recent_trials = all_trial_results[-moving_window_size:] if len(all_trial_results) >= moving_window_size else all_trial_results
+                                                recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100 if recent_trials else 0
+                                                
+                                                # Display trial type specific success rate
+                                                if port == 0 and cue == "audio":
+                                                    print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                                    print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                                                else:
+                                                    print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                                    print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                                                
+                                                print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                                                
                                                 log.append(Fore.MAGENTA + f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};T")  # Add time to log.
                                                 if trial_count >= number_of_trials and number_of_trials != 0:
                                                     m_break = True
                                                 print(trial_print_delimiter)
                                                 break
                                             if incoming[1] != str(port + 1):
+                                                total_attempts += 1
+                                                success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                                                
+                                                # Update trial result lists (0 = failure)
+                                                all_trial_results.append(0)
+                                                
+                                                # Track by trial type
+                                                if port == 0 and cue == "audio":  # Audio trial
+                                                    audio_attempts += 1
+                                                    audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                                                    audio_trial_results.append(0)
+                                                    
+                                                    # Calculate moving success rate for audio
+                                                    recent_audio_trials = audio_trial_results[-moving_window_size:] if len(audio_trial_results) >= moving_window_size else audio_trial_results
+                                                    recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100 if recent_audio_trials else 0
+                                                else:  # Visual trial
+                                                    visual_attempts += 1
+                                                    visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                                                    visual_trial_results.append(0)
+                                                    
+                                                    # Calculate moving success rate for visual
+                                                    recent_visual_trials = visual_trial_results[-moving_window_size:] if len(visual_trial_results) >= moving_window_size else visual_trial_results
+                                                    recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100 if recent_visual_trials else 0
+                                                
+                                                # Calculate overall recent success rate
+                                                recent_trials = all_trial_results[-moving_window_size:] if len(all_trial_results) >= moving_window_size else all_trial_results
+                                                recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100 if recent_trials else 0
+                                                
                                                 if incoming[1] == "F":
                                                     print(Fore.RED + "Trial timeout")
+                                                    print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                                    
+                                                    # Display trial type specific success rate
+                                                    if port == 0 and cue == "audio":
+                                                        print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                                        print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                                                    else:
+                                                        print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                                        print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                                                    
+                                                    print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                                                    
                                                     log.append(Fore.MAGENTA + f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
                                                     if trial_count >= number_of_trials and number_of_trials != 0:
                                                         m_break = True
@@ -2172,6 +2160,18 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                                                     break
                                                 else:
                                                     print(Fore.RED + f"Port {incoming[1]} touched, reward not given")
+                                                    print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                                    
+                                                    # Display trial type specific success rate
+                                                    if port == 0 and cue == "audio":
+                                                        print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                                        print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                                                    else:
+                                                        print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                                        print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                                                    
+                                                    print(Fore.CYAN + f"Recent Overall Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                                                    
                                                     log.append(Fore.MAGENTA + f"IN;{timer():0.4f};{incoming[0]};{incoming[1]};F")
                                                     if trial_count >= number_of_trials and number_of_trials != 0:
                                                         m_break = True
@@ -2179,6 +2179,22 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
                                                     break
                                     if time.perf_counter() - receive_time > trial_timeout:
                                         print(Fore.RED + '\a' + f"Serial error, timeout: {incoming}")
+                                        # Count timeout as an attempt but not a success
+                                        total_attempts += 1
+                                        success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                                        
+                                        # Track by trial type
+                                        if port == 0 and cue == "audio":  # Audio trial
+                                            audio_attempts += 1
+                                            audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                                            print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                            print(Fore.CYAN + f"Audio Success Rate: {audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                                        else:  # Visual trial
+                                            visual_attempts += 1
+                                            visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                                            print(Fore.CYAN + f"Success Rate: {success_rate:.1f}% ({successes}/{total_attempts})")
+                                            print(Fore.CYAN + f"Visual Success Rate: {visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                                        
                                         print(trial_print_delimiter)
                                         break
                                     if keyboard.is_pressed(exit_key):  # If m is pressed, end program.
@@ -2198,6 +2214,98 @@ def behaviour(new_mouse_ID = None, new_date_time = None, new_path = None, rig = 
 
                 if m_break:
                     break
+                    
+            # At the end of the experiment, display the final success rate
+            if successes > 0 or total_attempts > 0:
+                final_success_rate = (successes / total_attempts) * 100 if total_attempts > 0 else 0
+                print(Fore.GREEN + f"\nFinal Results:")
+                print(Fore.CYAN + f"Total Trials: {trial_count}")
+                print(Fore.CYAN + f"Total Attempts: {total_attempts}")
+                print(Fore.CYAN + f"Total Successes: {successes}")
+                print(Fore.CYAN + f"Final Success Rate: {final_success_rate:.1f}% ({successes}/{total_attempts})")
+                
+                # Calculate and display final moving window success rate
+                recent_trials = all_trial_results[-moving_window_size:] if len(all_trial_results) >= moving_window_size else all_trial_results
+                if recent_trials:
+                    recent_success_rate = (sum(recent_trials) / len(recent_trials)) * 100
+                    print(Fore.CYAN + f"Recent Success Rate (last {len(recent_trials)} trials): {recent_success_rate:.1f}%")
+                
+                # Display audio/visual breakdown if any audio trials were conducted
+                if audio == "y":
+                    final_audio_success_rate = (audio_successes / audio_attempts) * 100 if audio_attempts > 0 else 0
+                    final_visual_success_rate = (visual_successes / visual_attempts) * 100 if visual_attempts > 0 else 0
+                    
+                    print(Fore.GREEN + f"\nBreakdown by Trial Type:")
+                    print(Fore.CYAN + f"Audio Trials: {audio_attempts}")
+                    print(Fore.CYAN + f"Audio Successes: {audio_successes}")
+                    print(Fore.CYAN + f"Audio Success Rate: {final_audio_success_rate:.1f}% ({audio_successes}/{audio_attempts})")
+                    
+                    # Display recent audio success rate
+                    recent_audio_trials = audio_trial_results[-moving_window_size:] if len(audio_trial_results) >= moving_window_size else audio_trial_results
+                    if recent_audio_trials:
+                        recent_audio_success_rate = (sum(recent_audio_trials) / len(recent_audio_trials)) * 100
+                        print(Fore.CYAN + f"Recent Audio Success Rate (last {len(recent_audio_trials)} trials): {recent_audio_success_rate:.1f}%")
+                    
+                    if visual_attempts > 0:
+                        print(Fore.CYAN + f"Visual Trials: {visual_attempts}")
+                        print(Fore.CYAN + f"Visual Successes: {visual_successes}")
+                        print(Fore.CYAN + f"Visual Success Rate: {final_visual_success_rate:.1f}% ({visual_successes}/{visual_attempts})")
+                        
+                        # Display recent visual success rate
+                        recent_visual_trials = visual_trial_results[-moving_window_size:] if len(visual_trial_results) >= moving_window_size else visual_trial_results
+                        if recent_visual_trials:
+                            recent_visual_success_rate = (sum(recent_visual_trials) / len(recent_visual_trials)) * 100
+                            print(Fore.CYAN + f"Recent Visual Success Rate (last {len(recent_visual_trials)} trials): {recent_visual_success_rate:.1f}%")
+                    
+                    # Calculate which type had better performance
+                    if audio_attempts > 0 and visual_attempts > 0:
+                        if final_audio_success_rate > final_visual_success_rate:
+                            performance_diff = final_audio_success_rate - final_visual_success_rate
+                            print(Fore.YELLOW + f"Performance Analysis: Audio trials had {performance_diff:.1f}% higher success rate")
+                        elif final_visual_success_rate > final_audio_success_rate:
+                            performance_diff = final_visual_success_rate - final_audio_success_rate
+                            print(Fore.YELLOW + f"Performance Analysis: Visual trials had {performance_diff:.1f}% higher success rate")
+                        else:
+                            print(Fore.YELLOW + f"Performance Analysis: Audio and visual trials had equal success rates")
+                        
+                        # Compare recent performance
+                        if recent_audio_trials and recent_visual_trials:
+                            if recent_audio_success_rate > recent_visual_success_rate:
+                                recent_diff = recent_audio_success_rate - recent_visual_success_rate
+                                print(Fore.YELLOW + f"Recent Performance: Audio trials performed {recent_diff:.1f}% better in the last {moving_window_size} trials")
+                            elif recent_visual_success_rate > recent_audio_success_rate:
+                                recent_diff = recent_visual_success_rate - recent_audio_success_rate
+                                print(Fore.YELLOW + f"Recent Performance: Visual trials performed {recent_diff:.1f}% better in the last {moving_window_size} trials")
+                            else:
+                                print(Fore.YELLOW + f"Recent Performance: Audio and visual trials had equal success rates in the last {moving_window_size} trials")
+                
+                # Add success rate information to metadata
+                metadata["Total Trials"] = trial_count
+                metadata["Total Attempts"] = total_attempts
+                metadata["Total Successes"] = successes
+                metadata["Success Rate"] = f"{final_success_rate:.1f}%"
+                metadata["Moving Window Size"] = moving_window_size
+                
+                # Add recent success rate to metadata if applicable
+                if recent_trials:
+                    metadata["Recent Success Rate"] = f"{recent_success_rate:.1f}%"
+                
+                # Add audio/visual breakdown to metadata if applicable
+                if audio == "y":
+                    metadata["Audio Trials"] = audio_attempts
+                    metadata["Audio Successes"] = audio_successes
+                    metadata["Audio Success Rate"] = f"{final_audio_success_rate:.1f}%"
+                    
+                    if recent_audio_trials:
+                        metadata["Recent Audio Success Rate"] = f"{recent_audio_success_rate:.1f}%"
+                    
+                    if visual_attempts > 0:
+                        metadata["Visual Trials"] = visual_attempts
+                        metadata["Visual Successes"] = visual_successes 
+                        metadata["Visual Success Rate"] = f"{final_visual_success_rate:.1f}%"
+                        
+                        if recent_visual_trials:
+                            metadata["Recent Visual Success Rate"] = f"{recent_visual_success_rate:.1f}%"
 
         # ------------------------ LED catch trial experiment ------------------------#
 
@@ -2521,11 +2629,46 @@ def main():
                                  "--date", date_time, 
                                  "--path", output_path, 
                                  "--rig", str(rig)]
-        p1 = start_subprocess(serial_listen_command, "ArduinoDAQ")
-        time.sleep(10)
+        arduino_daq_process = start_subprocess(serial_listen_command, "ArduinoDAQ")
+        
+        # Define the expected signal file path
+        if rig is None:
+            connection_signal_file = os.path.join(output_path, "arduino_connected.signal")
+        else:
+            connection_signal_file = os.path.join(output_path, f"rig_{rig}_arduino_connected.signal")
+        
+        # Wait for the connection signal file with timeout
+        print(f"Waiting for Arduino connection signal file...")
+        connection_timeout = 30  # seconds
+        connection_wait_start = time.time()
+        connection_established = False
+        
+        while time.time() - connection_wait_start < connection_timeout:
+            if os.path.exists(connection_signal_file):
+                connection_established = True
+                print(f"Arduino connection confirmed after {time.time() - connection_wait_start:.1f} seconds")
+                break
+            time.sleep(0.5)  # Check every half second
+        
+        if not connection_established:
+            print(f"Warning: Arduino connection signal not detected after {connection_timeout} seconds")
+            print("Checking Arduino process status...")
+            
+            # Check if the Arduino process is still running
+            if arduino_daq_process.poll() is not None:
+                print(f"Error: Arduino DAQ process has terminated with exit code {arduino_daq_process.poll()}")
+                return
+            
+            # Ask user if they want to continue anyway
+            continue_anyway = input("Do you want to continue anyway? (not recommended) (y/[n]): ")
+            if continue_anyway.lower() != 'y':
+                print("Terminating process...")
+                arduino_daq_process.terminate()
+                return
+            
+        time.sleep(2)
 
         # Start camera tracking
-        # print(camera_exe)
         tracker_command = [camera_exe, 
                            "--id", mouse_id, 
                            "--date", date_time, 
@@ -2534,30 +2677,26 @@ def main():
                            "--fps", str(fps), 
                            "--windowWidth", str(window_width), 
                            "--windowHeight", str(window_height)]
-        # ]
-        # tracker_command = [
-        #     "C:\\Behaviour\\Camera\\x64\\Release\\Camera_to_binary.exe",
-        #     "--id", "test1",
-        #     "--date", "241202_150537",
-        #     "--path", "D:\\test_output\\241202_150536\\241202_150537_test1",
-        #     "--rig", "3",
-        #     "--fps", "30",
-        #     "--windowWidth", "640",
-        #     "--windowHeight", "512"
-        # ]
-
-        # tracker_command = "C:\\Behaviour\\Camera\\x64\\Release\\Camera_to_binary.exe --id test1 --date 241202_150537 --path D:\\test_output\\241202_150536\\241202_150537_test1 --rig 3 --fps 30 --windowWidth 640 --windowHeight 512"
-        # print(f"'{tracker_command}'")
-        p0 = start_subprocess(tracker_command, "Camera Script")
+        
+        camera_process = start_subprocess(tracker_command, "Camera Script")
 
         # Initialize behavior function with scale
         global rd
         rd = Scales(rig=rig)
         behaviour(new_path=output_path, new_mouse_ID=mouse_id, new_date_time=date_time, rig=rig, fps=fps, mouse_weight=mouse_weight)
 
+        input(Fore.GREEN + "Done saving. Press Enter to exit" + Style.RESET_ALL)
+        print("Waiting for saving to complete...")
+        
+        camera_process.wait()
+        arduino_daq_process.wait()
+        arduino_daq_process.terminate()
+        camera_process.terminate()
+
     except Exception as e:
         print("Error in main function")
         traceback.print_exc()
+        input("Take note of error message. Press Enter to exit")
 
 if __name__ == "__main__":
     main()

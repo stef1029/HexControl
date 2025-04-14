@@ -77,16 +77,9 @@ def process_ephys_data(cohort_directory, target_pin=0):
     print(f"Completed ephys processing. Processed {processed_count} .inp files.")
     return processed_count
 
-# Function to get a list of sessions that have unprocessed data
 def get_sessions_to_process(directory_info):
     """
     Returns a list of sessions that need processing, along with the processing method.
-
-    Args:
-        directory_info (dict): A dictionary containing metadata about the mice and their sessions.
-
-    Returns:
-        list: A list of tuples, each containing the session directory, frame rate, and processing method.
     """
     sessions_to_process = []
 
@@ -104,7 +97,7 @@ def get_sessions_to_process(directory_info):
 
             # Load behavior data to get the FPS (frames per second)
             behaviour_data_path = session_data["raw_data"].get("behaviour_data")
-            fps = 30  # Default FPS 
+            fps = 30  # Default FPS
 
             if behaviour_data_path and behaviour_data_path != "None" and Path(behaviour_data_path).exists():
                 try:
@@ -122,7 +115,7 @@ def get_sessions_to_process(directory_info):
                 elif bmp_files:
                     # Use old processing method
                     sessions_to_process.append((session_directory, fps, 'bmp'))
-
+    print(len(sessions_to_process))
     return sessions_to_process
 
 # Function to process a single video session using the appropriate method
@@ -237,13 +230,12 @@ def process_cohort_directory(cohort_directory, num_processes=8, cleanup=True):
     sessions_to_process = get_sessions_to_process(directory_info)
 
     total_sessions = len(sessions_to_process)  # Calculate the total number of sessions
+    print(f"Processing {total_sessions} sessions...")
 
     # Process each session using the appropriate method
     for i, (session_directory, fps, processing_method) in enumerate(sessions_to_process, start=1):
-        print(f"Processing session {i}/{total_sessions}: {session_directory}...")
+        print(f"\n\nProcessing session {i}/{total_sessions}: {session_directory}...")
         process_video_session(session_directory, fps, processing_method, num_processes=num_processes)
-
-
 
 
 

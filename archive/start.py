@@ -24,6 +24,10 @@ class BeginSession():
         self.folder = Path(r"D:\250317_New_rigs_test")
         # self.folder = Path(r"D:\test_output")
 
+        # self.folder = Path(r"E:\Lynn_Jan_MD_Excite")
+        # self.folder = Path(r"E:\Dan_December_cohort")
+        self.folder = Path(r"E:\Pitx2_Ephys")
+
         self.start_recording()
 
         self.start_sk()
@@ -40,19 +44,23 @@ class BeginSession():
         """
         Starts the sk.py script
         """
-        weights = [24.3, 24.2]
+        weights = [15, 15]
 
-        # mice = ["mtao89-1a", "mtao90-1b"]
-        # mice = ["mtao89-1e", "wtjx249-4b"]
-        # mice = ["mtao90-1a", "wtjx249-4c"]
-        # mice = ["mtao89-1d", "wtjp254-4d"]
+        # mice = ["wtjp280-4a", "wtjp280-4b"]
+        # mice = ["wtjp271-5b", "wtjp271-5c"]
+        # mice = ["wtjp271-5d", "wtjp280-4f"]
+        # mice = ["wtjp271-5c"]
 
+        mice = ["mtaq14-1i", "mtaq14-1j"]
+        # mice = ["mtaq11-3b", "mtaq13-3a"]
 
-        mice = ["test1", "test2"]
+        # mice = ["test1", "test2"]
 
         FPS = 30
-        window_width = 640
-        window_height = 512
+        # window_width = 640
+        # window_height = 512
+        window_width = 1280
+        window_height = 1024
 
         python_exe = config.get("PYTHON_PATH")
         timer_path = config.get("TIMER_SCRIPT")
