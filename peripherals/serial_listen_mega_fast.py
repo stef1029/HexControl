@@ -69,9 +69,215 @@ async def check_signal_files(file_path_1, stop_event, rig_number):
             keyboard.unhook_all()
 
 
+# async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None):
+#     messages_from_arduino = deque()
+#     backup_buffer = deque()
+    
+#     if new_mouse_ID is None:
+#         mouse_ID = input(r"Enter mouse ID (no '.'s): ")
+#     else:
+#         mouse_ID = new_mouse_ID
+
+#     if new_date_time is None:
+#         date_time = f"{datetime.now():%y%m%d_%H%M%S}"
+#     else:
+#         date_time = new_date_time
+
+#     foldername = f"{date_time}_{mouse_ID}"
+
+#     if new_path is None:
+#         output_path = Path(os.path.join(os.getcwd(), foldername))
+#         os.mkdir(output_path)
+#     else:
+#         output_path = Path(new_path)
+
+#     # Create signal file path for connection status
+#     if rig is None:
+#         connection_signal_file = output_path / "arduino_connected.signal"
+#     else:
+#         connection_signal_file = output_path / f"rig_{rig}_arduino_connected.signal"
+
+#     backup_csv_path = output_path / f"{foldername}-backup.csv"
+
+#     # Configure COM port based on rig number
+#     if rig is None:
+#         COM_PORT = "COM2"
+#     elif rig == "1":
+#         COM_PORT = "COM12"
+#     elif rig == "2":
+#         COM_PORT = "COM18"
+#     elif rig == "3":
+#         COM_PORT = "COM30"
+#     elif rig == "4":
+#         COM_PORT = "COM17"
+#     else:
+#         raise ValueError("Rig number not recognised")
+    
+#     connection_established = False
+    
+#     try:
+#         print(f"Connecting to Arduino Mega on {COM_PORT}...")
+#         ser = serial.Serial(COM_PORT, 115200, timeout = 1)  # open serial port
+#     except serial.SerialException:
+#         print("Serial-listen connection not found, trying again...")
+#         time.sleep(3)
+#         try:
+#             ser = serial.Serial(COM_PORT, 115200, timeout = 1)
+#             time.sleep(3)
+#         except serial.SerialException:
+#             print("Failed to connect to Arduino Mega after retry.")
+#             return
+
+#     # Test connection by sending start signal and waiting for response
+#     try:
+#         ser.write("s".encode("utf-8"))  # send start signal to Arduino
+#         ser.reset_input_buffer()
+#         response = ser.read_until(b"s", 5)  # Wait up to 5 seconds for response
+        
+#         if b"s" in response:
+#             print("Arduino Mega connection established successfully.")
+#             connection_established = True
+            
+#             # Create signal file to indicate connection is established
+#             with open(connection_signal_file, 'w') as f:
+#                 f.write(f"Arduino Mega connection established at {datetime.now()}")
+#         else:
+#             print(f"Arduino Mega did not respond correctly. Response: {response}")
+#             return
+#     except Exception as e:
+#         print(f"Error during Arduino Mega communication: {e}")
+#         return
+
+#     if not connection_established:
+#         print("Failed to establish proper connection with Arduino Mega.")
+#         return
+
+#     start = time.perf_counter()
+#     message_counter = 0
+#     full_messages = 0
+#     error_messages = []
+
+#     stop_event = asyncio.Event()
+    
+#     # Start the task to check for signal file asynchronously with error handling
+#     try:
+#         # Path to the camera signal file based on rig number
+#         if rig == "1":
+#             signal_file_path = output_path / "rig_1_camera_finished.signal" 
+#         elif rig == "2":
+#             signal_file_path = output_path / "rig_2_camera_finished.signal" 
+#         elif rig == "3":
+#             signal_file_path = output_path / "rig_3_camera_finished.signal"
+#         elif rig == "4":
+#             signal_file_path = output_path / "rig_4_camera_finished.signal"
+#         else:
+#             signal_file_path = output_path / "camera_finished.signal"
+            
+#         asyncio.create_task(check_signal_files(signal_file_path, stop_event, rig))
+#     except Exception as e:
+#         print(f"Error while starting signal file check task: {e}")
+
+#     backup_interval = 5  # Time in seconds to save backups
+#     last_backup_time = time.perf_counter()
+
+#     while not stop_event.is_set():
+#         if ser.in_waiting > 9:
+#             # Get timestamp as soon as we detect a message
+#             current_time = time.perf_counter() - start
+            
+#             # Read and strip the terminator
+#             message = ser.read_until(b"\x02\x01")[:-2]
+
+#             # Handle first message differently
+#             if message_counter == 0:
+#                 message = message[1:]
+
+#             if len(message) == 9:
+#                 # Extract message number (4 bytes)
+#                 original_message_ID = (
+#                     (message[0] << 24) |
+#                     (message[2] << 16) |
+#                     (message[4] << 8) |
+#                     message[6]
+#                 )
+
+#                 # Extract message (5 bytes)
+#                 original_message = (
+#                     (message[1] << 32) |
+#                     (message[3] << 24) |
+#                     (message[5] << 16) |
+#                     (message[7] << 8) |
+#                     message[8]
+#                 )
+
+#                 # Store message with its timestamp
+#                 messages_from_arduino.append([original_message_ID, original_message, current_time])
+#                 backup_buffer.append([original_message_ID, original_message, current_time])
+
+#                 # Optional: Uncomment to enable serial monitor output
+#                 # print(f"Time: {current_time:.6f} ID: {original_message_ID:032b} Data: {original_message:040b}")
+
+#                 full_messages += 1
+#             else:
+#                 error_messages.append([message_counter, message.hex(), current_time])
+#                 # print(Fore.RED + "ArduinoDAQ:" + Style.RESET_ALL + f"Error: Invalid message length {len(message)}. Message: {message.hex()}")
+
+#             message_counter += 1
+
+#         # Backup the data every interval
+#         current_time = time.perf_counter()
+#         if current_time - last_backup_time >= backup_interval:
+#             last_backup_time = current_time
+#             if save_to_backup_csv(backup_csv_path, list(backup_buffer)):
+#                 backup_buffer.clear()  # Clear backup buffer after confirming successful write
+
+#         await asyncio.sleep(0)  # Yield control to allow the event loop to run other tasks
+
+#     end = time.perf_counter()
+
+#     print(Fore.YELLOW + "ArduinoDAQ:" + Style.RESET_ALL + "Signal files detected, stopping loop.")
+    
+#     # Send end signal multiple times to ensure it's received
+#     for i in range(3):
+#         ser.write(b"e")  # Send end signal as a byte string
+#         time.sleep(0.1)
+
+#     # Close the serial connection
+#     ser.close()  # close port
+
+#     # Call the save function
+#     save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, list(messages_from_arduino), message_counter, full_messages, start, end, error_messages)
+
+# Helper function to read and combine all backups
+def read_all_backups(backup_folder):
+    """Reads all backup files in the folder and combines them into a single array"""
+    import numpy as np
+    import glob
+    
+    # Get all backup files in the backup folder
+    backup_files = glob.glob(str(backup_folder / "backup-*.npy"))
+    backup_files.sort()  # Sort to ensure correct order
+    
+    all_data = []
+    for file in backup_files:
+        try:
+            data = np.load(file)
+            all_data.append(data)
+        except Exception as e:
+            print(f"Error reading backup file {file}: {e}")
+    
+    if all_data:
+        # Combine all arrays into one
+        return np.concatenate(all_data)
+    return np.array([])
+
 async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None):
     messages_from_arduino = deque()
     backup_buffer = deque()
+    
+    # Import faster binary serialization libraries
+    import pickle
+    import numpy as np
     
     if new_mouse_ID is None:
         mouse_ID = input(r"Enter mouse ID (no '.'s): ")
@@ -91,14 +297,18 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     else:
         output_path = Path(new_path)
 
+    # Create a backup subfolder for all backup files
+    backup_folder = output_path / "backup_files"
+    backup_folder.mkdir(exist_ok=True)
+
     # Create signal file path for connection status
     if rig is None:
         connection_signal_file = output_path / "arduino_connected.signal"
     else:
         connection_signal_file = output_path / f"rig_{rig}_arduino_connected.signal"
 
-    backup_csv_path = output_path / f"{foldername}-backup.csv"
-
+    backup_counter = 1  # For incremental backups
+    
     # Configure COM port based on rig number
     if rig is None:
         COM_PORT = "COM2"
@@ -107,7 +317,7 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     elif rig == "2":
         COM_PORT = "COM18"
     elif rig == "3":
-        COM_PORT = "COM3"
+        COM_PORT = "COM30"
     elif rig == "4":
         COM_PORT = "COM17"
     else:
@@ -118,9 +328,9 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     try:
         print(f"Connecting to Arduino Mega on {COM_PORT}...")
         ser = serial.Serial(COM_PORT, 115200, timeout = 1)  # open serial port
-        time.sleep(3)
     except serial.SerialException:
         print("Serial-listen connection not found, trying again...")
+        time.sleep(3)
         try:
             ser = serial.Serial(COM_PORT, 115200, timeout = 1)
             time.sleep(3)
@@ -177,9 +387,10 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     except Exception as e:
         print(f"Error while starting signal file check task: {e}")
 
-    backup_interval = 5  # Time in seconds to save backups
+    backup_interval = 5  # Keep the same 5 second interval
     last_backup_time = time.perf_counter()
 
+    # Main data collection loop
     while not stop_event.is_set():
         if ser.in_waiting > 9:
             # Get timestamp as soon as we detect a message
@@ -214,28 +425,47 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
                 messages_from_arduino.append([original_message_ID, original_message, current_time])
                 backup_buffer.append([original_message_ID, original_message, current_time])
 
-                # Optional: Uncomment to enable serial monitor output
-                # print(f"Time: {current_time:.6f} ID: {original_message_ID:032b} Data: {original_message:040b}")
-
                 full_messages += 1
             else:
                 error_messages.append([message_counter, message.hex(), current_time])
-                # print(Fore.RED + "ArduinoDAQ:" + Style.RESET_ALL + f"Error: Invalid message length {len(message)}. Message: {message.hex()}")
 
             message_counter += 1
 
-        # Backup the data every interval
+        # Keep same backup interval but use faster binary format
         current_time = time.perf_counter()
         if current_time - last_backup_time >= backup_interval:
             last_backup_time = current_time
-            if save_to_backup_csv(backup_csv_path, list(backup_buffer)):
-                backup_buffer.clear()  # Clear backup buffer after confirming successful write
+            if len(backup_buffer) > 0:
+                try:
+                    # Convert the buffer to a numpy array for fast saving
+                    backup_data = np.array(list(backup_buffer))
+                    
+                    # Use incremental backup files in the backup subfolder
+                    incremental_backup_path = backup_folder / f"backup-{backup_counter:04d}.npy"
+                    backup_counter += 1
+                    
+                    # Save as binary NumPy file - much faster than CSV
+                    np.save(incremental_backup_path, backup_data)
+                    
+                    # Clear the buffer after successful save
+                    backup_buffer.clear()
+                except Exception as e:
+                    print(f"Error during backup: {e}")
 
         await asyncio.sleep(0)  # Yield control to allow the event loop to run other tasks
 
     end = time.perf_counter()
 
     print(Fore.YELLOW + "ArduinoDAQ:" + Style.RESET_ALL + "Signal files detected, stopping loop.")
+    
+    # Final backup of any remaining data
+    if len(backup_buffer) > 0:
+        try:
+            backup_data = np.array(list(backup_buffer))
+            final_backup_path = backup_folder / f"backup-{backup_counter:04d}.npy"
+            np.save(final_backup_path, backup_data)
+        except Exception as e:
+            print(f"Error during final backup: {e}")
     
     # Send end signal multiple times to ensure it's received
     for i in range(3):
@@ -247,7 +477,22 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
 
     # Call the save function
     save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, list(messages_from_arduino), message_counter, full_messages, start, end, error_messages)
+    
+    # After saving HDF5 and JSON, combine all backup files into one
+    print("Combining all backup files...")
+    try:
+        combined_data = read_all_backups(backup_folder)
+        if len(combined_data) > 0:
+            combined_backup_path = output_path / f"{foldername}-complete-backup.npy"
+            np.save(combined_backup_path, combined_data)
+            print(f"Successfully combined {len(combined_data)} records into a single backup file")
+    except Exception as e:
+        print(f"Error combining backup files: {e}")
 
+
+
+
+# You no longer need the save_to_backup_csv function as the backup is handled entirely by the worker thread
 def save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, messages_from_arduino, message_counter, full_messages, start, end, error_messages):
     message_ids = np.array([message[0] for message in messages_from_arduino], dtype=np.uint32)
     message_data = np.array([message[1] for message in messages_from_arduino], dtype=np.uint64)

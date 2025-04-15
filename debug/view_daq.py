@@ -84,8 +84,8 @@ def plot_multiple_channels(arduino_daq_h5_path, channel_names):
     plt.show()
 
 def main():
-    arduino_daq_h5_path = r"D:\test_output\250414_210108\250414_210113_test\250414_210113_test-ArduinoDAQ.h5"
-    channel_names = ["CAMERA", "SCALES"]
+    arduino_daq_h5_path = r"D:\test_output\250415_221340\250415_221344_test\250415_221344_test-ArduinoDAQ.h5"
+    channel_names = ["CAMERA", "SCALES", "LASER"]
     plot_multiple_channels(arduino_daq_h5_path, channel_names)
 
 if __name__ == "__main__":
