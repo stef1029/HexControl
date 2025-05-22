@@ -43,9 +43,14 @@ OUTPUT_FOLDER = r"D:\2505_Pitx2_chemo"
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
 # MICE = ["mtao101-3c", "mtao101-3b"] 
-# MICE = ["mtao102-3e", "mtao102-3c"]
-# MICE = ["mtao106-3b", "mtao101-3g"]
-MICE = ["mtao106-1e", "mtao108-3e"]
+# MICE = ["mtao102-3e", "mtao102-3c"] # *
+# MICE = ["mtao106-3b", "mtao101-3g"]# *1
+MICE = ["mtao106-1e", "mtao108-3e"] #*1
+
+MICE = ["mtao106-3a"]
+# MICE = ["mtao107-2a"]
+# MICE = ["mtao101-3c"]
+# MICE = ["mtao101-3b"]
 
 # MICE = ["mtao107-2a"]
 
