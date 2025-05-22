@@ -18,7 +18,8 @@ RIGS_IN_USE = "3"
 
 # Output directory where data will be saved
 # OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
-OUTPUT_FOLDER = r"D:\test_output"
+# OUTPUT_FOLDER = r"D:\test_output"
+OUTPUT_FOLDER = r"D:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"
 # RIGS_IN_USE = "1, 2"
 
 # Output directory where data will be saved
@@ -28,13 +29,15 @@ OUTPUT_FOLDER = r"D:\test_output"
 
 # MICE = ["mtaq14-1i", "mtaq14-1j"]
 # MICE = ["mtaq11-3b", "mtaq13-3a"]
-# MICE = ["test1", "test2"]
+# MICE = ["test1", "test2"]  # https://meet.google.com/mnh-oidy-qzf
 
 # MICE = ["mtaq13-3a"]
 # MICE = ["mtaq11-3b"]
+MICE = ["mtaq14-1j"]
 # MICE = ["mtaq14-1i"]
-# MICE = ["mtaq14-1j"]
-MICE = ["test"]
+
+# MICE = ["test"]
+
 # MICE = ["test1","test2"]
 
 

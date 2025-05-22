@@ -187,6 +187,18 @@ def behaviour(session_params):
     finally:
         # Send termination signal with a shorter command
         try:
+            # Handle scales disconnection first
+            if rd:
+                try:
+                    print(Fore.YELLOW + "Disconnecting scales...")
+                    # Send stop command to scales
+                    rd.ser.write(b'e')
+                    time.sleep(0.5)  # Give it time to process
+                    rd.ser.close()
+                    print(Fore.GREEN + "Scales disconnected successfully.")
+                except Exception as e:
+                    print(Fore.RED + f"Error disconnecting scales: {e}")
+                    
             # Send shorter termination command to Arduino
             ser.write(b'E')
             print(Fore.YELLOW + "Termination signal sent to Arduino.")

@@ -22,7 +22,8 @@ from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_file
 from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video, cleanup_binary_files, delete_binary_files
 
 
-def process_ephys_data(cohort_directory, target_pin=0):
+
+def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plots=False):
     """
     Process electrophysiology data by finding .inp files in the parent directories
     of all session directories within a cohort.
@@ -30,15 +31,24 @@ def process_ephys_data(cohort_directory, target_pin=0):
     Args:
         cohort_directory (Path): The root directory containing cohort data.
         target_pin (int): The pin number to extract events for (default: 0).
+        force (bool): Whether to reprocess files even if they already exist (default: False).
+        generate_plots (bool): Whether to generate timing analysis plots (default: False).
         
     Returns:
-        int: Number of .inp files processed
+        tuple: (processed_count, skipped_count, error_count) - Numbers of files processed, skipped, and errors encountered.
     """
     from pathlib import Path
     from hex_behav_analysis.ephys import get_axona_events
-    from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
+    import logging
+    import time
+    
+    start_time = time.time()
     
     print(f"Processing ephys data in cohort: {cohort_directory}")
+    print(f"Settings: target_pin={target_pin}, force={force}, generate_plots={generate_plots}")
+    
+    # Setup logging
+    logger = logging.getLogger(__name__)
     
     # Load cohort directory information
     directory_info = Cohort_folder(cohort_directory, 
@@ -48,6 +58,8 @@ def process_ephys_data(cohort_directory, target_pin=0):
                                   ignore_tests=False).cohort
                                   
     processed_count = 0
+    skipped_count = 0
+    error_count = 0
     
     # Iterate over each mouse in the directory information
     for mouse in directory_info["mice"]:
@@ -55,6 +67,16 @@ def process_ephys_data(cohort_directory, target_pin=0):
         for session in directory_info["mice"][mouse]["sessions"]:
             session_data = directory_info["mice"][mouse]["sessions"][session]
             session_directory = Path(session_data["directory"])
+            
+            # Check if timestamp files already exist
+            json_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.json"
+            h5_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.h5"
+            
+            # Check if we should skip this session
+            if (json_timestamp_file.exists() or h5_timestamp_file.exists()) and not force:
+                print(f"Skipping {session}: timestamp files already exist (use force=True to reprocess)")
+                skipped_count += 1
+                continue
             
             # Check for ephys data in parent folder
             parent_directory = session_directory.parent
@@ -68,14 +90,38 @@ def process_ephys_data(cohort_directory, target_pin=0):
                     inp_file = inp_files[0]
                     try:
                         # Process the ephys data
-                        get_axona_events.process_file(inp_file, session_directory, target_pin=target_pin)
+                        print(f"Processing {inp_file} for {session_directory.name}...")
+                        
+                        # Use the enhanced version that includes timestamp analysis
+                        get_axona_events.process_file(
+                            file_path=inp_file, 
+                            output_folder=session_directory, 
+                            target_pin=target_pin,
+                            generate_plots=generate_plots,
+                            verbose=True
+                        )
+                        
                         print(f"Successfully processed ephys sync file from {inp_file} for session {session_directory.name}")
                         processed_count += 1
                     except Exception as e:
                         print(f"Error processing ephys data for {session_directory}: {e}")
+                        logger.error(f"Error processing ephys data for {session_directory}: {e}", exc_info=True)
+                        error_count += 1
+            else:
+                print(f"No ephys data files found for {session} in parent directory: {parent_directory}")
     
-    print(f"Completed ephys processing. Processed {processed_count} .inp files.")
-    return processed_count
+    # Calculate elapsed time
+    elapsed_time = time.time() - start_time
+    minutes = int(elapsed_time // 60)
+    seconds = int(elapsed_time % 60)
+    
+    print(f"\nEphys processing summary:")
+    print(f"  Processed: {processed_count} files")
+    print(f"  Skipped (already exist): {skipped_count} files")
+    print(f"  Errors: {error_count} files")
+    print(f"  Time taken: {minutes} minutes, {seconds} seconds")
+    
+    return (processed_count, skipped_count, error_count)
 
 def get_sessions_to_process(directory_info):
     """
@@ -258,7 +304,7 @@ def sync_with_cephfs(local_dir, remote_dir):
     except Exception as e:
         print(f"Error occurred during rsync: {e}")
 
-def run_analysis_on_local(cohort_directory, refresh=False):
+def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
     total_start_time = time.perf_counter()
 
     # ---- Logging setup -----
@@ -294,7 +340,7 @@ def run_analysis_on_local(cohort_directory, refresh=False):
 
     for session in sessions_to_process:
         print(f"\n\nProcessing {session.get('directory')}...")
-        Process_Raw_Behaviour_Data(session, logger=logger, sync_with_ephys=False)
+        Process_Raw_Behaviour_Data(session, logger=logger, sync_with_ephys=ephys_data)
    
     directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
 
@@ -413,12 +459,12 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\test_output"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
-                       'rsync_local': r"/cygdrive/d/test_output/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
-    cohort_directories.append(cohort_directory)
+    # cohort_directory = {'local': Path(r"D:\test_output"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour code/2409_September_cohort/Data",
+    #                    'rsync_local': r"/cygdrive/d/test_output/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
+    # cohort_directories.append(cohort_directory)
 
     # cohort_directory = {'local': Path(r"D:\250317_New_rigs_test"),
     #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
@@ -448,16 +494,27 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
+    cohort_directory = {'local': Path(r"D:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
+                    'cephfs_mapped': Path(r"Y:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
+                    'cephfs_hal': r"/cephfs2/srogers/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
+                    'rsync_local': r"/cygdrive/d/Electrophysiology/250416_Pitx2_ephys_cohort_recordings",
+                    'rsync_cephfs_mapped': r"/cygdrive/y/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
+                    'ephys_data': True}
+    cohort_directories.append(cohort_directory)
 
-    # Step 2: Process ephys data
-    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    for cohort_directory in cohort_directories:
-        process_ephys_data(cohort_directory['local'], target_pin=0)
+
+
 
     # Step 1: Recover crashed sessions
     print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
     for cohort_directory in cohort_directories:
         recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
+
+    # Step 2: Process ephys data
+    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
+    for cohort_directory in cohort_directories:
+        if cohort_directory.get('ephys_data', False):
+            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
 
     # Step 3: Process uncompressed videos
     print("\n===== STEP 3: PROCESSING VIDEOS =====")
@@ -471,7 +528,10 @@ def main():
     # Step 4: Run analysis on the local files
     print("\n===== STEP 4: RUNNING ANALYSIS =====")
     for cohort_directory in cohort_directories:
-        run_analysis_on_local(cohort_directory['local'], refresh=True)
+        if cohort_directory.get('ephys_data', False):
+            run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
+        else:
+            run_analysis_on_local(cohort_directory['local'], refresh=False)
 
     # # Step 5: Sync files to cephfs 
     # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
