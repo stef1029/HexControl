@@ -36,20 +36,20 @@ def get_phase_params(params):
     phase_params["wait_duration"] = input("Enter wait duration (ms): ").strip()
     phase_params["cue_duration"] = input("Enter cue duration (ms) (0 = unlimited) (1 = mixed): ").strip()
     
-    if phase_params["audio_cue"] == "n":
-        try:
-            phase_params["num_ports"] = int(input("Enter number of ports (1-6): ").strip())
-        except ValueError:
-            print(Fore.RED + "Invalid number of ports, must be a number.")
-            phase_params["num_ports"] = int(input("Enter number of ports (1-6): ").strip())
-        
-        if phase_params["num_ports"] == 6:
-            phase_params["ports_in_use"] = [0, 1, 2, 3, 4, 5]
-        elif phase_params["num_ports"] < 6:
-            phase_params["ports_in_use"] = []
-            for i in range(phase_params["num_ports"]):
-                port = int(input(f"Enter port {i+1}/{phase_params['num_ports']}: ").strip())
-                phase_params["ports_in_use"].append(port - 1)
+    # Port selection
+    try:
+        phase_params["num_ports"] = int(input("Enter number of ports (1-6): ").strip())
+    except ValueError:
+        print(Fore.RED + "Invalid number of ports, must be a number.")
+        phase_params["num_ports"] = int(input("Enter number of ports (1-6): ").strip())
+    
+    if phase_params["num_ports"] == 6:
+        phase_params["ports_in_use"] = [0, 1, 2, 3, 4, 5]
+    elif phase_params["num_ports"] < 6:
+        phase_params["ports_in_use"] = []
+        for i in range(phase_params["num_ports"]):
+            port = int(input(f"Enter port {i+1}/{phase_params['num_ports']}: ").strip())
+            phase_params["ports_in_use"].append(port - 1)
     
     if phase_params["audio_cue"] == "y":
         phase_params["proportion_audio"] = int(input("Proportion of audio trials (6 = 50:50 audio:visual, 0 = all audio): ").strip())
@@ -85,22 +85,50 @@ def setup_trial_order(audio, number_of_trials, proportion_audio=6, ports_in_use=
     if audio == "y":
         if number_of_trials != 0:
             if proportion_audio == 0:
+                # All audio trials
                 trial_order = [6] * number_of_trials
                 return trial_order, [6]
             else:
+                # Mix of audio and visual trials
                 total_audio_trials = number_of_trials * proportion_audio // (proportion_audio + 6)
                 total_visual_trials = number_of_trials - total_audio_trials
-                trial_order = [6] * total_audio_trials + [(i % 5) + 1 for i in range(total_visual_trials)]
+                
+                # Create trial order with audio (6) and visual trials from selected ports
+                audio_trials = [6] * total_audio_trials
+                
+                # For visual trials, use the ports specified in ports_in_use
+                visual_trials = []
+                for i in range(total_visual_trials):
+                    port_index = i % len(ports_in_use)
+                    visual_trials.append(ports_in_use[port_index])
+                
+                trial_order = audio_trials + visual_trials
                 random.shuffle(trial_order)
-                return trial_order, ports_in_use
+                
+                # Return the trial order and the complete set of ports including audio marker
+                all_ports = ports_in_use.copy()
+                if 6 not in all_ports:
+                    all_ports.append(6)  # Add audio marker
+                
+                return trial_order, all_ports
         else:
             if proportion_audio == 0:
                 return None, [6]
             else:
-                ports = [1, 2, 3, 4, 5]
+                # For unlimited trials, prepare a list of ports to choose from
+                # with the right proportion of audio vs visual
+                weighted_ports = []
+                
+                # Add visual ports from the specified ports
+                for port in ports_in_use:
+                    weighted_ports.append(port)
+                
+                # Add audio marker (6) with the correct proportion
                 for i in range(proportion_audio):
-                    ports.append(6)
-                return None, ports
+                    weighted_ports.append(6)
+                
+                # Return the list of weighted ports for random selection
+                return None, weighted_ports
     
     return None, ports_in_use
 
@@ -331,7 +359,7 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
     ports_in_use = session_params.get("ports_in_use", [0, 1, 2, 3, 4, 5])
     
     # Setup
-    print(Fore.CYAN + "Full Task with waiting period: In phase 9, reward is given at 6 ports randomly, set below. Incorrect touches are penalised.")
+    print(Fore.CYAN + "Full Task with waiting period: In phase 9, reward is given at selected ports randomly. Incorrect touches are penalised.")
     print(Fore.YELLOW + f"Use setting {ARDUINO_CASE} on arduino")
     
     # Setup trial order
@@ -372,8 +400,9 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
     metadata["Wait duration"] = wait_duration
     metadata["Headers"] = ["message direction (IN/OUT)", "computer time (s)", "confirmation or new message (R/C)", "port (1-6/F)", "success or failure (T/F)"]
     
-    if audio == "n":
-        metadata["Port"] = [(port + 1) for port in ports_in_use]
+    # Add ports in use to metadata
+    ports_display = [(port + 1) for port in ports_in_use if port != 6]  # Exclude audio marker from display
+    metadata["Ports in use"] = ports_display
     
     # Initialize success tracking data
     success_data = {
@@ -419,16 +448,20 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
             else:
                 port = random.choice(ports_in_use)
             
-            # Send port to Arduino
-            ser.write(f"{port+1}".encode())
+            # Send port to Arduino (adding 1 to non-audio ports, audio is already 6)
+
+            ser.write(f"{port+1}".encode())  # Add 1 to convert from 0-index to 1-index
+                
             log.append(f"OUT;{timer():0.4f}")
             success_data["trial_count"] += 1
             
+            # Determine if this is an audio or visual trial
             if port == 6:
                 cue = "audio"
-                port = 0
+                actual_port = 0  # For tracking purposes
             else:
                 cue = str(port + 1)
+                actual_port = port
             
             print(Fore.CYAN + f"Cue given: {cue}")
             receive_time = time.perf_counter()
@@ -453,7 +486,7 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
                         print(Fore.RED + "wait time timeout")
                         
                         # Handle timeout as a failure for stats
-                        success_data = update_success_data(success_data, False, port, cue)
+                        success_data = update_success_data(success_data, False, actual_port, cue)
                         print_success_stats(success_data, cue)
                         print(TRIAL_PRINT_DELIMITER)
                         break
@@ -477,9 +510,12 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
                             if len(incoming) > 1:
                                 if incoming[0] == "C":
                                     ser.read_all()
-                                    if incoming[1] == str(port + 1):
+                                    # For audio trials (port 6), success is when port 1 is touched
+                                    # For visual trials, success is when the selected port is touched
+                                    expected_port = "1" if port == 6 else str(port + 1)
+                                    if incoming[1] == expected_port:
                                         # Successful trial
-                                        success_data = update_success_data(success_data, True, port, cue)
+                                        success_data = update_success_data(success_data, True, actual_port, cue)
                                         
                                         print(Fore.GREEN + "Reward taken")
                                         print(Fore.CYAN + f"Trials: {success_data['trial_count']}")
@@ -494,9 +530,9 @@ def run_phase(ser, session_params, metadata, rd, timer, log, scales_data):
                                         print(TRIAL_PRINT_DELIMITER)
                                         break
                                     
-                                    if incoming[1] != str(port + 1):
+                                    if incoming[1] != expected_port:
                                         # Failed trial
-                                        success_data = update_success_data(success_data, False, port, cue)
+                                        success_data = update_success_data(success_data, False, actual_port, cue)
                                         
                                         if incoming[1] == "F":
                                             print(Fore.RED + "Trial timeout")

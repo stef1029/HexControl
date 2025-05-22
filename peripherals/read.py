@@ -312,21 +312,21 @@ if __name__ == '__main__':
 
     # scales.calibrate()
         
-    while True:
-        # id, data = scales.weight()
-        raw = scales.weight()
-        if 'ID' in raw:
-            id = raw['ID']
-            data = raw['value']
-            print(f"{id}: {data}")
-        elif 'value' in raw:
-            data = raw['value']
-            print(data)
-        else:
-            print("No data")
+    # while True:
+    #     # id, data = scales.weight()
+    #     raw = scales.weight()
+    #     if 'ID' in raw:
+    #         id = raw['ID']
+    #         data = raw['value']
+    #         print(f"{id}: {data}")
+    #     elif 'value' in raw:
+    #         data = raw['value']
+    #         print(data)
+    #     else:
+    #         print("No data")
 
-        if keyboard.is_pressed("esc"):
-            break
+    #     if keyboard.is_pressed("esc"):
+    #         break
     
 
 

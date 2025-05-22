@@ -473,12 +473,12 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    # cohort_directory = {'local': Path(r"E:\Pitx2_Ephys"),
-    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Ephys\03-03_Optetrodes"),
-    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Ephys/03-03_Optetrodes",
-    #                    'rsync_local': r"/cygdrive/e/Pitx2_Ephys/",
-    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
-    # cohort_directories.append(cohort_directory)
+    cohort_directory = {'local': Path(r"E:\Pitx2_Ephys"),
+                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Ephys\03-03_Optetrodes"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Ephys/03-03_Optetrodes",
+                       'rsync_local': r"/cygdrive/e/Pitx2_Ephys/",
+                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
+    cohort_directories.append(cohort_directory)
 
     # cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
     #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
