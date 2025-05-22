@@ -9,21 +9,19 @@ import json
 # Edit these values before running the script
 
 # Config path - location of the global configuration file
-CONFIG_PATH = r"C:\dev\projects\config.json"
-# CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
+# CONFIG_PATH = r"C:\dev\projects\config.json"
+CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
 
 
 # # Rigs to use (comma-separated)
-# RIGS_IN_USE = "3"
+RIGS_IN_USE = "3"
 
 # Output directory where data will be saved
 # OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
-OUTPUT_FOLDER = r"D:\test_output"
-# RIGS_IN_USE = "1, 2"
-# # Output directory where data will be saved
-# OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
+OUTPUT_FOLDER = r"D:\2505_Pitx2_chemo"
 # OUTPUT_FOLDER = r"D:\test_output"
-RIGS_IN_USE = "1,2"
+
+# RIGS_IN_USE = "1,2"
 
 # Output directory where data will be saved
 # OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
@@ -39,8 +37,8 @@ RIGS_IN_USE = "1,2"
 # MICE = ["mtaq14-1i"]
 # MICE = ["mtaq14-1j"]
 # MICE = ["test1","test2"]
-MICE = ["test"]
-MICE = ["test1","test2"]
+# MICE = ["test"]
+# MICE = ["test1","test2"]
 
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
@@ -56,7 +54,7 @@ MICE = ["mtao106-1e", "mtao108-3e"]
 
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [15, 7]
+WEIGHTS = [20]
 
 # Optional: Saved configuration names to load (same order as rigs)
 # Use empty string "" or None if no config should be loaded for a particular rig 
