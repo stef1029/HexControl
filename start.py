@@ -76,11 +76,11 @@ PHASES = [None, None]
 
 # Common parameters for all rigs
 FPS = 30
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 1024
+# WINDOW_WIDTH = 1280
+# WINDOW_HEIGHT = 1024
 
-# WINDOW_WIDTH = 640
-# WINDOW_HEIGHT = 512
+WINDOW_WIDTH = 640
+WINDOW_HEIGHT = 512
 
 # ======================================================
 

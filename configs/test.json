@@ -1,0 +1,22 @@
+{
+    "rig": 4,
+    "mouse_id": "test1",
+    "mouse_weight": 24.3,
+    "fps": 30,
+    "window_width": 640,
+    "window_height": 512,
+    "phase": "9c",
+    "number_of_trials": 0,
+    "audio_cue": "n",
+    "wait_duration": "0",
+    "cue_duration": "1000",
+    "num_ports": 6,
+    "ports_in_use": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+    ]
+}
