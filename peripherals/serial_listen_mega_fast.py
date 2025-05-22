@@ -107,7 +107,7 @@ async def listen(new_mouse_ID=None, new_date_time=None, new_path=None, rig=None)
     elif rig == "2":
         COM_PORT = "COM18"
     elif rig == "3":
-        COM_PORT = "COM48"
+        COM_PORT = "COM3"
     elif rig == "4":
         COM_PORT = "COM17"
     else:
@@ -269,11 +269,50 @@ def save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, messages
     # Create a 2D NumPy array to hold the channel data
     channel_data_array = np.zeros((num_messages, num_channels), dtype=np.uint8)
 
-    # Convert message data to binary and populate channel_data_array
+    # Store valid messages and skip problematic ones
+    valid_message_indices = []
+    binary_list = []
+
     for i, message in enumerate(message_data):
-        binary_message = np.array(list(np.binary_repr(message, width=num_channels)), dtype=np.uint8)
-        binary_message = binary_message[::-1]  # Reverse bits to align LSB with first channel
-        channel_data_array[i] = binary_message
+        try:
+            # Convert message data to binary representation with correct width
+            binary_repr = np.binary_repr(message, width=40)  # Use a safe width (40 bits)
+            
+            # Only take the last num_channels bits (LSB)
+            binary_message = np.array(list(binary_repr[-num_channels:]), dtype=np.uint8)
+            
+            # Check if we have the right number of bits
+            if len(binary_message) == num_channels:
+                binary_message = binary_message[::-1]  # Reverse bits to align LSB with first channel
+                channel_data_array[i] = binary_message
+                valid_message_indices.append(i)
+                binary_list.append(''.join(str(bit) for bit in binary_message))
+            else:
+                # Log error but continue processing
+                error_messages.append([i, f"Wrong bit count: expected {num_channels}, got {len(binary_message)}", timestamps[i]])
+                print(f"Skipping message {i}: bit count mismatch (expected {num_channels}, got {len(binary_message)})")
+        except Exception as e:
+            # Log any other errors
+            error_msg = f"Error processing message {i}: {str(e)}"
+            error_messages.append([i, error_msg, timestamps[i]])
+            print(error_msg)
+
+    # Filter arrays to keep only valid messages
+    valid_indices = np.array(valid_message_indices)
+    if len(valid_indices) < num_messages:
+        print(f"Warning: {num_messages - len(valid_indices)} messages were skipped due to formatting issues")
+        
+        if len(valid_indices) > 0:
+            message_ids = message_ids[valid_indices]
+            timestamps = timestamps[valid_indices]
+            channel_data_array = channel_data_array[valid_indices]
+        else:
+            print("Error: No valid messages found!")
+            # Create empty arrays to prevent further errors
+            message_ids = np.array([], dtype=np.uint32)
+            timestamps = np.array([], dtype=np.float64)
+            channel_data_array = np.zeros((0, num_channels), dtype=np.uint8)
+            binary_list = []
 
     # Prepare HDF5 file
     save_file_name = f"{foldername}-ArduinoDAQ.h5"
@@ -284,25 +323,88 @@ def save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, messages
     json_output_file = output_path / json_file_name
 
     try:
-        reliability = (full_messages / message_counter) * 100
+        reliability = (full_messages / message_counter) * 100 if message_counter > 0 else 0
     except ZeroDivisionError:
         reliability = 0
-
-    binary_list = [''.join(str(bit) for bit in row) for row in channel_data_array]
 
     data_to_save = {
         "mouse_ID": mouse_ID,
         "date_time": date_time,
         "time": str(datetime.now()),
-        "No_of_messages": num_messages,
+        "No_of_messages": len(valid_indices),
         "reliability": reliability,
         "time_taken": end - start,
-        "messages_per_second": num_messages / (end - start),
+        "messages_per_second": len(valid_indices) / (end - start) if end > start else 0,
         "message_ids": message_ids.tolist(),
         "timestamps": timestamps.tolist(),
         "channel_data_raw": binary_list,
         "error_messages": error_messages
     }
+# ------- Save fake data for testing -------
+    # Find min and max message IDs
+    # min_message_id = np.min(message_ids) if len(message_ids) > 0 else 0
+    # max_message_id = np.max(message_ids) if len(message_ids) > 0 else 0
+
+    # # Calculate average time between consecutive messages
+    # # This requires sorting messages by ID first
+    # sorted_indices = np.argsort(message_ids)
+    # sorted_message_ids = message_ids[sorted_indices]
+    # sorted_timestamps = timestamps[sorted_indices]
+
+    # # Calculate time differences between consecutive messages
+    # time_diffs = []
+    # for i in range(1, len(sorted_message_ids)):
+    #     id_diff = sorted_message_ids[i] - sorted_message_ids[i-1]
+    #     if id_diff > 0:  # Avoid division by zero
+    #         time_diff = (sorted_timestamps[i] - sorted_timestamps[i-1]) / id_diff
+    #         time_diffs.append(time_diff)
+
+    # avg_time_diff = np.mean(time_diffs) if time_diffs else 0.001  # Default to 1ms if no data
+
+    # # Generate continuous sequence of timestamps
+    # continuous_ids = np.arange(0, max_message_id + 1)  # Start from 0
+    # continuous_timestamps = np.zeros(len(continuous_ids))
+
+    # # Fill in known timestamps
+    # id_to_timestamp = {id: ts for id, ts in zip(message_ids, timestamps)}
+
+    # # Find first known message ID and timestamp
+    # first_known_id = sorted_message_ids[0] if len(sorted_message_ids) > 0 else 0
+    # first_known_timestamp = sorted_timestamps[0] if len(sorted_timestamps) > 0 else 0
+
+    # for i, msg_id in enumerate(continuous_ids):
+    #     if msg_id in id_to_timestamp:
+    #         continuous_timestamps[i] = id_to_timestamp[msg_id]
+    #     elif msg_id < first_known_id:
+    #         # For messages before the first known message, extrapolate backward
+    #         # Timestamp for message ID 0 should be 0
+    #         if msg_id == 0:
+    #             continuous_timestamps[i] = 0
+    #         else:
+    #             # Linear extrapolation from 0 to first_known_timestamp
+    #             continuous_timestamps[i] = (msg_id / first_known_id) * first_known_timestamp
+    #     else:
+    #         # For messages after the first known ID, use the existing logic
+    #         prev_known_id = sorted_message_ids[sorted_message_ids <= msg_id][-1] if any(sorted_message_ids <= msg_id) else first_known_id
+    #         prev_known_timestamp = id_to_timestamp[prev_known_id]
+    #         continuous_timestamps[i] = prev_known_timestamp + (msg_id - prev_known_id) * avg_time_diff
+
+    # # Save to separate file
+    # timestamp_file_name = f"{foldername}-ephys_daq_sync_timestamps.json"
+    # timestamp_output_file = output_path / timestamp_file_name
+
+    # timestamps_to_save = {
+    #     "message_ids": continuous_ids.tolist(),
+    #     "timestamps": continuous_timestamps.tolist(),
+    #     "avg_time_diff": avg_time_diff,
+    #     "estimated": [int(msg_id not in message_ids) for msg_id in continuous_ids]
+    # }
+
+    # with open(timestamp_output_file, 'w') as timestamp_file:
+    #     json.dump(timestamps_to_save, timestamp_file, indent=4)
+
+# ------- End of fake data generation -------
+
 
     # Write to JSON file
     with open(json_output_file, 'w') as json_file:
@@ -313,10 +415,10 @@ def save_to_hdf5_and_json(foldername, output_path, mouse_ID, date_time, messages
         h5f.attrs['mouse_ID'] = mouse_ID
         h5f.attrs['date_time'] = date_time
         h5f.attrs['time'] = str(datetime.now())
-        h5f.attrs['No_of_messages'] = num_messages
+        h5f.attrs['No_of_messages'] = len(valid_indices)
         h5f.attrs['reliability'] = reliability
         h5f.attrs['time_taken'] = end - start
-        h5f.attrs['messages_per_second'] = num_messages / (end - start)
+        h5f.attrs['messages_per_second'] = len(valid_indices) / (end - start) if end > start else 0
 
         # Save message IDs and timestamps
         h5f.create_dataset('message_ids', data=message_ids, compression='gzip')

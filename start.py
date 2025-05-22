@@ -16,13 +16,17 @@ CONFIG_PATH = r"C:\dev\projects\config.json"
 # # Rigs to use (comma-separated)
 # RIGS_IN_USE = "3"
 
+# Output directory where data will be saved
+# OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
+OUTPUT_FOLDER = r"D:\test_output"
+# RIGS_IN_USE = "1, 2"
 # # Output directory where data will be saved
 # OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
 # OUTPUT_FOLDER = r"D:\test_output"
 RIGS_IN_USE = "1,2"
 
 # Output directory where data will be saved
-OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
+# OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
 
 # Mouse IDs for each rig (same order as rigs)
 
@@ -35,6 +39,8 @@ OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
 # MICE = ["mtaq14-1i"]
 # MICE = ["mtaq14-1j"]
 # MICE = ["test1","test2"]
+MICE = ["test"]
+MICE = ["test1","test2"]
 
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
