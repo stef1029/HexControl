@@ -9,47 +9,23 @@ import json
 # Edit these values before running the script
 
 # Config path - location of the global configuration file
-CONFIG_PATH = r"C:\dev\projects\config.json"
-# CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json"
+# CONFIG_PATH = r"C:\dev\projects\config.json" # large behaviour room
+CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json" # small behaviour room
 
 
 # # Rigs to use (comma-separated)
-RIGS_IN_USE = "1,2"
+RIGS_IN_USE = "3"
 
 # Output directory where data will be saved
-# OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
-# OUTPUT_FOLDER = r"D:\test_output"
-# RIGS_IN_USE = "1, 2"
-# # Output directory where data will be saved
-# OUTPUT_FOLDER = r"D:\2504_pitx2_ephys_cohort"
-# OUTPUT_FOLDER = r"D:\test_output"
-
-# RIGS_IN_USE = "1,2"
-
-# Output directory where data will be saved
-OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
+OUTPUT_FOLDER = r"D:\Pitx2_Chemogenetics"
 
 # Mouse IDs for each rig (same order as rigs)
-
-# MICE = ["mtaq14-1i", "mtaq14-1j"]
-# MICE = ["mtaq11-3b", "mtaq13-3a"]
-# MICE = ["test1", "test2"]
-
-# MICE = ["mtaq13-3a"]
-# MICE = ["mtaq11-3b"]
-# MICE = ["mtaq14-1j"]
-# MICE = ["mtaq14-1i"]
-# MICE = ["mtaq14-1j"]
-# MICE = ["test1","test2"]
-# MICE = ["test"]
-# MICE = ["test1","test2"]
-
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
 # MICE = ["mtao101-3c", "mtao101-3b"] 
 
 # MICE = ["mtao102-3e", "mtao102-3c"] # *
-MICE = ["mtao106-3b", "mtao101-3g"]# *1
+# MICE = ["mtao106-3b", "mtao101-3g"]# *1
 # MICE = ["mtao106-1e", "mtao108-3e"] #*1
 
 # MICE = ["mtao106-3a"]
@@ -65,17 +41,8 @@ MICE = ["mtao107-2a"]
 # MICE = ["mtao106-3b", "mtao106-1e"]
 
 
-
 # Mouse weights (in grams) for each rig (same order as rigs)
 WEIGHTS = [12]
-
-# Optional: Saved configuration names to load (same order as rigs)
-# Use empty string "" or None if no config should be loaded for a particular rig 
-LOAD_CONFIGS = [None, None]
-
-# Optional: Phases to run (same order as rigs)
-# If not specified, the user will be prompted for each rig
-PHASES = [None, None]
 
 # Common parameters for all rigs
 FPS = 30
@@ -105,8 +72,6 @@ class BeginSession():
         # Get mouse IDs and weights
         self.mice = MICE
         self.weights = WEIGHTS
-        self.load_configs = LOAD_CONFIGS
-        self.phases = PHASES
         
         # Ensure all lists have the same length
         self.validate_inputs()
@@ -119,33 +84,28 @@ class BeginSession():
         """Ensure all input lists have appropriate lengths."""
         num_rigs = len(self.rigs_in_use)
         
-        # Check and adjust mice list
-        if len(self.mice) < num_rigs:
-            print(f"Warning: Not enough mouse IDs specified. Using 'test' for remaining rigs.")
-            self.mice.extend(["test"] * (num_rigs - len(self.mice)))
-        elif len(self.mice) > num_rigs:
-            # print(f"Warning: More mouse IDs than rigs. Using only the first {num_rigs}.")
-            self.mice = self.mice[:num_rigs]
+        # Default values for padding lists
+        defaults = {
+            'mice': 'test',
+            'weights': 20.0,
+        }
+        
+        # List of attributes to validate
+        attributes = ['mice', 'weights']
+        
+        for attr in attributes:
+            current_list = getattr(self, attr)
             
-        # Check and adjust weights list
-        if len(self.weights) < num_rigs:
-            print(f"Warning: Not enough weights specified. Using 20.0g for remaining rigs.")
-            self.weights.extend([20.0] * (num_rigs - len(self.weights)))
-        elif len(self.weights) > num_rigs:
-            # print(f"Warning: More weights than rigs. Using only the first {num_rigs}.")
-            self.weights = self.weights[:num_rigs]
-            
-        # Check and adjust configs list
-        if len(self.load_configs) < num_rigs:
-            self.load_configs.extend([None] * (num_rigs - len(self.load_configs)))
-        elif len(self.load_configs) > num_rigs:
-            self.load_configs = self.load_configs[:num_rigs]
-            
-        # Check and adjust phases list
-        if len(self.phases) < num_rigs:
-            self.phases.extend([None] * (num_rigs - len(self.phases)))
-        elif len(self.phases) > num_rigs:
-            self.phases = self.phases[:num_rigs]
+            if len(current_list) < num_rigs:
+                # Pad with default values
+                default_value = defaults[attr]
+                padding_needed = num_rigs - len(current_list)
+                current_list.extend([default_value] * padding_needed)
+                print(f"Warning: Not enough {attr} specified. Using default for remaining rigs.")
+                    
+            elif len(current_list) > num_rigs:
+                # Truncate to required length
+                setattr(self, attr, current_list[:num_rigs])
             
     def start_recording(self):
         """Create output directory with timestamp."""
@@ -165,7 +125,6 @@ class BeginSession():
         if timer_path:
             try:
                 timer = subprocess.Popen([python_exe, timer_path], shell=False)
-                # print(f"Started timer script")
             except Exception as e:
                 print(f"Warning: Could not start timer script: {e}")
 
@@ -175,8 +134,6 @@ class BeginSession():
             # Get parameters for this rig
             mouse = self.mice[i]
             weight = self.weights[i]
-            load_config = self.load_configs[i] if i < len(self.load_configs) else None
-            phase = self.phases[i] if i < len(self.phases) else None
             
             # Path to main.py in the new modular structure
             main_script = self.code_base_path / "main.py"
@@ -194,13 +151,6 @@ class BeginSession():
                 f'--config_json "{CONFIG_PATH}" '
             )
             
-            # Add load_config parameter if specified
-            if load_config and load_config.lower() != "none":
-                command += f'--load_config "{load_config}" '
-                
-            # Add phase parameter if specified
-            if phase and phase.lower() != "none":
-                command += f'--phase "{phase}" '
 
             # Define the command to open a new terminal with a custom title
             terminal_title = f"RIG {rig} - {mouse}"
@@ -212,10 +162,6 @@ class BeginSession():
             
             # Print info
             print(f"Starting rig {rig} with mouse {mouse} (weight: {weight}g)")
-            if load_config:
-                print(f"  Loading configuration: {load_config}")
-            if phase:
-                print(f"  Running phase: {phase}")
                 
             # Execute the command
             subprocess.Popen(terminal_command, shell=True)

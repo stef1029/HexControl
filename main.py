@@ -262,29 +262,13 @@ def main():
         # Initialize user parameters
         user_params = {}
         
-        # Check if we should load a saved configuration
-        if args.load_config:
-            loaded_params = load_session_config(args.load_config)
-            if loaded_params:
-                # Only use loaded parameters for user inputs
-                user_params = loaded_params
-                print(f"Loaded configuration: {args.load_config}")
-                
-                # Override with command line arguments if provided
-                if args.mouse:
-                    user_params["mouse_id"] = args.mouse
-                if args.weight:
-                    user_params["mouse_weight"] = args.weight
-                if args.phase:
-                    user_params["phase"] = args.phase
-        else:
-            # Command line arguments take precedence over defaults
-            if args.mouse:
-                user_params["mouse_id"] = args.mouse
-            if args.weight:
-                user_params["mouse_weight"] = args.weight
-            if args.phase:
-                user_params["phase"] = args.phase
+        # Command line arguments take precedence over defaults
+        if args.mouse:
+            user_params["mouse_id"] = args.mouse
+        if args.weight:
+            user_params["mouse_weight"] = args.weight
+        if args.phase:
+            user_params["phase"] = args.phase
         
         # Get user inputs to complete the session setup
         # Merge with existing user_params
