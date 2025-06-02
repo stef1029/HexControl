@@ -34,7 +34,7 @@ OUTPUT_FOLDER = r"D:\2505_Pitx2_chemo"
 
 # MICE = ["mtaq13-3a"]
 # MICE = ["mtaq11-3b"]
-MICE = ["mtaq14-1j"]
+# MICE = ["mtaq14-1j"]
 # MICE = ["mtaq14-1i"]
 
 # MICE = ["test"]
@@ -50,8 +50,10 @@ MICE = ["mtaq14-1j"]
 
 # MICE = ["mtao106-3a"]
 MICE = ["mtao107-2a"]
-# MICE = ["mtao101-3c"]
 # MICE = ["mtao101-3b"]
+# MICE = ["mtao101-3c"]
+# MICE = ["mtao108-3e"]
+# MICE = ["mtao101-3g"]
 
 # MICE = ["mtao107-2a"]
 
@@ -60,7 +62,7 @@ MICE = ["mtao107-2a"]
 
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [20]
+WEIGHTS = [12]
 
 # Optional: Saved configuration names to load (same order as rigs)
 # Use empty string "" or None if no config should be loaded for a particular rig 

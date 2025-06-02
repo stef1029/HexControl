@@ -115,7 +115,7 @@ def pressure_plate(mouse_weight, wait_time, rd, timer=None, scales_data=None):
 
 def test_scales(rd):
     """
-    Test scales by printing weight readings until user presses 'q'.
+    Test scales by printing weight readings with timing diagnostics until user presses 'q'.
     
     Args:
         rd (Scales): Scales object
@@ -124,20 +124,99 @@ def test_scales(rd):
         print("Error: Cannot test scales - Scales object (rd) is None!")
         return
         
-    print("Scales test. Press Q to exit")
-    # print("Current reading: ", end="")
+    print("Scales test with diagnostics. Press Q to exit")
+    
+    last_message_time = None
+    last_print_time = 0
+    print_interval = 0.1  # Print every 100ms
+    slow_call_threshold = 0.05  # Flag calls slower than 50ms
     
     try:
         while True:
-            reading = weight(rd, test=True)
-            print(UP, end=CLEAR)
-            print(f"Current reading: {reading}")
+            current_time = time.time()
+            
+            # Check if it's time to update the display
+            if current_time - last_print_time >= print_interval:
+                # Time the scales reading operation
+                start_time = time.perf_counter()
+                reading = weight(rd, test=True)
+                end_time = time.perf_counter()
+                
+                call_duration = end_time - start_time
+                
+                # Calculate time since last message
+                if last_message_time is not None:
+                    time_since_last = current_time - last_message_time
+                    time_display = f"{time_since_last:.2f}s"
+                else:
+                    time_display = "N/A"
+                
+                # Update timing variables
+                last_message_time = current_time
+                last_print_time = current_time
+                
+                # Display reading with diagnostics
+                print(UP, end=CLEAR)
+                base_info = f"Reading: {reading} | Time since last: {time_display}"
+                
+                # Add warning for slow calls
+                if call_duration > slow_call_threshold:
+                    print(f"{base_info} | ⚠️  SLOW CALL: {call_duration:.3f}s")
+                else:
+                    print(f"{base_info} | Call time: {call_duration:.3f}s")
             
             if keyboard.is_pressed('q'):
                 print(UP, end=CLEAR)
                 print("Scales test completed.")
                 break
-            
-            time.sleep(0.1)
+                
     except Exception as e:
         print(f"Error during scales test: {e}")
+
+# def test_scales(rd):
+#     """
+#     Test scales by printing weight readings and time since last message until user presses 'q'.
+#     Updates display based on timer intervals rather than sleep delays.
+    
+#     Args:
+#         rd (Scales): Scales object
+#     """
+#     if rd is None:
+#         print("Error: Cannot test scales - Scales object (rd) is None!")
+#         return
+        
+#     print("Scales test. Press Q to exit")
+    
+#     last_message_time = None
+#     last_print_time = 0
+#     print_interval = 0.1  # Print every 100ms
+    
+#     try:
+#         while True:
+#             current_time = time.time()
+            
+#             # Check if it's time to update the display
+#             if current_time - last_print_time >= print_interval:
+#                 reading = weight(rd, test=True)
+                
+#                 # Calculate time since last message
+#                 if last_message_time is not None:
+#                     time_since_last = current_time - last_message_time
+#                     time_display = f"{time_since_last:.2f}s"
+#                 else:
+#                     time_display = "N/A"
+                
+#                 # Update last message time
+#                 last_message_time = current_time
+#                 last_print_time = current_time
+                
+#                 print(UP, end=CLEAR)
+#                 print(f"Current reading: {reading} | Time since last: {time_display}")
+            
+#             if keyboard.is_pressed('q'):
+#                 print(UP, end=CLEAR)
+#                 print("Scales test completed.")
+#                 break
+                
+#     except Exception as e:
+#         print(f"Error during scales test: {e}")
