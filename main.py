@@ -14,7 +14,7 @@ init(autoreset=True)
 from common.arduino import setup_serial_connection, get_rig_port
 from common.scales import Scales, test_scales
 from common.utils import start_subprocess, get_cam_serial_number
-from common.params import load_config, parse_arguments, load_session_config
+from common.params import load_config, parse_arguments
 
 # Import phase modules dynamically
 from phases import get_phase_module
@@ -267,8 +267,6 @@ def main():
             user_params["mouse_id"] = args.mouse
         if args.weight:
             user_params["mouse_weight"] = args.weight
-        if args.phase:
-            user_params["phase"] = args.phase
         
         # Get user inputs to complete the session setup
         # Merge with existing user_params
