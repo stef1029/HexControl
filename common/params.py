@@ -21,8 +21,6 @@ def parse_arguments():
     parser.add_argument("--window_width", type=int, help="Width of the video window")
     parser.add_argument("--window_height", type=int, help="Height of the video window")
     parser.add_argument("--config_json", type=str, help="Path to the configuration JSON file")
-    parser.add_argument("--load_config", type=str, help="Name of saved session configuration to load")
-    parser.add_argument("--phase", type=str, help="Behavior phase to run")
     return parser.parse_args()
 
 def load_config(config_path):
@@ -41,23 +39,3 @@ def load_config(config_path):
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Error loading config file: {e}")
         return {}
-
-def load_session_config(config_name):
-    """
-    Load a saved session configuration.
-    
-    Args:
-        config_name (str): Name of configuration to load
-        
-    Returns:
-        dict: Configuration data or None if not found
-    """
-    try:
-        with open(f"configs/{config_name}.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"Configuration file 'configs/{config_name}.json' not found.")
-        return None
-    except json.JSONDecodeError:
-        print(f"Error parsing 'configs/{config_name}.json'. Invalid JSON format.")
-        return None

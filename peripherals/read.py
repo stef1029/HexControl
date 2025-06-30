@@ -166,9 +166,6 @@ class Scales():
         self.ser.read_all()  # clear the serial buffer
         
 
-
-
-
     def calibrate(self):
         if self.rig == 3 or self.rig == 4:
             self.ser.write(b't')
@@ -326,25 +323,25 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
-    scales = Scales(rig=1)
+    scales = Scales(rig=3)
 
     # scales.calibrate()
         
-    # while True:
-    #     # id, data = scales.weight()
-    #     raw = scales.weight()
-    #     if 'ID' in raw:
-    #         id = raw['ID']
-    #         data = raw['value']
-    #         print(f"{id}: {data}")
-    #     elif 'value' in raw:
-    #         data = raw['value']
-    #         print(data)
-    #     else:
-    #         print("No data")
+    while True:
+        # id, data = scales.weight()
+        raw = scales.weight()
+        if 'ID' in raw:
+            id = raw['ID']
+            data = raw['value']
+            print(f"{id}: {data}")
+        elif 'value' in raw:
+            data = raw['value']
+            print(data)
+        else:
+            print("No data")
 
-    #     if keyboard.is_pressed("esc"):
-    #         break
+        if keyboard.is_pressed("esc"):
+            break
     
 
 

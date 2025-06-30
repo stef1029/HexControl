@@ -503,8 +503,6 @@ def main():
     # cohort_directories.append(cohort_directory)
 
 
-
-
     # Step 1: Recover crashed sessions
     print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
     for cohort_directory in cohort_directories:
