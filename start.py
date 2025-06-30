@@ -22,11 +22,18 @@ OUTPUT_FOLDER = r"D:\Pitx2_Chemogenetics"
 # Mouse IDs for each rig (same order as rigs)
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
-# MICE = ["mtao101-3c", "mtao101-3b"] 
+# MICE = ["mtao107-2a", "mtao101-3c"] 
 
 # MICE = ["mtao102-3e", "mtao102-3c"] # *
-# MICE = ["mtao106-3b", "mtao101-3g"]# *1
-# MICE = ["mtao106-1e", "mtao108-3e"] #*1
+MICE = ["mtao106-3b", "mtao101-3g"] # *1
+# MICE = ["mtao106-1e", "mtao108-3e"] # *1
+
+# MICE = ["mtao108-3e", "mtao101-3c"]
+
+# MICE = ["mtao106-1e", "mtao106-3b"]
+# MICE = ["mtao106-1e", "mtao101-3c"]
+# MICE = ["mtao102-3c", "mtao102-3e"]
+# MICE = ["mtao102-3e"]
 
 # MICE = ["mtao106-3a"]
 # MICE = ["mtao107-2a"]
@@ -48,11 +55,11 @@ WEIGHTS = [15]
 
 # Common parameters for all rigs
 FPS = 30
-# WINDOW_WIDTH = 1280
-# WINDOW_HEIGHT = 1024
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 1024
 
-WINDOW_WIDTH = 640
-WINDOW_HEIGHT = 512
+# WINDOW_WIDTH = 640
+# WINDOW_HEIGHT = 512
 
 # ======================================================
 
