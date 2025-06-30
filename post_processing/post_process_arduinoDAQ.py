@@ -502,7 +502,7 @@ def main():
     #                 'ephys_data': True}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\2505_Pitx2_chemo"),
+    cohort_directory = {'local': Path(r"D:\Pitx2_Chemogenetics"),
                     #    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
                     #    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
                     #    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",

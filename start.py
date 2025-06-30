@@ -31,20 +31,20 @@ OUTPUT_FOLDER = r"D:\Pitx2_Chemogenetics"
 # MICE = ["mtao106-3a"]
 # MICE = ["mtao107-2a"]
 # MICE = ["mtao101-3b"]
-# MICE = ["mtao101-3c"]
+MICE = ["mtao101-3c"]
 # MICE = ["mtao108-3e"]
 # MICE = ["mtao101-3g"]
 
 # MICE = ["mtao107-2a"]
 
-MICE = ["test"]
+# MICE = ["test"]
 
 # Pairs for intensive training
 # MICE = ["mtao106-3b", "mtao106-1e"]
 
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [12]
+WEIGHTS = [15]
 
 # Common parameters for all rigs
 FPS = 30
