@@ -74,7 +74,10 @@ class Scales():
                 print(f"Error closing serial port: {e}")
 
     def raw_read(self):
-
+        """
+        Drop-in replacement for raw_read that processes only the most recent message.
+        This fixes the buffer backlog lag issue.
+        """
         # Wired scales read
         if self.rig == 3 or self.rig == 4:
             # Reads raw input from serial, if available. If not, returns (None, None)
@@ -84,10 +87,17 @@ class Scales():
             if not hasattr(self, 'data_bytes'):
                 self.data_bytes = bytearray()
             
+            # Buffer management: prevent excessive memory usage
+            if len(self.data_bytes) > 20000:
+                self.data_bytes = self.data_bytes[-10000:]
+            
             if self.ser.inWaiting() > 0:
                 # Read all available bytes from the serial port
                 data = self.ser.read(self.ser.inWaiting())
                 self.data_bytes.extend(data)
+                
+                # CRITICAL FIX: Process all complete messages but only return the LATEST one
+                latest_message = None
                 
                 # Look for the end delimiter in the buffer
                 delimiter_index = self.data_bytes.find(end_delimiter)
@@ -100,9 +110,7 @@ class Scales():
                     self.data_bytes = self.data_bytes[delimiter_index + len(end_delimiter):]
                     
                     if len(message_data) != 8:
-                        # Unexpected data length
-                        # print(f"Unexpected data length: {len(message_data)}")
-                        # Continue processing any remaining data
+                        # Unexpected data length - skip this message
                         delimiter_index = self.data_bytes.find(end_delimiter)
                         continue
                     else:
@@ -116,32 +124,42 @@ class Scales():
                         # Convert value_bytes to float (big-endian)
                         load_cell_value = struct.unpack('>f', value_bytes)[0]
                         
-                        return {'value': load_cell_value, 'ID': message_id}
+                        # Store as latest message (overwrites older ones - this is the key fix)
+                        latest_message = {'value': load_cell_value, 'ID': message_id}
                     
                     # Update delimiter_index for the next iteration
                     delimiter_index = self.data_bytes.find(end_delimiter)
                 
-                # After processing all available data, if no message was found
-                return {'value': None, 'ID': None}
+                # Return the latest message if found, otherwise None values
+                if latest_message is not None:
+                    return latest_message
+                else:
+                    return {'value': None, 'ID': None}
             else:
                 # No data available
                 return {'value': None, 'ID': None}
             
         # Wireless scales read
         elif self.rig == 1 or self.rig == 2:
-            while True:
-                if self.ser.inWaiting() > 0:
+            # Also optimised for wireless scales - process all available and return latest
+            latest_value = None
+            
+            # Process all available lines and keep only the latest valid reading
+            while self.ser.inWaiting() > 0:
+                try:
                     data = self.ser.readline().decode("utf-8")
-                    # data = data.hex()
-                    try:
-                        data = float(data.strip())
-                    except ValueError:
-                        print(data)
-                        return {'value': None}
+                    data = float(data.strip())
                     if data != "None":
-                        return {'value': data}
-                else:
-                    return {'value': None}
+                        latest_value = data  # Keep updating to get the latest value
+                except ValueError:
+                    # Skip invalid data
+                    continue
+            
+            # Return the latest value found, or None if no valid data
+            if latest_value is not None:
+                return {'value': latest_value}
+            else:
+                return {'value': None}
             
     def clear_buffer(self):
         # clears the serial buffer

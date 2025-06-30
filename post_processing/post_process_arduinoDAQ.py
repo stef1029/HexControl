@@ -473,19 +473,19 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"E:\Pitx2_Ephys"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Ephys\03-03_Optetrodes"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Ephys/03-03_Optetrodes",
-                       'rsync_local': r"/cygdrive/e/Pitx2_Ephys/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
-    cohort_directories.append(cohort_directory)
-
-    # cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
-    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
-    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
-    #                    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
-    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
+    # cohort_directory = {'local': Path(r"E:\Pitx2_Ephys"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Ephys\03-03_Optetrodes"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Ephys/03-03_Optetrodes",
+    #                    'rsync_local': r"/cygdrive/e/Pitx2_Ephys/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
     # cohort_directories.append(cohort_directory)
+
+    cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
+                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
+                       'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
+                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
+    cohort_directories.append(cohort_directory)
 
     # cohort_directory = {'local': Path(r"D:\2504_pitx2_ephys_cohort"),
     #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
@@ -494,13 +494,13 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour code/2409_September_cohort/Data"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
-                    'cephfs_mapped': Path(r"Y:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
-                    'cephfs_hal': r"/cephfs2/srogers/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
-                    'rsync_local': r"/cygdrive/d/Electrophysiology/250416_Pitx2_ephys_cohort_recordings",
-                    'rsync_cephfs_mapped': r"/cygdrive/y/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
-                    'ephys_data': True}
-    cohort_directories.append(cohort_directory)
+    # cohort_directory = {'local': Path(r"D:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
+    #                 'cephfs_mapped': Path(r"Y:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings"),
+    #                 'cephfs_hal': r"/cephfs2/srogers/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
+    #                 'rsync_local': r"/cygdrive/d/Electrophysiology/250416_Pitx2_ephys_cohort_recordings",
+    #                 'rsync_cephfs_mapped': r"/cygdrive/y/Electrophysiology\250416_Pitx2_ephys_cohort_recordings",
+    #                 'ephys_data': True}
+    # cohort_directories.append(cohort_directory)
 
 
 
@@ -534,20 +534,20 @@ def main():
             run_analysis_on_local(cohort_directory['local'], refresh=False)
 
     # # Step 5: Sync files to cephfs 
-    # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
-    # for cohort_directory in cohort_directories:
-    #     print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
-    #     sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
+    print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
+    for cohort_directory in cohort_directories:
+        print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
+        sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
         
     # # Step 6: Run DeepLabCut analysis
-    # print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
-    # for cohort_directory in cohort_directories:
-    #     make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
-    #     slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
-    #     remote_host = "hex"
-    #     remote_user = "srogers"
-    #     remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
-    #     run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
+    print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
+    for cohort_directory in cohort_directories:
+        make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
+        slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
+        remote_host = "hex"
+        remote_user = "srogers"
+        remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
+        run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
         
     # Report time taken
     total_time_taken = time.perf_counter() - total_start_time

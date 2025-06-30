@@ -45,11 +45,18 @@ OUTPUT_FOLDER = r"E:\Pitx2_Chemogenetics"
 
 
 # MICE = ["mtao107-2a", "mtao106-3a"]
-# MICE = ["mtao101-3c", "mtao101-3b"] 
+# MICE = ["mtao107-2a", "mtao101-3c"] 
 
 # MICE = ["mtao102-3e", "mtao102-3c"] # *
-MICE = ["mtao106-3b", "mtao101-3g"]# *1
-# MICE = ["mtao106-1e", "mtao108-3e"] #*1
+MICE = ["mtao106-3b", "mtao101-3g"] # *1
+# MICE = ["mtao106-1e", "mtao108-3e"] # *1
+
+# MICE = ["mtao108-3e", "mtao101-3c"]
+
+# MICE = ["mtao106-1e", "mtao106-3b"]
+# MICE = ["mtao106-1e", "mtao101-3c"]
+# MICE = ["mtao102-3c", "mtao102-3e"]
+# MICE = ["mtao102-3e"]
 
 # MICE = ["mtao106-3a"]
 # MICE = ["mtao107-2a"]
@@ -64,7 +71,7 @@ MICE = ["mtao106-3b", "mtao101-3g"]# *1
 
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [17, 17]
+WEIGHTS = [17, 9]
 
 # Optional: Saved configuration names to load (same order as rigs)
 # Use empty string "" or None if no config should be loaded for a particular rig 
@@ -76,11 +83,11 @@ PHASES = [None, None]
 
 # Common parameters for all rigs
 FPS = 30
-# WINDOW_WIDTH = 1280
-# WINDOW_HEIGHT = 1024
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 1024
 
-WINDOW_WIDTH = 640
-WINDOW_HEIGHT = 512
+# WINDOW_WIDTH = 640
+# WINDOW_HEIGHT = 512
 
 # ======================================================
 
