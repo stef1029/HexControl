@@ -47,6 +47,8 @@ def convert_binary_to_video(binary_filename, json_filename, output_directory):
 
     # Determine the number of CPU cores
     num_cores = mp.cpu_count()
+    if num_cores > 50:
+        num_cores = 50
     # num_cores = 4  # You can set this manually if desired
     print(f"Number of CPU cores available: {num_cores}")
 

@@ -480,12 +480,12 @@ def main():
     #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Ephys/03-03_Optetrodes"}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
-                       'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
-                       'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
-                       'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
-    cohort_directories.append(cohort_directory)
+    # cohort_directory = {'local': Path(r"E:\Pitx2_Chemogenetics"),
+    #                    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
+    #                    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
+    #                    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
+    #                    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"}
+    # cohort_directories.append(cohort_directory)
 
     # cohort_directory = {'local': Path(r"D:\2504_pitx2_ephys_cohort"),
     #                    'cephfs_mapped': Path(r"Y:\Behaviour code\2409_September_cohort\Data"),
@@ -502,7 +502,7 @@ def main():
     #                 'ephys_data': True}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:\Pitx2_Chemogenetics"),
+    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/Experiment"),
                     #    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
                     #    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
                     #    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
@@ -512,21 +512,21 @@ def main():
 
 
     # Step 1: Recover crashed sessions
-    print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
-    for cohort_directory in cohort_directories:
-        recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
+    # print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
+    # for cohort_directory in cohort_directories:
+    #     recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
     # Step 2: Process ephys data
-    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    for cohort_directory in cohort_directories:
-        if cohort_directory.get('ephys_data', False):
-            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
+    # print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
+    # for cohort_directory in cohort_directories:
+    #     if cohort_directory.get('ephys_data', False):
+    #         process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
 
     # Step 3: Process uncompressed videos
-    print("\n===== STEP 3: PROCESSING VIDEOS =====")
-    for cohort_directory in cohort_directories:
-        processes = mp.cpu_count()
-        process_cohort_directory(cohort_directory['local'], processes)
+    # print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    # for cohort_directory in cohort_directories:
+    #     processes = mp.cpu_count()
+    #     process_cohort_directory(cohort_directory['local'], processes)
 
     # Wait until after 10 PM before running the main part
     # wait_until_time(22)  # 22:00 is 10 PM
@@ -540,20 +540,20 @@ def main():
             run_analysis_on_local(cohort_directory['local'], refresh=False)
 
     # # Step 5: Sync files to cephfs 
-    print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
-    for cohort_directory in cohort_directories:
-        print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
-        sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
+    # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
+    # for cohort_directory in cohort_directories:
+    #     print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
+    #     sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
         
     # # Step 6: Run DeepLabCut analysis
-    print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
-    for cohort_directory in cohort_directories:
-        make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
-        slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
-        remote_host = "hex"
-        remote_user = "srogers"
-        remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
-        run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
+    # print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
+    # for cohort_directory in cohort_directories:
+    #     make_vid_list_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/make_vid_list.py"
+    #     slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
+    #     remote_host = "hex"
+    #     remote_user = "srogers"
+    #     remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
+    #     run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
         
     # Report time taken
     total_time_taken = time.perf_counter() - total_start_time
