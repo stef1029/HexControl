@@ -390,7 +390,7 @@ def main():
     Main function to run the batch fixer.
     """
     # You'll need to modify this path to point to your cohort directory
-    cohort_directory = Path(r"Z://Behaviour/2504_pitx_ephys_cohort")
+    cohort_directory = Path(r"/cephfs2/srogers/Behaviour/test")
     
     # For interactive use, ask user for the cohort directory
     if not cohort_directory.exists():

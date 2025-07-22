@@ -13,7 +13,7 @@ from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
 from hex_behav_analysis.utils.DetectTrials import DetectTrials
 
 class Session:
-    def __init__(self, session_dict, recalculate=False, dlc_model_name=None):
+    def __init__(self, session_dict, recalculate=False, dlc_model_name=None, frames_offset=0):
         """
         Initialize a Session object.
         
@@ -28,6 +28,7 @@ class Session:
             raise ValueError("Invalid session dictionary, check that session ID matches what is in loaded cohort folder information.\
                              (Ranaming of files often causes this issue if all session IDs aren't updated in the rest of the code.)")
         try:
+            self.frames_offset = frames_offset
             self.session_dict = session_dict
             self.session_directory = Path(self.session_dict.get('directory'))
             self.dlc_model_name = dlc_model_name  # Store the model name
@@ -882,16 +883,15 @@ class Session:
                     video_frames = []
                     
                     # use bisect to find the frametimes from the indexed_frametimes dictionary
-                    start_index = np.searchsorted(self.video_timestamps, start, side='left')
+                    video_start_index = np.searchsorted(self.video_timestamps, start, side='left') - self.frames_offset
+                    video_start_index = max(0, video_start_index)  # Ensure we don't go below 0
                     if end != None:
-                        end_index = np.searchsorted(self.video_timestamps, end, side='left')
+                        video_end_index = np.searchsorted(self.video_timestamps, end, side='left') - self.frames_offset
+                        video_end_index = max(0, video_end_index)
                     else:
-                        end_index = len(self.video_timestamps) - 1
+                        video_end_index = len(self.video_timestamps) - 1
 
-                    # for each index in between the start and end, see if it's in the indexed_frametimes dictionary, and if it is, add it to the video_frames list.
-                    # bug happened here where I was appending the frame_ID not the frame number.
-                    # when the video processor later went to grab the appropriate frame, it grabbed the wrong frame, since it needed the index in the video.
-                    for i in range(start_index, end_index):
+                    for i in range(video_start_index, video_end_index):
                         video_frames.append(i)
                     
                     if len(video_frames) != 0:
@@ -909,12 +909,15 @@ class Session:
                                 data = ts.data[:]
 
                                 # Find indices for the trial time range
-                                start_index = np.searchsorted(timestamps, start, side='left')
-                                end_index = np.searchsorted(timestamps, end, side='left')
+                                dlc_start_index = np.searchsorted(timestamps, start, side='left') - self.frames_offset
+                                dlc_start_index = max(0, dlc_start_index)  # Ensure we don't go below 0
+                                dlc_end_index = np.searchsorted(timestamps, end, side='left') - self.frames_offset
+                                dlc_end_index = max(0, dlc_end_index)
+
 
                                 # Slice the data and timestamps for the trial
-                                trial_data = data[start_index:end_index]
-                                trial_timestamps = timestamps[start_index:end_index]
+                                trial_data = data[dlc_start_index:dlc_end_index]
+                                trial_timestamps = timestamps[dlc_start_index:dlc_end_index]
 
                                 trial_DLC_data[time_series_name] = trial_data
                             

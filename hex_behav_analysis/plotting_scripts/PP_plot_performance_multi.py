@@ -78,7 +78,6 @@ class PlottingData:
     bin_titles: List[str] = field(default_factory=list)
 
 
-
 @dataclass
 class ExclusionInfo:
     """
@@ -96,6 +95,168 @@ class DataSet:
     """Store organised trial data for a dataset."""
     mice: Dict[str, Dict[str, MouseCueModeData]] = field(default_factory=dict)
     total_trials: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+
+
+@dataclass
+class DistributionAnalysis:
+    """Store trial distribution analysis results."""
+    trial_counts: Dict[float, int] = field(default_factory=dict)
+    trial_proportions: Dict[float, float] = field(default_factory=dict)
+    total_trials: int = 0
+    total_correct: int = 0
+    bin_performance: Dict[float, float] = field(default_factory=dict)
+    
+    # Calculated metrics
+    unweighted_average: float = 0.0
+    weighted_average: float = 0.0
+    
+    # Cross-weighting results
+    performance_with_other_distribution: float = 0.0
+
+
+def calculate_distribution_effects(group_analyses: Dict[str, DistributionAnalysis], 
+                                 bin_list: List[float]) -> Dict[str, Any]:
+    """
+    Calculate how trial distribution differences affect performance averages.
+    
+    Parameters
+    ----------
+    group_analyses : dict
+        Dictionary mapping group names to their DistributionAnalysis objects
+    bin_list : list
+        List of bin starting angles
+    
+    Returns
+    -------
+    dict
+        Analysis results including cross-weighting effects
+    """
+    results = {}
+    group_names = list(group_analyses.keys())
+    
+    if len(group_names) >= 2:
+        # Perform pairwise cross-weighting analysis
+        for i in range(len(group_names)):
+            for j in range(i+1, len(group_names)):
+                group_a = group_names[i]
+                group_b = group_names[j]
+                
+                analysis_a = group_analyses[group_a]
+                analysis_b = group_analyses[group_b]
+                
+                # Cross-weight A's performance with B's distribution
+                crossweight_a_with_b = 0.0
+                for bin_angle in bin_list:
+                    if bin_angle in analysis_a.bin_performance and bin_angle in analysis_b.trial_proportions:
+                        crossweight_a_with_b += (analysis_a.bin_performance[bin_angle] * 
+                                               analysis_b.trial_proportions[bin_angle])
+                
+                # Cross-weight B's performance with A's distribution
+                crossweight_b_with_a = 0.0
+                for bin_angle in bin_list:
+                    if bin_angle in analysis_b.bin_performance and bin_angle in analysis_a.trial_proportions:
+                        crossweight_b_with_a += (analysis_b.bin_performance[bin_angle] * 
+                                               analysis_a.trial_proportions[bin_angle])
+                
+                # Store results
+                analysis_a.performance_with_other_distribution = crossweight_a_with_b
+                analysis_b.performance_with_other_distribution = crossweight_b_with_a
+                
+                # Calculate correlation between trial density and performance
+                trial_counts_a = [analysis_a.trial_counts.get(b, 0) for b in bin_list]
+                performance_a = [analysis_a.bin_performance.get(b, 0) for b in bin_list]
+                
+                trial_counts_b = [analysis_b.trial_counts.get(b, 0) for b in bin_list]
+                performance_b = [analysis_b.bin_performance.get(b, 0) for b in bin_list]
+                
+                # Only calculate correlation if we have variation in the data
+                if len(set(trial_counts_a)) > 1 and len(set(performance_a)) > 1:
+                    corr_a, p_value_a = stats.pearsonr(trial_counts_a, performance_a)
+                else:
+                    corr_a, p_value_a = 0.0, 1.0
+                    
+                if len(set(trial_counts_b)) > 1 and len(set(performance_b)) > 1:
+                    corr_b, p_value_b = stats.pearsonr(trial_counts_b, performance_b)
+                else:
+                    corr_b, p_value_b = 0.0, 1.0
+                
+                results[f"{group_a}_vs_{group_b}"] = {
+                    'original_difference': analysis_a.unweighted_average - analysis_b.unweighted_average,
+                    'weighted_difference': analysis_a.weighted_average - analysis_b.weighted_average,
+                    'crossweight_difference': crossweight_a_with_b - crossweight_b_with_a,
+                    'correlation_trials_performance': {
+                        group_a: (corr_a, p_value_a),
+                        group_b: (corr_b, p_value_b)
+                    }
+                }
+    
+    return results
+
+
+def print_distribution_analysis(group_analyses: Dict[str, DistributionAnalysis], 
+                              distribution_effects: Dict[str, Any],
+                              plot_type: str) -> None:
+    """
+    Print detailed analysis of how trial distributions affect performance differences.
+    
+    Parameters
+    ----------
+    group_analyses : dict
+        Dictionary mapping group names to their DistributionAnalysis objects
+    distribution_effects : dict
+        Results from calculate_distribution_effects
+    plot_type : str
+        Type of plot (for labelling)
+    """
+    print("\n" + "="*80)
+    print(f"TRIAL DISTRIBUTION ANALYSIS FOR {plot_type.upper()}")
+    print("="*80)
+    
+    # Print individual group statistics
+    for group_name, analysis in group_analyses.items():
+        print(f"\n{group_name}:")
+        print(f"  Total trials: {analysis.total_trials}")
+        print(f"  Total correct: {analysis.total_correct}")
+        print(f"  Unweighted average (treats all bins equally): {analysis.unweighted_average:.3f}")
+        print(f"  Weighted average (by trial count): {analysis.weighted_average:.3f}")
+        print(f"  Difference: {analysis.weighted_average - analysis.unweighted_average:.3f}")
+    
+    # Print cross-weighting analysis
+    if distribution_effects:
+        print("\n" + "-"*80)
+        print("CROSS-WEIGHTING ANALYSIS:")
+        print("-"*80)
+        
+        for comparison, results in distribution_effects.items():
+            groups = comparison.split('_vs_')
+            print(f"\n{groups[0]} vs {groups[1]}:")
+            
+            print(f"  Original difference (unweighted): {results['original_difference']:.3f}")
+            print(f"  Weighted difference: {results['weighted_difference']:.3f}")
+            print(f"  Cross-weighted difference: {results['crossweight_difference']:.3f}")
+            
+            print(f"\n  Performance if groups swapped trial distributions:")
+            print(f"    {groups[0]} performance with {groups[1]}'s distribution: "
+                  f"{group_analyses[groups[0]].performance_with_other_distribution:.3f}")
+            print(f"    {groups[1]} performance with {groups[0]}'s distribution: "
+                  f"{group_analyses[groups[1]].performance_with_other_distribution:.3f}")
+            
+            print(f"\n  Correlation between trial density and performance:")
+            for group in groups:
+                if group in results['correlation_trials_performance']:
+                    corr, p_val = results['correlation_trials_performance'][group]
+                    print(f"    {group}: r={corr:.3f}, p={p_val:.3f}")
+            
+            # Interpretation
+            distribution_effect = abs(results['original_difference'] - results['crossweight_difference'])
+            print(f"\n  Distribution effect magnitude: {distribution_effect:.3f}")
+            
+            if distribution_effect > 0.01:  # Threshold for meaningful effect
+                print("  → Trial distribution differences contribute significantly to performance gap")
+            else:
+                print("  → Performance differences are NOT primarily due to trial distribution")
+    
+    print("\n" + "="*80)
 
 
 def plot_performance_by_angle(sessions_input, 
@@ -118,7 +279,8 @@ def plot_performance_by_angle(sessions_input,
                               timeout_handling=None,
                               min_trial_duration=None,
                               show_circular_stats=True,
-                              plot_circular_means=True):
+                              plot_circular_means=True,
+                              show_distribution_analysis=True):  # NEW PARAMETER
     """
     Plot angular performance data from behavioural sessions.
     
@@ -182,6 +344,8 @@ def plot_performance_by_angle(sessions_input,
         Whether to calculate and display circular statistics
     plot_circular_means : bool
         Whether to plot circular mean vectors on radial plots
+    show_distribution_analysis : bool
+        Whether to show analysis of how trial distribution affects performance differences
     """
 
     def get_trials(sessions):
@@ -283,6 +447,9 @@ def plot_performance_by_angle(sessions_input,
 
     # Dictionary to store circular statistics for each group
     circular_stats_by_group: Dict[str, Dict[str, CircularStats]] = {}
+    
+    # Dictionary to store distribution analysis for each group
+    distribution_analyses: Dict[str, Dict[str, DistributionAnalysis]] = {}
 
     # Decide how to interpret sessions_input - check to make sure that you're not trying to do multiple cue mode lines if you've got multiple datasets.
     if isinstance(sessions_input, dict):
@@ -337,6 +504,10 @@ def plot_performance_by_angle(sessions_input,
         bin_size = angle_range / num_bins_used
         # ----------------------
 
+        # Initialise distribution analysis storage for this dataset
+        if dataset_name not in distribution_analyses:
+            distribution_analyses[dataset_name] = {}
+
         # For each cue mode (visual trials, audio trials, all trials), collect hit_rate/bias/bias_incorrect/dprime
         for cue_group in cue_modes:
             # Prepare structure for storing average stats across mice
@@ -346,10 +517,18 @@ def plot_performance_by_angle(sessions_input,
             if dataset_name not in circular_stats_by_group:
                 circular_stats_by_group[dataset_name] = {}
             circular_stats_by_group[dataset_name][cue_group] = CircularStats()
+            
+            # Initialise distribution analysis for this group/cue combination
+            dist_analysis = DistributionAnalysis()
+            distribution_analyses[dataset_name][cue_group] = dist_analysis
 
             total_trials = data_sets.total_trials[cue_group]
             total_excluded_trials = 0
             total_correct = 0
+            
+            # Aggregate trial counts across all mice for distribution analysis
+            aggregated_hit_rate_bins = {i: [] for i in np.arange(limits[0], limits[1], bin_size)}
+            aggregated_trial_counts = {i: 0 for i in np.arange(limits[0], limits[1], bin_size)}
 
             # Create bins for each mouse
             for mouse_id in data_sets.mice:
@@ -451,6 +630,9 @@ def plot_performance_by_angle(sessions_input,
                     for bin_start in hit_rate_bins:
                         if bin_start <= cue_presentation_angle < bin_start + bin_size:
                             hit_rate_bins[bin_start].append(1 if is_correct else 0)
+                            # Add to aggregated data
+                            aggregated_hit_rate_bins[bin_start].append(1 if is_correct else 0)
+                            aggregated_trial_counts[bin_start] += 1
                             break
                         
                     # Fill in "standard" bias bins
@@ -574,6 +756,24 @@ def plot_performance_by_angle(sessions_input,
 
             print(f"Total success: {(total_correct/(len(total_trials)-total_excluded_trials))*100:.2f}% trials in {cue_group}")
             print(f"Total excluded: {total_excluded_trials} trials in {cue_group}")
+            
+            # Calculate distribution analysis metrics
+            dist_analysis.total_trials = sum(aggregated_trial_counts.values())
+            dist_analysis.total_correct = sum(sum(aggregated_hit_rate_bins[b]) for b in aggregated_hit_rate_bins)
+            dist_analysis.trial_counts = aggregated_trial_counts
+            
+            # Calculate proportions
+            for bin_angle, count in aggregated_trial_counts.items():
+                dist_analysis.trial_proportions[bin_angle] = count / dist_analysis.total_trials if dist_analysis.total_trials > 0 else 0
+            
+            # Calculate bin performance
+            for bin_angle in aggregated_hit_rate_bins:
+                bin_trials = aggregated_hit_rate_bins[bin_angle]
+                if len(bin_trials) > 0:
+                    dist_analysis.bin_performance[bin_angle] = sum(bin_trials) / len(bin_trials)
+                else:
+                    dist_analysis.bin_performance[bin_angle] = 0
+            
             # Compute across-mice statistics (normal flow)
             # Convert each measure to an array [mouse x angle_bin]
             hit_rate_array = np.array([
@@ -635,6 +835,24 @@ def plot_performance_by_angle(sessions_input,
 
             plotting_data.n = n_mice
             plotting_data.bin_titles = [f"{b + (bin_size / 2):.2f}" for b in bin_list]
+
+            # Calculate unweighted and weighted averages for distribution analysis
+            if plot_type == 'hit_rate':
+                plot_data_for_avg = plotting_data.hit_rate
+            elif plot_type == 'bias_corrected':
+                plot_data_for_avg = plotting_data.bias_corrected
+            elif plot_type == 'bias_incorrect':
+                plot_data_for_avg = plotting_data.bias_incorrect
+            elif plot_type == 'dprime':
+                plot_data_for_avg = plotting_data.dprime
+            elif plot_type == 'bias':
+                plot_data_for_avg = plotting_data.bias
+            else:
+                raise ValueError(f"Unknown plot_type: {plot_type}")
+            
+            dist_analysis.unweighted_average = np.mean(plot_data_for_avg)
+            dist_analysis.weighted_average = (dist_analysis.total_correct / dist_analysis.total_trials 
+                                            if dist_analysis.total_trials > 0 else 0)
 
             # Plotting
             angles_deg = np.array(plotting_data.bin_titles, dtype=np.float64)
@@ -838,6 +1056,22 @@ def plot_performance_by_angle(sessions_input,
                         
                         ax.plot(angles_deg, individual_data, 
                                label=f"Mouse {mouse}", linestyle='--', marker='o', alpha=0.7)
+
+    # Calculate and print distribution analysis if requested
+    if show_distribution_analysis and len(distribution_analyses) > 0:
+        # Extract the single cue mode (since we only allow one when comparing groups)
+        cue_mode = cue_modes[0]
+        
+        # Get analyses for this cue mode across all groups
+        group_analyses = {}
+        for dataset_name in distribution_analyses:
+            if cue_mode in distribution_analyses[dataset_name]:
+                group_analyses[dataset_name] = distribution_analyses[dataset_name][cue_mode]
+        
+        # Calculate distribution effects
+        if len(group_analyses) >= 2:
+            distribution_effects = calculate_distribution_effects(group_analyses, bin_list)
+            print_distribution_analysis(group_analyses, distribution_effects, plot_type)
 
     # Final plot cosmetics
     # Position legend outside the plot area to the right

@@ -322,8 +322,8 @@ def main():
     frequency_threshold = 0.5  # Threshold for pulse detection
     frequency_window_size = 1.0  # Window size in seconds for frequency calculation
 
-    cohort_dir = "/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/Experiment"
-    session_id = "250521_133747_mtao106-3b"  # Example session ID
+    cohort_dir = "/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/Training"
+    session_id = "250417_152533_mtao108-3e"  # Example session ID
 
     cohort = Cohort_folder(cohort_dir, use_existing_cohort_info=True, OEAB_legacy=False)
     daq_file_path = cohort.get_session(session_id)['raw_data']['arduino_DAQ_h5']
@@ -333,7 +333,7 @@ def main():
     
     # Time range for plotting
     start_index = 0
-    end_index = None
+    end_index = 600
     
     # Initialise DAQViewer with the provided file
     viewer = DAQViewer(daq_file_path)

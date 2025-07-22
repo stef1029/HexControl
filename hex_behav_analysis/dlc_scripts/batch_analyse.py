@@ -8,7 +8,8 @@ import ctypes
 
 # config = r'/cephfs2/srogers/New_analysis_pipeline/training_videos/DLC_Project_231212_193535_wtjx285-2a_raw_MP-SRC-2024-01-09/config.yaml'
 # config = r'/cephfs2/dwelch/6-choice_behaviour_DLC_model/config.yaml'
-config = r'/cephfs2/srogers/DEEPLABCUT_models/LMDC_model_videos/models/LMDC-StefanRC-2025-03-11/config.yaml'
+# config = r'/cephfs2/srogers/DEEPLABCUT_models/LMDC_model_videos/models/LMDC-StefanRC-2025-03-11/config.yaml' # model used for chemo mice 2025
+config = r'/cephfs2/srogers/DEEPLABCUT_models/2500601_Pitx2_ephys_model/project_folders/tetrodes-StefanRC-2025-06-01/config.yaml' # first attempt at tetrode model
 
 # Global flag for malloc_trim thread
 stop_trim_thread = False

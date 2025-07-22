@@ -907,10 +907,10 @@ if __name__ == "__main__":
     from hex_behav_analysis.utils.Session_nwb import Session
     
     model = "DLC_Resnet50_LMDCMar11shuffle1_snapshot_091"
-    cohort_dir = r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/Experiment"
+    cohort_dir = r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/Training"
     
-    cohort = Cohort_folder(cohort_dir, multi=True, OEAB_legacy=False, dlc_model_name=model, use_existing_cohort_info=True)
-    test_dir = cohort.get_session("250521_133747_mtao106-3b")
+    cohort = Cohort_folder(cohort_dir, multi=True, OEAB_legacy=False, dlc_model_name=model, use_existing_cohort_info=False)
+    test_dir = cohort.get_session("250417_152533_mtao108-3e")
     session = Session(test_dir, dlc_model_name=model, recalculate=True)
     
     # Example: Sort by cue angle
@@ -918,8 +918,8 @@ if __name__ == "__main__":
         session=session,
         output_directory="/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics/111_dlc_evaluation",
         likelihood_threshold=0,
-        sort_by='cue_angle',  # or 'head_bearing'
-        frame_offset=-3
+        sort_by='head_bearing',  # or 'head_bearing'
+        frame_offset=0
     )
     
     print("\nDeepLabCut Performance Evaluation Script")
