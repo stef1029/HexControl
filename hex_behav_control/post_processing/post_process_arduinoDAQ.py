@@ -35,7 +35,8 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
         generate_plots (bool): Whether to generate timing analysis plots (default: False).
         
     Returns:
-        tuple: (processed_count, skipped_count, error_count) - Numbers of files processed, skipped, and errors encountered.
+        tuple: (processed_count, skipped_count, error_count, failed_sessions) 
+               - Numbers of files processed, skipped, errors encountered, and list of failed sessions
     """
     from pathlib import Path
     from hex_behav_analysis.ephys import get_axona_events
@@ -60,6 +61,9 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
     processed_count = 0
     skipped_count = 0
     error_count = 0
+    
+    # Track failed sessions with detailed error information
+    failed_sessions = []
     
     # Iterate over each mouse in the directory information
     for mouse in directory_info["mice"]:
@@ -103,10 +107,22 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                         
                         print(f"Successfully processed ephys sync file from {inp_file} for session {session_directory.name}")
                         processed_count += 1
+                        
                     except Exception as e:
-                        print(f"Error processing ephys data for {session_directory}: {e}")
-                        logger.error(f"Error processing ephys data for {session_directory}: {e}", exc_info=True)
+                        error_msg = str(e)
+                        print(f"Error processing ephys data for {session_directory}: {error_msg}")
+                        logger.error(f"Error processing ephys data for {session_directory}: {error_msg}", exc_info=True)
                         error_count += 1
+                        
+                        # Store detailed failure information
+                        failed_sessions.append({
+                            'session': session,
+                            'session_directory': str(session_directory),
+                            'inp_file': str(inp_file),
+                            'error': error_msg,
+                            'error_type': type(e).__name__,
+                            'mouse': mouse
+                        })
             else:
                 print(f"No ephys data files found for {session} in parent directory: {parent_directory}")
     
@@ -115,13 +131,38 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
     minutes = int(elapsed_time // 60)
     seconds = int(elapsed_time % 60)
     
-    print(f"\nEphys processing summary:")
+    # Print summary
+    print("\n" + "="*80)
+    print("EPHYS PROCESSING SUMMARY")
+    print("="*80)
     print(f"  Processed: {processed_count} files")
     print(f"  Skipped (already exist): {skipped_count} files")
     print(f"  Errors: {error_count} files")
     print(f"  Time taken: {minutes} minutes, {seconds} seconds")
     
-    return (processed_count, skipped_count, error_count)
+    # Print detailed failure report
+    if failed_sessions:
+        print("\n" + "="*80)
+        print(f"FAILED SESSIONS REPORT ({len(failed_sessions)} sessions)")
+        print("="*80)
+        
+        # Group by error type
+        error_types = {}
+        for failure in failed_sessions:
+            error_type = failure['error_type']
+            if error_type not in error_types:
+                error_types[error_type] = []
+            error_types[error_type].append(failure)
+        
+        # Print failures grouped by error type
+        for error_type, failures in error_types.items():
+            # print(f"\n{error_type} ({len(failures)} sessions):")
+            for failure in failures:
+                # print(f"{failure['session']}")
+                print(f"    File: {failure['inp_file']}")
+
+    
+    return (processed_count, skipped_count, error_count, failed_sessions)
 
 def get_sessions_to_process(directory_info):
     """
@@ -502,36 +543,37 @@ def main():
     #                 'ephys_data': True}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"/cephfs2/dwelch/Behaviour/November_training"),
+    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/2504_pitx_ephys_cohort"),
                     #    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
                     #    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
                     #    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
                     #    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"
+                    'ephys_data': True,
                     }
     cohort_directories.append(cohort_directory)
 
 
     # Step 1: Recover crashed sessions
-    print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
-    for cohort_directory in cohort_directories:
-        recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
+    # print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
+    # for cohort_directory in cohort_directories:
+    #     recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
     # Step 2: Process ephys data
-    # print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    # for cohort_directory in cohort_directories:
-    #     if cohort_directory.get('ephys_data', False):
-    #         process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
-
-    # Step 3: Process uncompressed videos
-    print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
     for cohort_directory in cohort_directories:
-        processes = mp.cpu_count()
-        process_cohort_directory(cohort_directory['local'], processes)
+        if cohort_directory.get('ephys_data', False):
+            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
 
-    # Wait until after 10 PM before running the main part
-    # wait_until_time(22)  # 22:00 is 10 PM
+    # # Step 3: Process uncompressed videos
+    # print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    # for cohort_directory in cohort_directories:
+    #     processes = mp.cpu_count()
+    #     process_cohort_directory(cohort_directory['local'], processes)
 
-    # Step 4: Run analysis on the local files
+    # # Wait until after 10 PM before running the main part
+    # # wait_until_time(22)  # 22:00 is 10 PM
+
+    # # Step 4: Run analysis on the local files
     print("\n===== STEP 4: RUNNING ANALYSIS =====")
     for cohort_directory in cohort_directories:
         if cohort_directory.get('ephys_data', False):
