@@ -1,0 +1,6 @@
+Camera/
+__pycache__/
+activity.log
+*.egg-info/
+.eggs/
+.vscode/
