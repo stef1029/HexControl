@@ -1,0 +1,7 @@
+{
+    "SENDKEY_FOLDER": "C:\\Behaviour\\Sendkey_multi\\Sendkey-multi_2",
+    "TIMER_SCRIPT": "C:\\Behaviour\\Sendkey_multi\\Sendkey-multi_2\\timer.py",
+    "PYTHON_PATH": "C:\\Users\\Public\\.conda\\July_cohort\\python.exe",
+    "SERIAL_LISTEN": "C:\\Behaviour\\Sendkey_multi\\Sendkey-multi_2\\Scripts\\serialListen.py",
+    "BEHAVIOUR_CAMERA": "C:\\Behaviour\\Camera\\x64\\Release\\Camera.exe"
+}
