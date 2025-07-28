@@ -59,3 +59,10 @@ Preliminary_analysis_scripts/__pycache__/Full_arduinoDAQ_import.cpython-310.pyc
 *.h5
 *.txt
 *.json
+
+Camera/
+__pycache__/
+activity.log
+*.egg-info/
+.eggs/
+.vscode/

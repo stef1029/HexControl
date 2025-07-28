@@ -512,9 +512,9 @@ def main():
 
 
     # Step 1: Recover crashed sessions
-    print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
-    for cohort_directory in cohort_directories:
-        recover_crashed_sessions(cohort_directory['local'], verbose=True, force=True)
+    # print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
+    # for cohort_directory in cohort_directories:
+    #     recover_crashed_sessions(cohort_directory['local'], verbose=True, force=True)
 
     # Step 2: Process ephys data
     # print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
