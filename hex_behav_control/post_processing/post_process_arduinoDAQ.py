@@ -39,7 +39,6 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                - Numbers of files processed, skipped, errors encountered, and list of failed sessions
     """
     from pathlib import Path
-    from hex_behav_analysis.ephys import get_axona_events
     import logging
     import time
     
