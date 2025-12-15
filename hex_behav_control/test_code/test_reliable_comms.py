@@ -1,368 +1,806 @@
-import struct
-import time
-import threading
+"""
+Behaviour Rig Communication Library
+====================================
+
+This module provides a reliable serial communication interface for behavioural
+experiment rigs. It handles:
+    - Binary framed messaging with CRC16 checksums
+    - Sequence-numbered commands with automatic retry on timeout
+    - Asynchronous sensor event reception with deduplication
+
+The communication protocol uses a latest-wins strategy for sensor events,
+ensuring the host always receives the most recent trigger without queue buildup.
+All six sensors are monitored continuously; events include the port number.
+
+Typical Usage
+-------------
+    with serial.Serial(port, 115200, timeout=0.1) as ser:
+        link = BehaviourRigLink(ser)
+        link.start()
+        
+        link.send_hello()
+        link.wait_hello(timeout=3.0)
+        
+        link.led_set(0, True)
+        
+        event = link.wait_for_event(port=0, timeout=30.0)
+        link.acknowledge_event(event.event_id)
+        
+        link.valve_pulse(0, 500)
+        link.shutdown()
+        link.stop()
+"""
+
 import queue
+import struct
+import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import serial
 
-START = 0x02
 
-CMD_HELLO       = 0x01
-CMD_HELLO_ACK   = 0x81
+# =============================================================================
+# Protocol Constants
+# =============================================================================
 
-CMD_ARM_PORT    = 0x12
-CMD_LED_SET     = 0x10
+START_BYTE = 0x02
+
+# Handshake commands
+CMD_HELLO = 0x01
+CMD_HELLO_ACK = 0x81
+
+# Host-to-device commands (all include sequence number)
+CMD_LED_SET = 0x10
 CMD_VALVE_PULSE = 0x21
-CMD_EVENT_ACK   = 0x91
-CMD_SHUTDOWN    = 0x7F
+CMD_EVENT_ACK = 0x91
+CMD_SHUTDOWN = 0x7F
 
-CMD_ACK          = 0xA0
+# Device-to-host responses
+CMD_ACK = 0xA0
 CMD_SENSOR_EVENT = 0x90
 
 
-def log(msg: str) -> None:
-    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"[{ts}] {msg}")
+# =============================================================================
+# Logging Utility
+# =============================================================================
+
+def log_message(message: str) -> None:
+    """
+    Prints a timestamped log message to stdout.
+    
+    Args:
+        message: The message to log.
+    """
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] {message}")
 
 
-def crc16_ccitt_false(data: bytes) -> int:
+# =============================================================================
+# CRC16-CCITT-FALSE Implementation
+# =============================================================================
+
+def calculate_crc16(data: bytes) -> int:
+    """
+    Calculates the CRC16-CCITT-FALSE checksum for a byte sequence.
+    
+    This is the standard CRC-16 variant used in many serial protocols,
+    with polynomial 0x1021 and initial value 0xFFFF.
+    
+    Args:
+        data: The bytes to checksum.
+        
+    Returns:
+        The 16-bit CRC value.
+    """
     crc = 0xFFFF
-    for b in data:
-        crc ^= (b << 8)
+    
+    for byte in data:
+        crc ^= (byte << 8)
         for _ in range(8):
-            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021)
+            else:
+                crc = (crc << 1)
             crc &= 0xFFFF
+    
     return crc
 
 
-def build_frame(cmd: int, payload: bytes = b"") -> bytes:
-    hdr = struct.pack("<BBH", START, cmd, len(payload))
-    crc = crc16_ccitt_false(hdr + payload)
-    return hdr + payload + struct.pack("<H", crc)
+# =============================================================================
+# Frame Construction
+# =============================================================================
 
+def build_frame(command: int, payload: bytes = b"") -> bytes:
+    """
+    Constructs a complete framed message ready for transmission.
+    
+    Frame format: [START][CMD][LEN_LO][LEN_HI][PAYLOAD...][CRC_LO][CRC_HI]
+    
+    Args:
+        command: The command byte identifying the message type.
+        payload: Optional payload data.
+        
+    Returns:
+        The complete frame as bytes.
+    """
+    header = struct.pack("<BBH", START_BYTE, command, len(payload))
+    crc = calculate_crc16(header + payload)
+    
+    return header + payload + struct.pack("<H", crc)
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
 
 @dataclass(frozen=True)
 class SensorEvent:
+    """
+    Represents a sensor trigger event received from the rig.
+    
+    Attributes:
+        event_id: Unique identifier for this event (increments with each trigger).
+        port: The sensor port that triggered (0-5).
+        timestamp_ms: Arduino millis() value when the trigger was detected.
+        received_time: Host-side monotonic timestamp when the event was received.
+    """
     event_id: int
     port: int
-    t_ms: int
-    received_monotonic: float
+    timestamp_ms: int
+    received_time: float
 
 
-class ReliableRigLink:
+# =============================================================================
+# Main Communication Class
+# =============================================================================
+
+class BehaviourRigLink:
     """
-    Command+event link with:
-      - Reliable commands: SEQ(u16) + ACK(SEQ,status), retry on timeout.
-      - Latest-wins events from device: SENSOR_EVENT(event_id,port,t_ms) resent until ACKed.
-      - Python-side event buffer: deduplicated by event_id, supports latest_event/drain/wait.
-
-    This matches a behavioural control style where Python owns the task state machine
-    and Arduino provides low-latency IO + debounced sensor events.
+    Reliable communication link for behavioural experiment rigs.
+    
+    This class manages bidirectional communication with an Arduino-based rig,
+    providing:
+        - Reliable command delivery with sequence numbers and acknowledgements
+        - Automatic retry on timeout for commands
+        - Asynchronous event reception with deduplication
+        - Thread-safe event buffering with wait/drain operations
+    
+    The protocol uses a latest-wins strategy for sensor events: if a new event
+    occurs before the previous one is acknowledged, the new event takes priority.
+    
+    Args:
+        serial_port: An open serial.Serial instance.
+        receive_timeout: Timeout in seconds for individual read operations.
+    
+    Example:
+        >>> link = BehaviourRigLink(serial_port)
+        >>> link.start()
+        >>> link.send_hello()
+        >>> link.wait_hello()
+        >>> event = link.wait_for_event(port=0, timeout=30.0)
+        >>> link.acknowledge_event(event.event_id)
+        >>> link.stop()
     """
-
-    def __init__(self, ser: serial.Serial, *, rx_timeout_s: float = 0.1):
-        self.ser = ser
-        self.ser.timeout = rx_timeout_s
-
-        self._stop = threading.Event()
-        self._rx_thread: threading.Thread | None = None
-
-        self._ack_waiters: dict[int, queue.Queue[int]] = {}
+    
+    # Default retry parameters for reliable commands
+    DEFAULT_RETRIES = 10
+    DEFAULT_TIMEOUT = 0.2
+    
+    # Maximum number of events to buffer
+    EVENT_BUFFER_SIZE = 1024
+    
+    def __init__(self, serial_port: serial.Serial, *, receive_timeout: float = 0.1):
+        """
+        Initialises the communication link.
+        
+        Args:
+            serial_port: An open serial.Serial instance configured for the rig.
+            receive_timeout: Read timeout in seconds for the receive loop.
+        """
+        self._serial = serial_port
+        self._serial.timeout = receive_timeout
+        
+        # Thread control
+        self._stop_flag = threading.Event()
+        self._receive_thread: Optional[threading.Thread] = None
+        
+        # Acknowledgement tracking for reliable commands
+        self._ack_queues: dict[int, queue.Queue[int]] = {}
         self._ack_lock = threading.Lock()
-
-        self._events = deque[SensorEvent](maxlen=1024)
-        self._events_lock = threading.Lock()
-        self._events_signal = threading.Condition(self._events_lock)
-
-        self._last_event_id_seen: int | None = None
-        self._hello_seen = threading.Event()
-        self._rx_error: Exception | None = None
-
-        self._seq = 1
-
-    # ---------------- Public API ----------------
+        
+        # Event buffer with thread synchronisation
+        self._event_buffer: deque[SensorEvent] = deque(maxlen=self.EVENT_BUFFER_SIZE)
+        self._event_lock = threading.Lock()
+        self._event_signal = threading.Condition(self._event_lock)
+        
+        # State tracking
+        self._last_event_id: Optional[int] = None
+        self._hello_received = threading.Event()
+        self._receive_error: Optional[Exception] = None
+        
+        # Sequence number generator (starts at 1, wraps at 0xFFFF)
+        self._next_sequence = 1
+    
+    # -------------------------------------------------------------------------
+    # Lifecycle Management
+    # -------------------------------------------------------------------------
+    
     def start(self) -> None:
-        self._stop.clear()
-        self._rx_thread = threading.Thread(target=self._rx_loop, daemon=True)
-        self._rx_thread.start()
-
+        """
+        Starts the background receive thread.
+        
+        Call this before sending any commands. The receive thread handles
+        incoming acknowledgements and sensor events.
+        """
+        self._stop_flag.clear()
+        self._receive_thread = threading.Thread(
+            target=self._receive_loop,
+            daemon=True,
+            name="BehaviourRigReceiver"
+        )
+        self._receive_thread.start()
+    
     def stop(self) -> None:
-        self._stop.set()
-        if self._rx_thread:
-            self._rx_thread.join(timeout=1.0)
-
-    def next_seq(self) -> int:
-        s = self._seq
-        self._seq = (self._seq + 1) & 0xFFFF
-        if self._seq == 0:
-            self._seq = 1
-        return s
-
+        """
+        Stops the background receive thread.
+        
+        Blocks until the thread terminates (with a 1 second timeout).
+        Safe to call multiple times.
+        """
+        self._stop_flag.set()
+        if self._receive_thread is not None:
+            self._receive_thread.join(timeout=1.0)
+    
+    # -------------------------------------------------------------------------
+    # Sequence Number Management
+    # -------------------------------------------------------------------------
+    
+    def _allocate_sequence(self) -> int:
+        """
+        Allocates the next sequence number for a command.
+        
+        Sequence numbers wrap from 0xFFFF back to 1 (0 is reserved).
+        
+        Returns:
+            The allocated sequence number.
+        """
+        sequence = self._next_sequence
+        self._next_sequence = (self._next_sequence + 1) & 0xFFFF
+        if self._next_sequence == 0:
+            self._next_sequence = 1
+        return sequence
+    
+    # -------------------------------------------------------------------------
+    # Handshake
+    # -------------------------------------------------------------------------
+    
+    def send_hello(self) -> None:
+        """
+        Sends a HELLO handshake request to the rig.
+        
+        The rig should respond with HELLO_ACK. Use wait_hello() to block
+        until the acknowledgement is received.
+        """
+        frame = build_frame(CMD_HELLO)
+        self._serial.write(frame)
+        log_message("TX HELLO")
+    
     def wait_hello(self, timeout: float = 3.0) -> None:
-        if not self._hello_seen.wait(timeout=timeout):
-            raise TimeoutError("Did not receive HELLO_ACK")
-        if self._rx_error:
-            raise RuntimeError(f"RX error: {self._rx_error}")
-
-    def latest_event(self, *, clear: bool = False) -> SensorEvent | None:
-        with self._events_lock:
-            if not self._events:
+        """
+        Waits for the HELLO_ACK response from the rig.
+        
+        Args:
+            timeout: Maximum time to wait in seconds.
+            
+        Raises:
+            TimeoutError: If no HELLO_ACK is received within the timeout.
+            RuntimeError: If the receive thread encountered an error.
+        """
+        if not self._hello_received.wait(timeout=timeout):
+            raise TimeoutError("Did not receive HELLO_ACK from rig")
+        
+        if self._receive_error is not None:
+            raise RuntimeError(f"Receive thread error: {self._receive_error}")
+    
+    # -------------------------------------------------------------------------
+    # Event Access
+    # -------------------------------------------------------------------------
+    
+    def get_latest_event(self, *, clear_buffer: bool = False) -> Optional[SensorEvent]:
+        """
+        Returns the most recent sensor event, if any.
+        
+        Args:
+            clear_buffer: If True, clears all buffered events after retrieval.
+            
+        Returns:
+            The most recent SensorEvent, or None if the buffer is empty.
+        """
+        with self._event_lock:
+            if not self._event_buffer:
                 return None
-            ev = self._events[-1]
-            if clear:
-                self._events.clear()
-            return ev
-
+            
+            event = self._event_buffer[-1]
+            
+            if clear_buffer:
+                self._event_buffer.clear()
+            
+            return event
+    
     def drain_events(self) -> list[SensorEvent]:
-        with self._events_lock:
-            out = list(self._events)
-            self._events.clear()
-            return out
-
-    def wait_for_event(self, *, port: int | None = None, timeout: float | None = None) -> SensorEvent:
+        """
+        Returns and clears all buffered sensor events.
+        
+        Returns:
+            A list of all buffered events in chronological order.
+        """
+        with self._event_lock:
+            events = list(self._event_buffer)
+            self._event_buffer.clear()
+            return events
+    
+    def wait_for_event(
+        self,
+        *,
+        port: Optional[int] = None,
+        timeout: Optional[float] = None,
+        consume: bool = True
+    ) -> SensorEvent:
+        """
+        Waits for a sensor event to arrive.
+        
+        If events are already buffered, returns the most recent matching event
+        immediately. Otherwise, blocks until an event arrives.
+        
+        Args:
+            port: If specified, only returns events from this port.
+            timeout: Maximum time to wait in seconds (None = wait forever).
+            consume: If True (default), removes the event from the buffer after
+                returning it. Set to False to peek without consuming.
+            
+        Returns:
+            The matching SensorEvent.
+            
+        Raises:
+            TimeoutError: If no matching event arrives within the timeout.
+            RuntimeError: If the receive thread encountered an error.
+        """
         deadline = None if timeout is None else (time.monotonic() + timeout)
-
-        with self._events_lock:
+        
+        with self._event_lock:
             while True:
-                if self._rx_error:
-                    raise RuntimeError(f"RX error: {self._rx_error}")
-
-                # Find most recent matching event (latest-wins preference on Python side too)
-                if self._events:
+                # Check for receive thread errors
+                if self._receive_error is not None:
+                    raise RuntimeError(f"Receive thread error: {self._receive_error}")
+                
+                # Look for a matching event (most recent first)
+                if self._event_buffer:
                     if port is None:
-                        return self._events[-1]
-                    for ev in reversed(self._events):
-                        if ev.port == port:
-                            return ev
-
+                        event = self._event_buffer[-1]
+                        if consume:
+                            self._event_buffer.pop()
+                        return event
+                    
+                    for i in range(len(self._event_buffer) - 1, -1, -1):
+                        if self._event_buffer[i].port == port:
+                            event = self._event_buffer[i]
+                            if consume:
+                                del self._event_buffer[i]
+                            return event
+                
+                # Calculate remaining wait time
                 if deadline is not None:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise TimeoutError("Timed out waiting for event")
-                    self._events_signal.wait(timeout=remaining)
+                        raise TimeoutError("Timed out waiting for sensor event")
+                    self._event_signal.wait(timeout=remaining)
                 else:
-                    self._events_signal.wait()
-
-    # ---------------- Reliable commands ----------------
-    def send_hello(self) -> None:
-        self.ser.write(build_frame(CMD_HELLO))
-        log("TX HELLO")
-
-    def send_command(self, cmd: int, payload_rest: bytes, *, retries: int = 10, timeout: float = 0.2) -> int:
+                    self._event_signal.wait()
+    
+    # -------------------------------------------------------------------------
+    # Reliable Command Sending
+    # -------------------------------------------------------------------------
+    
+    def _send_reliable_command(
+        self,
+        command: int,
+        payload_data: bytes,
+        *,
+        retries: int = DEFAULT_RETRIES,
+        timeout: float = DEFAULT_TIMEOUT
+    ) -> int:
         """
-        Send a reliable SEQ'd command. Returns status (0 = OK).
+        Sends a sequence-numbered command and waits for acknowledgement.
+        
+        Automatically retries on timeout until the retry limit is reached.
+        
+        Args:
+            command: The command byte.
+            payload_data: Additional payload data (sequence number is prepended).
+            retries: Maximum number of transmission attempts.
+            timeout: Time to wait for each acknowledgement.
+            
+        Returns:
+            The status code from the acknowledgement (0 = success).
+            
+        Raises:
+            TimeoutError: If no acknowledgement is received after all retries.
         """
-        seq = self.next_seq()
-        payload = struct.pack("<H", seq) + payload_rest
-        frame = build_frame(cmd, payload)
-
-        q = queue.Queue(maxsize=1)
+        sequence = self._allocate_sequence()
+        full_payload = struct.pack("<H", sequence) + payload_data
+        frame = build_frame(command, full_payload)
+        
+        # Create a queue to receive the acknowledgement
+        ack_queue: queue.Queue[int] = queue.Queue(maxsize=1)
+        
         with self._ack_lock:
-            self._ack_waiters[seq] = q
-
+            self._ack_queues[sequence] = ack_queue
+        
         try:
             for attempt in range(1, retries + 1):
-                self.ser.write(frame)
-                log(f"TX cmd=0x{cmd:02X} seq={seq} attempt={attempt}")
-
+                self._serial.write(frame)
+                log_message(f"TX cmd=0x{command:02X} seq={sequence} attempt={attempt}")
+                
                 try:
-                    status = q.get(timeout=timeout)
-                    log(f"RX ACK seq={seq} status=0x{status:02X}")
+                    status = ack_queue.get(timeout=timeout)
+                    log_message(f"RX ACK seq={sequence} status=0x{status:02X}")
                     return status
                 except queue.Empty:
-                    log(f"ACK timeout seq={seq} (retrying)")
-            raise TimeoutError(f"No ACK after {retries} retries (cmd=0x{cmd:02X}, seq={seq})")
+                    log_message(f"ACK timeout seq={sequence} (retrying)")
+            
+            raise TimeoutError(
+                f"No acknowledgement after {retries} attempts "
+                f"(cmd=0x{command:02X}, seq={sequence})"
+            )
         finally:
             with self._ack_lock:
-                self._ack_waiters.pop(seq, None)
-
-    def arm_port(self, port: int) -> None:
-        st = self.send_command(CMD_ARM_PORT, struct.pack("<B", port))
-        if st != 0:
-            raise RuntimeError(f"ARM_PORT failed status=0x{st:02X}")
-
-    def led_set(self, port: int, value: int) -> None:
-        st = self.send_command(CMD_LED_SET, struct.pack("<BB", port, value))
-        if st != 0:
-            raise RuntimeError(f"LED_SET failed status=0x{st:02X}")
-
+                self._ack_queues.pop(sequence, None)
+    
+    # -------------------------------------------------------------------------
+    # High-Level Commands
+    # -------------------------------------------------------------------------
+    
+    def led_set(self, port: int, state: bool) -> None:
+        """
+        Sets the state of an LED.
+        
+        Args:
+            port: The LED port (0-5).
+            state: True for on, False for off.
+            
+        Raises:
+            RuntimeError: If the command fails.
+        """
+        value = 1 if state else 0
+        payload = struct.pack("<BB", port, value)
+        status = self._send_reliable_command(CMD_LED_SET, payload)
+        
+        if status != 0:
+            raise RuntimeError(f"LED_SET failed with status=0x{status:02X}")
+    
     def valve_pulse(self, port: int, duration_ms: int) -> None:
-        st = self.send_command(CMD_VALVE_PULSE, struct.pack("<BH", port, duration_ms))
-        if st != 0:
-            raise RuntimeError(f"VALVE_PULSE failed status=0x{st:02X}")
-
-    def event_ack(self, event_id: int) -> None:
-        # ACK is a reliable command too (SEQ'd)
-        st = self.send_command(CMD_EVENT_ACK, struct.pack("<H", event_id))
-        if st != 0:
-            raise RuntimeError(f"EVENT_ACK failed status=0x{st:02X}")
-
+        """
+        Triggers a timed pulse on a solenoid valve.
+        
+        The valve opens immediately and closes automatically after the
+        specified duration.
+        
+        Args:
+            port: The valve port (0-5).
+            duration_ms: Pulse duration in milliseconds.
+            
+        Raises:
+            RuntimeError: If the command fails.
+        """
+        payload = struct.pack("<BH", port, duration_ms)
+        status = self._send_reliable_command(CMD_VALVE_PULSE, payload)
+        
+        if status != 0:
+            raise RuntimeError(f"VALVE_PULSE failed with status=0x{status:02X}")
+    
+    def acknowledge_event(self, event_id: int) -> None:
+        """
+        Acknowledges receipt of a sensor event.
+        
+        The rig will stop retransmitting the event once it receives this
+        acknowledgement.
+        
+        Args:
+            event_id: The event_id from the SensorEvent to acknowledge.
+            
+        Raises:
+            RuntimeError: If the command fails.
+        """
+        payload = struct.pack("<H", event_id)
+        status = self._send_reliable_command(CMD_EVENT_ACK, payload)
+        
+        if status != 0:
+            raise RuntimeError(f"EVENT_ACK failed with status=0x{status:02X}")
+    
     def shutdown(self) -> None:
-        st = self.send_command(CMD_SHUTDOWN, b"")
-        log(f"Shutdown status=0x{st:02X}")
-
-    # ---------------- RX loop + framing ----------------
-    def _read_exact(self, n: int) -> bytes:
-        out = bytearray()
-        while len(out) < n and not self._stop.is_set():
-            chunk = self.ser.read(n - len(out))
-            if not chunk:
-                raise TimeoutError(f"Timeout reading {n} bytes (got {len(out)})")
-            out += chunk
-        return bytes(out)
-
-    def _recv_frame(self) -> tuple[int, bytes] | None:
         """
-        Try to receive one framed packet.
-
+        Shuts down the rig, turning off all outputs and resetting the device.
+        
+        The rig will acknowledge the command and then perform a hardware reset.
+        """
+        status = self._send_reliable_command(CMD_SHUTDOWN, b"")
+        log_message(f"Shutdown acknowledged with status=0x{status:02X}")
+    
+    # -------------------------------------------------------------------------
+    # Frame Reception
+    # -------------------------------------------------------------------------
+    
+    def _read_exact(self, num_bytes: int) -> bytes:
+        """
+        Reads exactly the specified number of bytes from serial.
+        
+        Args:
+            num_bytes: The number of bytes to read.
+            
         Returns:
-            (cmd, payload) if a full valid frame was received.
-            None if no data arrived before timeout (normal idle condition).
+            The received bytes.
+            
+        Raises:
+            TimeoutError: If the read times out before all bytes are received.
         """
-        # resync scan for START
-        while not self._stop.is_set():
-            b = self.ser.read(1)
-            if not b:
-                return None  # idle, not an error
-            if b[0] == START:
+        buffer = bytearray()
+        
+        while len(buffer) < num_bytes and not self._stop_flag.is_set():
+            chunk = self._serial.read(num_bytes - len(buffer))
+            if not chunk:
+                raise TimeoutError(
+                    f"Timeout reading {num_bytes} bytes (received {len(buffer)})"
+                )
+            buffer.extend(chunk)
+        
+        return bytes(buffer)
+    
+    def _receive_frame(self) -> Optional[tuple[int, bytes]]:
+        """
+        Attempts to receive a complete framed message.
+        
+        Scans for the start byte, then reads the header, payload, and CRC.
+        Validates the CRC before returning.
+        
+        Returns:
+            A tuple of (command, payload) if a valid frame was received,
+            or None if no data was available (normal idle condition).
+            
+        Raises:
+            TimeoutError: If a frame starts but doesn't complete.
+            ValueError: If the CRC check fails.
+        """
+        # Scan for start byte
+        while not self._stop_flag.is_set():
+            byte = self._serial.read(1)
+            if not byte:
+                return None  # No data available (normal idle)
+            if byte[0] == START_BYTE:
                 break
-
-        if self._stop.is_set():
+        
+        if self._stop_flag.is_set():
             return None
-
-        # cmd + len
-        cmd_len = self._read_exact(3)  # may raise TimeoutError if stream stalls mid-frame
-        cmd = cmd_len[0]
-        length = struct.unpack_from("<H", cmd_len, 1)[0]
-
-        payload = self._read_exact(length)
+        
+        # Read command and length (may raise TimeoutError if stream stalls)
+        header_rest = self._read_exact(3)
+        command = header_rest[0]
+        payload_length = struct.unpack_from("<H", header_rest, 1)[0]
+        
+        # Read payload and CRC
+        payload = self._read_exact(payload_length)
         crc_bytes = self._read_exact(2)
-
-        crc_rx = struct.unpack("<H", crc_bytes)[0]
-        hdr = bytes([START]) + cmd_len
-        crc_calc = crc16_ccitt_false(hdr + payload)
-        if crc_rx != crc_calc:
-            raise ValueError(f"CRC mismatch rx=0x{crc_rx:04X} calc=0x{crc_calc:04X}")
-
-        return cmd, payload
-
-    def _rx_loop(self) -> None:
+        
+        # Verify CRC
+        received_crc = struct.unpack("<H", crc_bytes)[0]
+        full_header = bytes([START_BYTE]) + header_rest
+        calculated_crc = calculate_crc16(full_header + payload)
+        
+        if received_crc != calculated_crc:
+            raise ValueError(
+                f"CRC mismatch: received=0x{received_crc:04X}, "
+                f"calculated=0x{calculated_crc:04X}"
+            )
+        
+        return command, payload
+    
+    def _receive_loop(self) -> None:
+        """
+        Background thread that continuously receives and processes frames.
+        
+        Handles HELLO_ACK, command acknowledgements, and sensor events.
+        Errors are captured and made available through wait methods.
+        """
         try:
-            while not self._stop.is_set():
-                msg = self._recv_frame()
-                if msg is None:
-                    continue  # idle
-                cmd, payload = msg
-
-                if cmd == CMD_HELLO_ACK:
-                    self._hello_seen.set()
-
-                elif cmd == CMD_ACK:
+            while not self._stop_flag.is_set():
+                message = self._receive_frame()
+                
+                if message is None:
+                    continue  # Idle, no data available
+                
+                command, payload = message
+                
+                if command == CMD_HELLO_ACK:
+                    self._hello_received.set()
+                
+                elif command == CMD_ACK:
                     if len(payload) != 3:
-                        continue
-                    seq = struct.unpack_from("<H", payload, 0)[0]
+                        continue  # Malformed ACK
+                    
+                    sequence = struct.unpack_from("<H", payload, 0)[0]
                     status = payload[2]
+                    
                     with self._ack_lock:
-                        q = self._ack_waiters.get(seq)
-                    if q:
-                        q.put(status)
-
-                elif cmd == CMD_SENSOR_EVENT:
+                        ack_queue = self._ack_queues.get(sequence)
+                    
+                    if ack_queue is not None:
+                        ack_queue.put(status)
+                
+                elif command == CMD_SENSOR_EVENT:
                     if len(payload) != 7:
-                        continue
+                        continue  # Malformed event
+                    
                     event_id = struct.unpack_from("<H", payload, 0)[0]
                     port = payload[2]
-                    t_ms = struct.unpack_from("<I", payload, 3)[0]
-
-                    # Deduplicate repeats
-                    if self._last_event_id_seen == event_id:
-                        with self._events_lock:
-                            self._events_signal.notify_all()
+                    timestamp_ms = struct.unpack_from("<I", payload, 3)[0]
+                    
+                    # Deduplicate repeated transmissions of the same event
+                    if self._last_event_id == event_id:
+                        # Still notify waiters (they may be waiting for any signal)
+                        with self._event_lock:
+                            self._event_signal.notify_all()
                         continue
-                    self._last_event_id_seen = event_id
-
-                    ev = SensorEvent(
+                    
+                    self._last_event_id = event_id
+                    
+                    event = SensorEvent(
                         event_id=event_id,
                         port=port,
-                        t_ms=t_ms,
-                        received_monotonic=time.monotonic(),
+                        timestamp_ms=timestamp_ms,
+                        received_time=time.monotonic()
                     )
-                    with self._events_lock:
-                        self._events.append(ev)
-                        self._events_signal.notify_all()
+                    
+                    with self._event_lock:
+                        self._event_buffer.append(event)
+                        self._event_signal.notify_all()
+                
+                # Unknown commands are silently ignored
+        
+        except Exception as error:
+            self._receive_error = error
+            # Wake up any waiting threads so they can see the error
+            with self._event_lock:
+                self._event_signal.notify_all()
 
-                else:
-                    # ignore unknown frames
-                    pass
 
-        except Exception as e:
-            self._rx_error = e
-            with self._events_lock:
-                self._events_signal.notify_all()
+# =============================================================================
+# Utility Functions
+# =============================================================================
 
-
-def reset_arduino_via_dtr(ser: serial.Serial) -> None:
+def reset_arduino_via_dtr(serial_port: serial.Serial, post_reset_delay: float = 1.2) -> None:
     """
-    Many Arduino-class USB CDC devices reset on DTR toggle.
-    This makes tests repeatable and clears stale bytes.
+    Resets an Arduino-class device by toggling the DTR line.
+    
+    Many Arduino USB CDC implementations trigger a hardware reset when DTR
+    is toggled. This ensures tests start from a known state and clears any
+    stale data in the serial buffers.
+    
+    Args:
+        serial_port: The open serial port connected to the Arduino.
+        post_reset_delay: Time to wait after reset for the device to boot.
     """
-    ser.dtr = False
+    serial_port.dtr = False
     time.sleep(0.2)
-    ser.reset_input_buffer()
-    ser.reset_output_buffer()
-    ser.dtr = True
-    time.sleep(1.2)
+    
+    serial_port.reset_input_buffer()
+    serial_port.reset_output_buffer()
+    
+    serial_port.dtr = True
+    time.sleep(post_reset_delay)
 
+
+# =============================================================================
+# Test Script
+# =============================================================================
 
 def main() -> None:
-    PORT = "COM7"     # <-- set this
-    BAUD = 115200
-
-    with serial.Serial(PORT, BAUD, timeout=0.1) as ser:
-        log(f"Open {PORT} @ {BAUD}")
+    """
+    Runs a test sequence across all six ports of the behaviour rig.
+    
+    All sensors are monitored continuously. For each port, the test:
+        1. Turns on the LED
+        2. Waits for a sensor trigger on that port (with 50ms debounce)
+           - If a different port triggers, logs it and continues waiting
+        3. Acknowledges the event
+        4. Turns off the LED
+        5. Pulses the valve for 500ms
+    
+    Configuration is set via the constants below. Modify SERIAL_PORT to match
+    your system.
+    """
+    # -------------------------------------------------------------------------
+    # Configuration
+    # -------------------------------------------------------------------------
+    
+    SERIAL_PORT = "COM7"
+    BAUD_RATE = 115200
+    SERIAL_TIMEOUT = 0.1
+    
+    HANDSHAKE_TIMEOUT = 3.0
+    EVENT_TIMEOUT = 30.0
+    VALVE_PULSE_DURATION_MS = 500
+    INTER_PORT_DELAY = 0.25
+    
+    # -------------------------------------------------------------------------
+    # Test Execution
+    # -------------------------------------------------------------------------
+    
+    with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=SERIAL_TIMEOUT) as ser:
+        log_message(f"Opened {SERIAL_PORT} at {BAUD_RATE} baud")
         reset_arduino_via_dtr(ser)
-
-        link = ReliableRigLink(ser)
+        
+        link = BehaviourRigLink(ser)
         link.start()
-
-        link.send_hello()
-        link.wait_hello(timeout=3.0)
-        log("Handshake OK")
-
-        # Test cycle across all ports for easy validation
-        for port in range(6):
-            log(f"\n=== TEST PORT {port} ===")
-            link.arm_port(port)
-
-            # Clear any old events you don't care about before starting a new trial
-            drained = link.drain_events()
-            if drained:
-                log(f"Drained {len(drained)} old events before trial")
-
-            link.led_set(port, 1)
-            log(f"LED[{port}] ON; waiting for debounced touch (LOW >= 50ms)")
-
-            ev = link.wait_for_event(port=port, timeout=30.0)
-            log(f"Got EVENT id={ev.event_id} port={ev.port} t_ms={ev.t_ms}")
-
-            # Important: ACK immediately so Arduino stops resending
-            link.event_ack(ev.event_id)
-            log(f"ACKed event_id={ev.event_id}")
-
-            link.led_set(port, 0)
-            link.valve_pulse(port, 500)
-            log(f"LED[{port}] OFF; VALVE[{port}] pulse 500ms")
-
-            # small pause between ports
-            time.sleep(0.25)
-
-        log("\nAll ports tested. Shutting down Arduino.")
-        link.shutdown()
-        link.stop()
-        log("Done.")
+        
+        try:
+            # Establish connection
+            link.send_hello()
+            link.wait_hello(timeout=HANDSHAKE_TIMEOUT)
+            log_message("Handshake successful")
+            
+            # Test each port in sequence
+            for port in range(6):
+                log_message(f"\n=== TESTING PORT {port} ===")
+                
+                # Clear any stale events before starting this trial
+                drained_events = link.drain_events()
+                if drained_events:
+                    log_message(f"Cleared {len(drained_events)} old events before trial")
+                
+                link.led_set(port, True)
+                log_message(f"LED[{port}] ON - waiting for sensor trigger (50ms debounce)")
+                
+                # Wait for the correct port, logging any unexpected triggers
+                while True:
+                    event = link.wait_for_event(timeout=EVENT_TIMEOUT)
+                    
+                    # Always acknowledge immediately to stop retransmissions
+                    link.acknowledge_event(event.event_id)
+                    
+                    if event.port == port:
+                        log_message(
+                            f"Received EVENT: id={event.event_id}, port={event.port}, "
+                            f"timestamp={event.timestamp_ms}ms"
+                        )
+                        log_message(f"Acknowledged event_id={event.event_id}")
+                        break
+                    else:
+                        log_message(
+                            f"UNEXPECTED EVENT: id={event.event_id}, port={event.port} "
+                            f"(expected port {port}) - acknowledged and continuing to wait"
+                        )
+                
+                # Deliver reward
+                link.led_set(port, False)
+                link.valve_pulse(port, VALVE_PULSE_DURATION_MS)
+                log_message(
+                    f"LED[{port}] OFF - VALVE[{port}] pulsed for "
+                    f"{VALVE_PULSE_DURATION_MS}ms"
+                )
+                
+                time.sleep(INTER_PORT_DELAY)
+            
+            log_message("\nAll ports tested successfully")
+            
+        finally:
+            # Always attempt clean shutdown
+            log_message("Shutting down rig...")
+            link.shutdown()
+            link.stop()
+            log_message("Done")
 
 
 if __name__ == "__main__":
