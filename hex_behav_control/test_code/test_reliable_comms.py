@@ -145,11 +145,13 @@ class SensorEvent:
     Attributes:
         event_id: Unique identifier for this event (increments with each trigger).
         port: The sensor port that triggered (0-5).
+        is_activation: True if sensor was activated, False if released.
         timestamp_ms: Arduino millis() value when the trigger was detected.
         received_time: Host-side monotonic timestamp when the event was received.
     """
     event_id: int
     port: int
+    is_activation: bool
     timestamp_ms: int
     received_time: float
 
@@ -640,12 +642,13 @@ class BehaviourRigLink:
                         ack_queue.put(status)
                 
                 elif command == CMD_SENSOR_EVENT:
-                    if len(payload) != 7:
+                    if len(payload) != 8:
                         continue  # Malformed event
                     
                     event_id = struct.unpack_from("<H", payload, 0)[0]
                     port = payload[2]
-                    timestamp_ms = struct.unpack_from("<I", payload, 3)[0]
+                    is_activation = payload[3] == 1
+                    timestamp_ms = struct.unpack_from("<I", payload, 4)[0]
                     
                     # Deduplicate repeated transmissions of the same event
                     if self._last_event_id == event_id:
@@ -659,6 +662,7 @@ class BehaviourRigLink:
                     event = SensorEvent(
                         event_id=event_id,
                         port=port,
+                        is_activation=is_activation,
                         timestamp_ms=timestamp_ms,
                         received_time=time.monotonic()
                     )
@@ -712,11 +716,12 @@ def main() -> None:
     
     All sensors are monitored continuously. For each port, the test:
         1. Turns on the LED
-        2. Waits for a sensor trigger on that port (with 50ms debounce)
-           - If a different port triggers, logs it and continues waiting
-        3. Acknowledges the event
-        4. Turns off the LED
-        5. Pulses the valve for 500ms
+        2. Waits for a sensor activation on that port (with 50ms debounce)
+           - Logs unexpected events from other ports or deactivations
+        3. Waits for the sensor release (deactivation) on that port
+        4. Acknowledges both events
+        5. Turns off the LED
+        6. Pulses the valve for 500ms
     
     Configuration is set via the constants below. Modify SERIAL_PORT to match
     your system.
@@ -761,26 +766,52 @@ def main() -> None:
                     log_message(f"Cleared {len(drained_events)} old events before trial")
                 
                 link.led_set(port, True)
-                log_message(f"LED[{port}] ON - waiting for sensor trigger (50ms debounce)")
+                log_message(f"LED[{port}] ON - waiting for sensor activation (50ms debounce)")
                 
-                # Wait for the correct port, logging any unexpected triggers
+                # Wait for an activation on the correct port
                 while True:
                     event = link.wait_for_event(timeout=EVENT_TIMEOUT)
+                    event_type = "ACTIVATED" if event.is_activation else "RELEASED"
                     
                     # Always acknowledge immediately to stop retransmissions
                     link.acknowledge_event(event.event_id)
                     
-                    if event.port == port:
+                    if event.port == port and event.is_activation:
                         log_message(
                             f"Received EVENT: id={event.event_id}, port={event.port}, "
-                            f"timestamp={event.timestamp_ms}ms"
+                            f"type={event_type}, timestamp={event.timestamp_ms}ms"
                         )
-                        log_message(f"Acknowledged event_id={event.event_id}")
+                        break
+                    else:
+                        if event.port != port:
+                            log_message(
+                                f"UNEXPECTED PORT: id={event.event_id}, port={event.port}, "
+                                f"type={event_type} (expected port {port})"
+                            )
+                        else:
+                            log_message(
+                                f"IGNORING: id={event.event_id}, port={event.port}, "
+                                f"type={event_type} (waiting for activation)"
+                            )
+                
+                # Wait for the deactivation (release) event on the same port
+                log_message(f"Waiting for sensor release on port {port}...")
+                while True:
+                    event = link.wait_for_event(timeout=EVENT_TIMEOUT)
+                    event_type = "ACTIVATED" if event.is_activation else "RELEASED"
+                    
+                    link.acknowledge_event(event.event_id)
+                    
+                    if event.port == port and not event.is_activation:
+                        log_message(
+                            f"Received EVENT: id={event.event_id}, port={event.port}, "
+                            f"type={event_type}, timestamp={event.timestamp_ms}ms"
+                        )
                         break
                     else:
                         log_message(
-                            f"UNEXPECTED EVENT: id={event.event_id}, port={event.port} "
-                            f"(expected port {port}) - acknowledged and continuing to wait"
+                            f"OTHER EVENT: id={event.event_id}, port={event.port}, "
+                            f"type={event_type}"
                         )
                 
                 # Deliver reward
