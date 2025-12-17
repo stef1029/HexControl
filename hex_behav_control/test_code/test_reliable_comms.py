@@ -79,7 +79,6 @@ CMD_LED_SET = 0x10
 CMD_SPOTLIGHT_SET = 0x11
 CMD_IR_SET = 0x12
 CMD_BUZZER_SET = 0x13
-CMD_BUZZER_OFF = 0x14
 CMD_SPEAKER_SET = 0x15
 CMD_GPIO_CONFIG = 0x17
 CMD_GPIO_SET = 0x18
@@ -874,64 +873,27 @@ class BehaviourRigLink:
     # Buzzer Control
     # -------------------------------------------------------------------------
     
-    def buzzer_set(self, port: int, frequency_hz: int) -> None:
+    def buzzer_set(self, port: int, state: bool) -> None:
         """
-        Sets a buzzer to play a tone at the specified frequency.
-        
-        The tone plays continuously until buzzer_off() is called or a new
-        frequency is set (including 0 to turn off).
+        Sets the state of a buzzer or all buzzers.
         
         Args:
-            port: The buzzer port (0-5).
-            frequency_hz: Tone frequency in Hz (typically 100-10000 Hz).
-                Use 0 to turn off the buzzer.
-            
-        Raises:
-            ValueError: If port or frequency is out of range.
-            RuntimeError: If the command fails.
-        """
-        if not 0 <= port < self.NUM_PORTS:
-            raise ValueError(f"Port must be 0-{self.NUM_PORTS - 1}, got {port}")
-        if not 0 <= frequency_hz <= 65535:
-            raise ValueError(f"Frequency must be 0-65535 Hz, got {frequency_hz}")
-        
-        payload = struct.pack("<BH", port, frequency_hz)
-        status = self._send_reliable_command(CMD_BUZZER_SET, payload)
-        
-        if status != 0:
-            raise RuntimeError(f"BUZZER_SET failed with status=0x{status:02X}")
-    
-    def buzzer_off(self, port: Optional[int] = None) -> None:
-        """
-        Turns off a buzzer or all buzzers.
-        
-        Args:
-            port: The buzzer port (0-5), or None to turn off all buzzers.
+            port: The buzzer port (0-5), or 255 to control all buzzers.
+            state: True to turn on, False to turn off.
             
         Raises:
             ValueError: If port is out of range.
             RuntimeError: If the command fails.
         """
-        if port is None:
-            target_port = self.ALL_PORTS
-        else:
-            if not 0 <= port < self.NUM_PORTS:
-                raise ValueError(f"Port must be 0-{self.NUM_PORTS - 1}, got {port}")
-            target_port = port
+        if port != self.ALL_PORTS and not 0 <= port < self.NUM_PORTS:
+            raise ValueError(f"Port must be 0-{self.NUM_PORTS - 1} or 255, got {port}")
         
-        payload = struct.pack("<B", target_port)
-        status = self._send_reliable_command(CMD_BUZZER_OFF, payload)
+        state_byte = 1 if state else 0
+        payload = struct.pack("<BB", port, state_byte)
+        status = self._send_reliable_command(CMD_BUZZER_SET, payload)
         
         if status != 0:
-            raise RuntimeError(f"BUZZER_OFF failed with status=0x{status:02X}")
-    
-    def buzzer_all_off(self) -> None:
-        """
-        Turns off all buzzers.
-        
-        Convenience method equivalent to buzzer_off(None).
-        """
-        self.buzzer_off(None)
+            raise RuntimeError(f"BUZZER_SET failed with status=0x{status:02X}")
     
     # -------------------------------------------------------------------------
     # Overhead Speaker Control
@@ -1524,10 +1486,10 @@ def main() -> None:
             # Test buzzers
             log_message("\n=== TESTING BUZZERS ===")
             for port in range(6):
-                link.buzzer_set(port, 1000 + port * 500)
-                log_message(f"Buzzer {port} at {1000 + port * 500} Hz")
+                link.buzzer_set(port, 1)
+                log_message(f"Buzzer {port} ON")
                 time.sleep(0.3)
-                link.buzzer_off(port)
+                link.buzzer_set(port, 0)
             
             # Test overhead speaker
             log_message("\n=== TESTING OVERHEAD SPEAKER ===")
