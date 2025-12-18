@@ -1,0 +1,16 @@
+[project]
+name = "behav-link"
+version = "0.1.0"
+description = "Serial communication library for Arduino-based behavioural experiment rigs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/behaviour_rig"]
