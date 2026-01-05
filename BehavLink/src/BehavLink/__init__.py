@@ -33,7 +33,7 @@ Example:
             link.valve_pulse(port=0, duration_ms=500)
 """
 
-from behaviour_rig.link import (
+from BehavLink.link import (
     BehaviourRigLink,
     EventType,
     GPIOEvent,

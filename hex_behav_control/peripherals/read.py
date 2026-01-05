@@ -19,7 +19,7 @@ class Scales():
             self.intercept = -5617.39 
         else:
             if rig == 1:
-                self.port = "COM7"
+                self.port = "COM12"
                 self.scale = float(0.22375971500351627)       # these values are found by running Calibrate() and copying the output
                 self.intercept = -5617.39 
                 baudrate = 115200
@@ -323,7 +323,7 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
-    scales = Scales(rig=3)
+    scales = Scales(rig=1)
 
     # scales.calibrate()
         

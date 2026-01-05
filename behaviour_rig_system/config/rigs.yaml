@@ -1,0 +1,57 @@
+# Behaviour Rig System Configuration
+# ==================================
+#
+# This file defines the configuration for each behaviour rig in the system.
+# Add or modify entries as needed for your setup.
+#
+# Each rig entry should include:
+#   - name: Display name for the rig
+#   - serial_port: Serial port the rig is connected to
+#   - enabled: Whether the rig is available for use
+#   - description: Optional description of the rig
+
+rigs:
+  - name: "Rig 1"
+    serial_port: "COM7"
+    enabled: true
+    description: "Main behaviour rig - Testing station"
+
+  - name: "Rig 2"
+    serial_port: "COM8"
+    enabled: false
+    description: "Secondary rig - Currently offline"
+
+  - name: "Rig 3"
+    serial_port: "COM9"
+    enabled: false
+    description: "Development rig"
+
+
+# Global settings
+# ---------------
+
+global:
+  # Default baud rate for all rigs
+  baud_rate: 115200
+
+  # Whether to reset Arduino on connection
+  reset_on_connect: true
+
+  # Default simulation mode (useful for development)
+  simulation_mode: false
+
+  # Data output directory (relative to project root)
+  data_directory: "data"
+
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  log_level: "INFO"
+
+
+# Protocol defaults
+# -----------------
+# Default parameter values that apply to all protocols
+# Individual protocols can override these
+
+protocol_defaults:
+  component_delay: 0.3
+  section_delay: 1.0
