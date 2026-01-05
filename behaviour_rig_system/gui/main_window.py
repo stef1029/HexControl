@@ -16,7 +16,9 @@ from datetime import datetime
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Callable
 
-from core.hardware import HardwareInterface
+import serial
+from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+
 from core.parameter_types import convert_parameters
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 from protocols import get_available_protocols
@@ -130,17 +132,10 @@ class StatusPanel(ttk.Frame):
         self.log_text.config(state="disabled")
 
     def set_status(self, status: ProtocolStatus) -> None:
-        """
-        Update the displayed status.
-
-        Args:
-            status: The new protocol status.
-        """
+        """Update the displayed status."""
         status_colors = {
             ProtocolStatus.IDLE: "gray",
-            ProtocolStatus.INITIALISING: "orange",
             ProtocolStatus.RUNNING: "green",
-            ProtocolStatus.PAUSED: "blue",
             ProtocolStatus.COMPLETED: "darkgreen",
             ProtocolStatus.ABORTED: "darkorange",
             ProtocolStatus.ERROR: "red",
@@ -330,7 +325,7 @@ class MainWindow:
 
     Attributes:
         root: The tkinter root window.
-        hardware: The hardware interface (may be None for simulation).
+        link: The BehaviourRigLink (may be None if not connected).
         current_protocol: The currently running protocol (if any).
     """
 
@@ -352,7 +347,8 @@ class MainWindow:
         self.baud_rate = baud_rate
         self.simulation_mode = simulation_mode
 
-        self.hardware: HardwareInterface | None = None
+        self._serial: serial.Serial | None = None
+        self.link: BehaviourRigLink | None = None
         self.current_protocol: BaseProtocol | None = None
         self.protocol_thread: threading.Thread | None = None
 
@@ -445,21 +441,33 @@ class MainWindow:
             # Get parameters
             parameters = tab.get_parameters()
 
-            # Create hardware interface with log callback
-            self.hardware = HardwareInterface(
-                port=self.port_var.get(),
-                baud_rate=self.baud_rate,
-                simulation_mode=self.simulation_var.get(),
-                log_callback=self._thread_safe_log,
-            )
-
-            # Connect to hardware
-            self.hardware.connect()
+            # Connect to rig using BehavLink directly
+            if self.simulation_var.get():
+                self._thread_safe_log("[SIMULATION] Running without hardware")
+                self.link = None
+            else:
+                self._thread_safe_log(f"Opening serial port {self.port_var.get()}...")
+                self._serial = serial.Serial(
+                    self.port_var.get(), self.baud_rate, timeout=0.1
+                )
+                
+                self._thread_safe_log("Resetting Arduino...")
+                reset_arduino_via_dtr(self._serial)
+                
+                self._thread_safe_log("Creating BehaviourRigLink...")
+                self.link = BehaviourRigLink(self._serial)
+                self.link.start()
+                
+                self._thread_safe_log("Handshake...")
+                self.link.send_hello()
+                self.link.wait_hello(timeout=5.0)
+                
+                self._thread_safe_log("Connected!")
 
             # Create protocol instance
             self.current_protocol = tab.protocol_class(
                 parameters=parameters,
-                hardware=self.hardware,
+                link=self.link,
             )
 
             # Add event listener
@@ -558,13 +566,21 @@ class MainWindow:
             self.current_protocol.request_abort()
 
     def _cleanup_protocol(self) -> None:
-        """Clean up protocol and hardware resources."""
-        if self.hardware is not None:
+        """Clean up protocol and link resources."""
+        if self.link is not None:
             try:
-                self.hardware.disconnect()
+                self.link.shutdown()
+                self.link.stop()
             except Exception:
                 pass
-            self.hardware = None
+            self.link = None
+
+        if self._serial is not None:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
+            self._serial = None
 
         self.current_protocol = None
         self.protocol_thread = None
