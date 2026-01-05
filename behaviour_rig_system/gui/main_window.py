@@ -14,13 +14,14 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, scrolledtext, ttk
-from typing import Callable
+from typing import Callable, Optional
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 
 from core.parameter_types import convert_parameters
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
+from core.session import SessionManager, SessionConfig, load_session_config
 from protocols import get_available_protocols
 
 from .parameter_widget import ParameterFormBuilder
@@ -333,7 +334,9 @@ class MainWindow:
         self,
         serial_port: str = "COM7",
         baud_rate: int = 115200,
-        simulation_mode: bool = False,
+        parent: tk.Toplevel | None = None,
+        rig_name: str | None = None,
+        rig_config: dict | None = None,
     ):
         """
         Initialise the main window.
@@ -341,16 +344,22 @@ class MainWindow:
         Args:
             serial_port: Serial port for hardware connection.
             baud_rate: Serial communication baud rate.
-            simulation_mode: If True, run without real hardware.
+            parent: Optional parent Toplevel window (for multi-rig launcher).
+            rig_name: Optional rig name to display in title.
+            rig_config: Full rig configuration dict from rigs.yaml.
         """
         self.serial_port = serial_port
         self.baud_rate = baud_rate
-        self.simulation_mode = simulation_mode
+        self.parent = parent
+        self.rig_name = rig_name
+        self.rig_config = rig_config or {"name": rig_name, "serial_port": serial_port}
 
         self._serial: serial.Serial | None = None
         self.link: BehaviourRigLink | None = None
         self.current_protocol: BaseProtocol | None = None
         self.protocol_thread: threading.Thread | None = None
+        self.session_manager: SessionManager | None = None
+        self.startup_thread: threading.Thread | None = None
 
         self._setup_window()
         self._create_widgets()
@@ -360,8 +369,18 @@ class MainWindow:
 
     def _setup_window(self) -> None:
         """Configure the main window."""
-        self.root = tk.Tk()
-        self.root.title("Behaviour Rig System")
+        # Use parent if provided, otherwise create new root
+        if self.parent is not None:
+            self.root = self.parent
+        else:
+            self.root = tk.Tk()
+        
+        # Set title
+        if self.rig_name:
+            self.root.title(f"Behaviour Rig System - {self.rig_name}")
+        else:
+            self.root.title("Behaviour Rig System")
+        
         self.root.geometry("700x800")
         self.root.minsize(600, 600)
 
@@ -370,31 +389,28 @@ class MainWindow:
 
     def _create_widgets(self) -> None:
         """Create the main window widgets."""
-        # Configuration panel at top
-        config_frame = ttk.LabelFrame(
-            self.root, text="Configuration", padding=(10, 5)
+        # Main content frame (can be disabled during startup)
+        self.content_frame = ttk.Frame(self.root)
+        self.content_frame.pack(fill="both", expand=True)
+        
+        # Session info panel at top
+        session_frame = ttk.LabelFrame(
+            self.content_frame, text="Session Info", padding=(10, 5)
         )
-        config_frame.pack(fill="x", padx=10, pady=5)
-
-        # Serial port configuration
-        ttk.Label(config_frame, text="Serial Port:").grid(
+        session_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Mouse ID entry
+        ttk.Label(session_frame, text="Mouse ID:").grid(
             row=0, column=0, sticky="w", padx=5
         )
-        self.port_var = tk.StringVar(value=self.serial_port)
-        port_entry = ttk.Entry(config_frame, textvariable=self.port_var, width=15)
-        port_entry.grid(row=0, column=1, sticky="w", padx=5)
-
-        # Simulation mode checkbox
-        self.simulation_var = tk.BooleanVar(value=self.simulation_mode)
-        sim_check = ttk.Checkbutton(
-            config_frame,
-            text="Simulation Mode (no hardware)",
-            variable=self.simulation_var,
+        self.mouse_id_var = tk.StringVar(value="test")
+        mouse_id_entry = ttk.Entry(
+            session_frame, textvariable=self.mouse_id_var, width=20
         )
-        sim_check.grid(row=0, column=2, sticky="w", padx=20)
-
+        mouse_id_entry.grid(row=0, column=1, sticky="w", padx=5)
+        
         # Protocol tabs
-        self.notebook = ttk.Notebook(self.root)
+        self.notebook = ttk.Notebook(self.content_frame)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
 
         # Create a tab for each available protocol
@@ -406,10 +422,79 @@ class MainWindow:
             self.protocol_tabs[protocol_name] = tab
 
         # Status panel at bottom
-        self.status_panel = StatusPanel(self.root)
+        self.status_panel = StatusPanel(self.content_frame)
         self.status_panel.pack(fill="both", padx=10, pady=5)
         self.status_panel.on_start = self._start_protocol
         self.status_panel.on_stop = self._stop_protocol
+        
+        # Startup overlay (hidden by default)
+        self._create_startup_overlay()
+    
+    def _create_startup_overlay(self) -> None:
+        """Create the overlay shown during startup sequence."""
+        self.startup_frame = ttk.Frame(self.root)
+        # Don't pack yet - will be shown when starting
+        
+        # Center the content
+        inner_frame = ttk.Frame(self.startup_frame)
+        inner_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Startup title
+        self.startup_title = ttk.Label(
+            inner_frame,
+            text="Starting Session...",
+            font=("Helvetica", 16, "bold")
+        )
+        self.startup_title.pack(pady=20)
+        
+        # Progress text
+        self.startup_status_var = tk.StringVar(value="Initializing...")
+        self.startup_status = ttk.Label(
+            inner_frame,
+            textvariable=self.startup_status_var,
+            font=("Helvetica", 11)
+        )
+        self.startup_status.pack(pady=10)
+        
+        # Progress bar
+        self.startup_progress = ttk.Progressbar(
+            inner_frame,
+            mode="indeterminate",
+            length=300
+        )
+        self.startup_progress.pack(pady=20)
+        
+        # Cancel button
+        self.startup_cancel_btn = ttk.Button(
+            inner_frame,
+            text="Cancel",
+            command=self._cancel_startup
+        )
+        self.startup_cancel_btn.pack(pady=10)
+        
+        self._startup_cancelled = False
+    
+    def _show_startup_overlay(self) -> None:
+        """Show the startup overlay and disable main content."""
+        self._startup_cancelled = False
+        self.content_frame.pack_forget()
+        self.startup_frame.pack(fill="both", expand=True)
+        self.startup_progress.start(10)
+    
+    def _hide_startup_overlay(self) -> None:
+        """Hide the startup overlay and show main content."""
+        self.startup_progress.stop()
+        self.startup_frame.pack_forget()
+        self.content_frame.pack(fill="both", expand=True)
+    
+    def _update_startup_status(self, message: str) -> None:
+        """Update the startup status message (thread-safe)."""
+        self.root.after(0, lambda: self.startup_status_var.set(message))
+    
+    def _cancel_startup(self) -> None:
+        """Cancel the startup sequence."""
+        self._startup_cancelled = True
+        self._update_startup_status("Cancelling...")
 
     def _get_current_tab(self) -> ProtocolTab | None:
         """Get the currently selected protocol tab."""
@@ -436,62 +521,189 @@ class MainWindow:
                 f"Please correct the following errors:\n{error_msg}",
             )
             return
-
+        
+        # Validate mouse ID
+        mouse_id = self.mouse_id_var.get().strip()
+        if not mouse_id:
+            messagebox.showerror("Error", "Please enter a Mouse ID")
+            return
+        
+        # Store tab and parameters for startup thread
+        self._pending_tab = tab
+        self._pending_parameters = tab.get_parameters()
+        self._pending_mouse_id = mouse_id
+        
+        # Show startup overlay
+        self._show_startup_overlay()
+        
+        # Run startup sequence in background thread
+        self.startup_thread = threading.Thread(
+            target=self._startup_sequence,
+            daemon=True
+        )
+        self.startup_thread.start()
+    
+    def _startup_sequence(self) -> None:
+        """Run the startup sequence in a background thread."""
         try:
-            # Get parameters
-            parameters = tab.get_parameters()
-
-            # Connect to rig using BehavLink directly
-            if self.simulation_var.get():
-                self._thread_safe_log("[SIMULATION] Running without hardware")
-                self.link = None
-            else:
-                self._thread_safe_log(f"Opening serial port {self.port_var.get()}...")
-                self._serial = serial.Serial(
-                    self.port_var.get(), self.baud_rate, timeout=0.1
-                )
-                
-                self._thread_safe_log("Resetting Arduino...")
-                reset_arduino_via_dtr(self._serial)
-                
-                self._thread_safe_log("Creating BehaviourRigLink...")
-                self.link = BehaviourRigLink(self._serial)
-                self.link.start()
-                
-                self._thread_safe_log("Handshake...")
-                self.link.send_hello()
-                self.link.wait_hello(timeout=5.0)
-                
-                self._thread_safe_log("Connected!")
-
-            # Create protocol instance
-            self.current_protocol = tab.protocol_class(
-                parameters=parameters,
+            # Step 1: Create session config and manager
+            self._update_startup_status("Creating session...")
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
+            session_config = load_session_config(
+                self.rig_config,
+                mouse_id=self._pending_mouse_id
+            )
+            
+            self.session_manager = SessionManager(
+                session_config,
+                log_callback=self._update_startup_status
+            )
+            
+            # Step 2: Start DAQ process
+            self._update_startup_status("Starting Arduino DAQ...")
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
+            if not self.session_manager._start_daq():
+                error_msg = self.session_manager.last_error or "Failed to start Arduino DAQ"
+                self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
+                return
+            
+            # Step 3: Wait for Arduino connection
+            self._update_startup_status("Waiting for Arduino connection...")
+            
+            if not self.session_manager._wait_for_connection():
+                if self._startup_cancelled:
+                    self._on_startup_cancelled()
+                else:
+                    error_msg = self.session_manager.last_error or "Arduino connection timed out"
+                    self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
+                return
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
+            # Step 4: Start camera
+            self._update_startup_status("Starting camera...")
+            
+            if not self.session_manager._start_camera():
+                error_msg = self.session_manager.last_error or "Failed to start camera"
+                self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
+                return
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
+            # Step 5: Connect to rig
+            self._update_startup_status("Connecting to rig...")
+            
+            self._serial = serial.Serial(
+                self.serial_port, self.baud_rate, timeout=0.1
+            )
+            
+            self._update_startup_status("Resetting Arduino...")
+            reset_arduino_via_dtr(self._serial)
+            
+            self._update_startup_status("Creating BehaviourRigLink...")
+            self.link = BehaviourRigLink(self._serial)
+            self.link.start()
+            
+            self._update_startup_status("Handshake...")
+            self.link.send_hello()
+            self.link.wait_hello(timeout=5.0)
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
+            self.session_manager.is_started = True
+            
+            # Step 6: Create protocol and start
+            self._update_startup_status("Starting protocol...")
+            
+            self.current_protocol = self._pending_tab.protocol_class(
+                parameters=self._pending_parameters,
                 link=self.link,
             )
-
-            # Add event listener
             self.current_protocol.add_event_listener(self._on_protocol_event)
-
-            # Update UI
-            self.status_panel.set_running_state(True)
-            self.status_panel.log_message(
-                f"Starting {tab.protocol_class.get_name()}..."
-            )
-
-            # Start protocol in background thread
-            self.protocol_thread = threading.Thread(
-                target=self._run_protocol_thread,
-                daemon=True,
-            )
-            self.protocol_thread.start()
-
-            # Start elapsed time updates
-            self._start_elapsed_timer()
-
+            
+            # Success - switch to running state on main thread
+            self.root.after(0, self._on_startup_complete)
+            
         except Exception as e:
-            self._cleanup_protocol()
-            messagebox.showerror("Error", f"Failed to start protocol:\n{e}")
+            self.root.after(0, lambda: self._on_startup_error(str(e)))
+    
+    def _on_startup_complete(self) -> None:
+        """Called when startup sequence completes successfully."""
+        self._hide_startup_overlay()
+        
+        # Update UI
+        self.status_panel.set_running_state(True)
+        self.status_panel.log_message("Session started!")
+        self.status_panel.log_message(
+            f"Starting {self._pending_tab.protocol_class.get_name()}..."
+        )
+        
+        # Start protocol in background thread
+        self.protocol_thread = threading.Thread(
+            target=self._run_protocol_thread,
+            daemon=True,
+        )
+        self.protocol_thread.start()
+        
+        # Start elapsed time updates
+        self._start_elapsed_timer()
+    
+    def _on_startup_error(self, error_msg: str) -> None:
+        """Called when startup sequence fails."""
+        self._hide_startup_overlay()
+        
+        # Clean up any started processes
+        if self.session_manager:
+            self.session_manager.stop_session()
+            self.session_manager = None
+        
+        if self._serial:
+            try:
+                self._serial.close()
+            except:
+                pass
+            self._serial = None
+        
+        self.link = None
+        
+        messagebox.showerror("Startup Failed", f"Failed to start session:\n\n{error_msg}")
+    
+    def _on_startup_cancelled(self) -> None:
+        """Called when startup is cancelled by user."""
+        # Clean up on main thread
+        self.root.after(0, self._cleanup_startup_cancelled)
+    
+    def _cleanup_startup_cancelled(self) -> None:
+        """Clean up after cancelled startup."""
+        self._hide_startup_overlay()
+        
+        if self.session_manager:
+            self.session_manager.stop_session()
+            self.session_manager = None
+        
+        if self._serial:
+            try:
+                self._serial.close()
+            except:
+                pass
+            self._serial = None
+        
+        self.link = None
+        self.status_panel.log_message("Startup cancelled")
 
     def _run_protocol_thread(self) -> None:
         """Run the protocol in a background thread."""
@@ -566,7 +778,12 @@ class MainWindow:
             self.current_protocol.request_abort()
 
     def _cleanup_protocol(self) -> None:
-        """Clean up protocol and link resources."""
+        """Clean up protocol, link, and session resources."""
+        # Stop the protocol first
+        self.current_protocol = None
+        self.protocol_thread = None
+        
+        # Shutdown BehavLink
         if self.link is not None:
             try:
                 self.link.shutdown()
@@ -575,15 +792,22 @@ class MainWindow:
                 pass
             self.link = None
 
+        # Close serial connection
         if self._serial is not None:
             try:
                 self._serial.close()
             except Exception:
                 pass
             self._serial = None
-
-        self.current_protocol = None
-        self.protocol_thread = None
+        
+        # Stop session manager (DAQ and camera processes)
+        if self.session_manager is not None:
+            try:
+                self.status_panel.log_message("Stopping DAQ and camera...")
+                self.session_manager.stop_session()
+            except Exception as e:
+                self.status_panel.log_message(f"Error stopping session: {e}")
+            self.session_manager = None
 
     def _start_elapsed_timer(self) -> None:
         """Start the elapsed time update timer."""
@@ -626,17 +850,19 @@ class MainWindow:
     def _force_close(self) -> None:
         """Force close the application."""
         self._cleanup_protocol()
-        self.root.destroy()
+        # Only destroy if standalone (not embedded in launcher)
+        if self.parent is None:
+            self.root.destroy()
 
     def run(self) -> None:
-        """Start the application main loop."""
-        self.root.mainloop()
+        """Start the application main loop (only for standalone mode)."""
+        if self.parent is None:
+            self.root.mainloop()
 
 
 def launch_gui(
     serial_port: str = "COM7",
     baud_rate: int = 115200,
-    simulation_mode: bool = False,
 ) -> None:
     """
     Launch the Behaviour Rig System GUI.
@@ -644,11 +870,9 @@ def launch_gui(
     Args:
         serial_port: Serial port for hardware connection.
         baud_rate: Serial communication baud rate.
-        simulation_mode: If True, run without real hardware.
     """
     app = MainWindow(
         serial_port=serial_port,
         baud_rate=baud_rate,
-        simulation_mode=simulation_mode,
     )
     app.run()

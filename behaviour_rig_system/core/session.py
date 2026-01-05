@@ -1,0 +1,358 @@
+"""
+Session Manager
+
+Handles the startup and shutdown sequence for behaviour sessions:
+    1. Start Arduino DAQ process
+    2. Wait for connection signal
+    3. Start camera process
+    4. Run protocol
+    5. Shutdown processes in correct order
+"""
+
+import os
+import subprocess
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Optional
+
+import yaml
+
+
+@dataclass
+class SessionConfig:
+    """Configuration for a behaviour session."""
+    # Rig info
+    rig_name: str
+    rig_number: int
+    serial_port: str
+    camera_serial: str
+    
+    # Session info
+    mouse_id: str
+    session_folder: str
+    date_time: str
+    
+    # Process paths
+    python_path: str
+    serial_listen_script: str
+    camera_executable: str
+    
+    # Settings
+    baud_rate: int = 115200
+    connection_timeout: int = 30
+    camera_fps: int = 30
+    camera_window_width: int = 640
+    camera_window_height: int = 512
+
+
+def load_session_config(rig_config: dict, mouse_id: str = "test") -> SessionConfig:
+    """
+    Load session configuration from rig config and global settings.
+    
+    Args:
+        rig_config: Dict with rig-specific settings
+        mouse_id: Mouse identifier for this session
+        
+    Returns:
+        SessionConfig with all settings populated
+    """
+    # Load full config file
+    config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+    with open(config_path) as f:
+        full_config = yaml.safe_load(f)
+    
+    global_settings = full_config.get("global", {})
+    process_settings = full_config.get("processes", {})
+    
+    # Extract rig number from name (e.g., "Rig 1" -> 1)
+    rig_name = rig_config.get("name", "Rig 1")
+    try:
+        rig_number = int(rig_name.split()[-1])
+    except (ValueError, IndexError):
+        rig_number = 1
+    
+    # Create session folder
+    date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+    data_dir = global_settings.get("data_directory", "D:\\behaviour_data")
+    session_folder = os.path.join(data_dir, f"{date_time}_{mouse_id}")
+    
+    return SessionConfig(
+        rig_name=rig_name,
+        rig_number=rig_number,
+        serial_port=rig_config.get("serial_port", "COM7"),
+        camera_serial=rig_config.get("camera_serial", ""),
+        mouse_id=mouse_id,
+        session_folder=session_folder,
+        date_time=date_time,
+        python_path=process_settings.get("python_path", "python"),
+        serial_listen_script=process_settings.get("serial_listen_script", ""),
+        camera_executable=process_settings.get("camera_executable", ""),
+        baud_rate=global_settings.get("baud_rate", 115200),
+        connection_timeout=process_settings.get("connection_timeout", 30),
+        camera_fps=process_settings.get("camera_fps", 30),
+        camera_window_width=process_settings.get("camera_window_width", 640),
+        camera_window_height=process_settings.get("camera_window_height", 512),
+    )
+
+
+class SessionManager:
+    """
+    Manages the startup and shutdown of behaviour session processes.
+    
+    Handles:
+        - Starting the Arduino DAQ subprocess
+        - Waiting for connection confirmation
+        - Starting the camera subprocess
+        - Proper shutdown sequence
+    """
+    
+    def __init__(
+        self,
+        config: SessionConfig,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ):
+        """
+        Initialize the session manager.
+        
+        Args:
+            config: Session configuration
+            log_callback: Function to call for logging messages
+        """
+        self.config = config
+        self._log = log_callback or print
+        
+        # Process handles
+        self.daq_process: Optional[subprocess.Popen] = None
+        self.camera_process: Optional[subprocess.Popen] = None
+        
+        # State
+        self.is_started = False
+        self.session_folder_created = False
+        self.last_error: Optional[str] = None
+    
+    def start_session(self) -> bool:
+        """
+        Start the session processes (DAQ and camera).
+        
+        Returns:
+            True if all processes started successfully, False otherwise
+        """
+        try:
+            # Create session folder
+            self._log(f"Creating session folder: {self.config.session_folder}")
+            os.makedirs(self.config.session_folder, exist_ok=True)
+            self.session_folder_created = True
+            
+            # Start Arduino DAQ
+            if not self._start_daq():
+                return False
+            
+            # Wait for connection signal
+            if not self._wait_for_connection():
+                self._cleanup_daq()
+                return False
+            
+            # Start camera
+            if not self._start_camera():
+                self._cleanup_daq()
+                return False
+            
+            self.is_started = True
+            self._log("Session processes started successfully!")
+            return True
+            
+        except Exception as e:
+            self._log(f"Error starting session: {e}")
+            self.stop_session()
+            return False
+    
+    def _start_daq(self) -> bool:
+        """Start the Arduino DAQ process."""
+        if not self.config.serial_listen_script:
+            self._log("Warning: No serial listen script configured, skipping DAQ")
+            return True
+        
+        if not os.path.exists(self.config.serial_listen_script):
+            error_msg = f"Serial listen script not found: {self.config.serial_listen_script}"
+            self._log(f"Error: {error_msg}")
+            self.last_error = error_msg
+            return False
+        
+        if not os.path.exists(self.config.python_path):
+            error_msg = f"Python executable not found: {self.config.python_path}"
+            self._log(f"Error: {error_msg}")
+            self.last_error = error_msg
+            return False
+        
+        self._log("Starting Arduino DAQ process...")
+        
+        command = [
+            self.config.python_path,
+            self.config.serial_listen_script,
+            "--id", self.config.mouse_id,
+            "--date", self.config.date_time,
+            "--path", self.config.session_folder,
+            "--rig", str(self.config.rig_number),
+        ]
+        
+        try:
+            self.daq_process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,  # Windows: new console window
+            )
+            self._log(f"Arduino DAQ process started (PID: {self.daq_process.pid})")
+            return True
+        except Exception as e:
+            error_msg = f"Failed to start Arduino DAQ: {e}"
+            self._log(error_msg)
+            self.last_error = error_msg
+            return False
+    
+    def _wait_for_connection(self) -> bool:
+        """Wait for the Arduino connection signal file."""
+        if self.daq_process is None:
+            return True  # DAQ not configured, skip
+        
+        signal_file = os.path.join(
+            self.config.session_folder,
+            f"rig_{self.config.rig_number}_arduino_connected.signal"
+        )
+        
+        self._log(f"Waiting for Arduino connection signal...")
+        self._log(f"Signal file: {signal_file}")
+        
+        start_time = time.time()
+        while time.time() - start_time < self.config.connection_timeout:
+            # Check if signal file exists
+            if os.path.exists(signal_file):
+                elapsed = time.time() - start_time
+                self._log(f"Arduino connected! ({elapsed:.1f}s)")
+                return True
+            
+            # Check if DAQ process died
+            if self.daq_process.poll() is not None:
+                # Try to get stderr output for more details
+                stderr_output = ""
+                try:
+                    _, stderr = self.daq_process.communicate(timeout=1)
+                    stderr_output = stderr.decode('utf-8', errors='ignore').strip()
+                except:
+                    pass
+                
+                error_msg = f"DAQ process terminated unexpectedly (exit code: {self.daq_process.returncode})"
+                if stderr_output:
+                    error_msg += f"\n\nProcess output:\n{stderr_output[:500]}"
+                
+                self._log(f"Error: {error_msg}")
+                self.last_error = error_msg
+                return False
+            
+            time.sleep(0.5)
+        
+        error_msg = f"Timeout waiting for Arduino connection ({self.config.connection_timeout}s)\n\nExpected signal file: {signal_file}"
+        self._log(error_msg)
+        self.last_error = error_msg
+        return False
+    
+    def _start_camera(self) -> bool:
+        """Start the camera process."""
+        if not self.config.camera_executable:
+            self._log("Warning: No camera executable configured, skipping camera")
+            return True
+        
+        if not os.path.exists(self.config.camera_executable):
+            error_msg = f"Camera executable not found: {self.config.camera_executable}"
+            self._log(f"Error: {error_msg}")
+            self.last_error = error_msg
+            return False
+        
+        if not self.config.camera_serial:
+            self._log("Warning: No camera serial number configured, skipping camera")
+            return True
+        
+        self._log("Starting camera process...")
+        
+        command = [
+            self.config.camera_executable,
+            "--id", self.config.mouse_id,
+            "--date", self.config.date_time,
+            "--path", self.config.session_folder,
+            "--serial_number", self.config.camera_serial,
+            "--fps", str(self.config.camera_fps),
+            "--windowWidth", str(self.config.camera_window_width),
+            "--windowHeight", str(self.config.camera_window_height),
+        ]
+        
+        try:
+            self.camera_process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self._log(f"Camera process started (PID: {self.camera_process.pid})")
+            return True
+        except Exception as e:
+            error_msg = f"Failed to start camera: {e}"
+            self._log(error_msg)
+            self.last_error = error_msg
+            return False
+    
+    def stop_session(self) -> None:
+        """Stop all session processes in the correct order."""
+        self._log("Stopping session...")
+        
+        # Stop camera first
+        if self.camera_process is not None:
+            self._log("Stopping camera...")
+            try:
+                self.camera_process.terminate()
+                self.camera_process.wait(timeout=5)
+                self._log("Camera stopped")
+            except subprocess.TimeoutExpired:
+                self._log("Camera did not stop, killing...")
+                self.camera_process.kill()
+            except Exception as e:
+                self._log(f"Error stopping camera: {e}")
+            finally:
+                self.camera_process = None
+        
+        # Stop DAQ
+        self._cleanup_daq()
+        
+        self.is_started = False
+        self._log("Session stopped")
+    
+    def _cleanup_daq(self) -> None:
+        """Clean up the DAQ process."""
+        if self.daq_process is not None:
+            self._log("Stopping Arduino DAQ...")
+            try:
+                self.daq_process.terminate()
+                self.daq_process.wait(timeout=5)
+                self._log("Arduino DAQ stopped")
+            except subprocess.TimeoutExpired:
+                self._log("DAQ did not stop, killing...")
+                self.daq_process.kill()
+            except Exception as e:
+                self._log(f"Error stopping DAQ: {e}")
+            finally:
+                self.daq_process = None
+    
+    def is_running(self) -> bool:
+        """Check if session processes are running."""
+        if not self.is_started:
+            return False
+        
+        # Check DAQ process
+        if self.daq_process is not None and self.daq_process.poll() is not None:
+            return False
+        
+        # Check camera process
+        if self.camera_process is not None and self.camera_process.poll() is not None:
+            return False
+        
+        return True

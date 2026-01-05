@@ -9,22 +9,32 @@
 #   - serial_port: Serial port the rig is connected to
 #   - enabled: Whether the rig is available for use
 #   - description: Optional description of the rig
+#   - camera_serial: Serial number for the rig's camera
 
 rigs:
   - name: "Rig 1"
     serial_port: "COM7"
     enabled: true
-    description: "Main behaviour rig - Testing station"
+    description: "Main behaviour rig"
+    camera_serial: "22181614"
 
   - name: "Rig 2"
     serial_port: "COM8"
-    enabled: false
-    description: "Secondary rig - Currently offline"
+    enabled: true
+    description: "Secondary rig"
+    camera_serial: "20530175"
 
   - name: "Rig 3"
     serial_port: "COM9"
-    enabled: false
-    description: "Development rig"
+    enabled: true
+    description: "Third rig"
+    camera_serial: "24174008"
+
+  - name: "Rig 4"
+    serial_port: "COM10"
+    enabled: true
+    description: "Fourth rig"
+    camera_serial: "24243513"
 
 
 # Global settings
@@ -37,14 +47,33 @@ global:
   # Whether to reset Arduino on connection
   reset_on_connect: true
 
-  # Default simulation mode (useful for development)
-  simulation_mode: false
-
-  # Data output directory (relative to project root)
-  data_directory: "data"
+  # Data output directory
+  data_directory: "D:\\behaviour_data"
 
   # Log level (DEBUG, INFO, WARNING, ERROR)
   log_level: "INFO"
+
+
+# External processes
+# ------------------
+
+processes:
+  # Python executable path
+  python_path: "C:\\Users\\Stefan R Coltman\\.conda\\envs\\behaviour_analysis\\python.exe"
+  
+  # Arduino DAQ / serial listen script
+  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\hex_behav_control\\peripherals\\serial_listen_mega_fast.py"
+  
+  # Camera executable
+  camera_executable: "C:\\Behaviour\\Camera\\x64\\Release\\Camera.exe"
+  
+  # Timeout for Arduino connection signal (seconds)
+  connection_timeout: 30
+  
+  # Camera settings
+  camera_fps: 30
+  camera_window_width: 640
+  camera_window_height: 512
 
 
 # Protocol defaults

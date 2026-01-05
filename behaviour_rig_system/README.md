@@ -11,7 +11,6 @@ This system provides a graphical interface for configuring and running behaviour
 - **Tabbed GUI** for selecting and configuring different behaviour protocols
 - **Dynamic parameter forms** automatically generated from protocol definitions
 - **Real-time event logging** during protocol execution
-- **Simulation mode** for testing without connected hardware
 - **Modular protocol system** - add new protocols by creating a single Python file
 
 ## Project Structure
@@ -23,7 +22,7 @@ behaviour_rig_system/
 │   ├── __init__.py
 │   ├── parameter_types.py  # Parameter definitions for GUI generation
 │   ├── protocol_base.py    # Base class for all protocols
-│   └── hardware.py         # Hardware abstraction layer
+│   └── protocol_loader.py  # Creates protocol classes from simple definitions
 ├── protocols/              # Behaviour protocol implementations
 │   ├── __init__.py
 │   └── hardware_test.py    # Example: Hardware test protocol
@@ -62,10 +61,6 @@ python main.py
 
 The GUI will open with tabs for each available protocol. Select a protocol, configure its parameters, and click "Start Protocol" to begin.
 
-### Simulation Mode
-
-Enable "Simulation Mode" in the GUI to test protocols without connected hardware. All hardware commands will be logged instead of being sent to the rig.
-
 ### Configuration
 
 Edit `main.py` to change default settings:
@@ -73,7 +68,6 @@ Edit `main.py` to change default settings:
 ```python
 SERIAL_PORT = "COM7"      # Your serial port
 BAUD_RATE = 115200        # Communication speed
-SIMULATION_MODE = True    # Start in simulation mode
 ```
 
 ## Creating New Protocols

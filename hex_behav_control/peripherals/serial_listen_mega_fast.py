@@ -254,7 +254,7 @@ async def listen(
     if rig is None:
         com_port = "COM2"
     else:
-        com_port = {"1": "COM12", "2": "COM18", "3": "COM30", "4": "COM17"}.get(rig)
+        com_port = {"1": "COM10", "2": "COM18", "3": "COM30", "4": "COM17"}.get(rig)
         if com_port is None:
             raise ValueError("Rig number not recognised")
 
