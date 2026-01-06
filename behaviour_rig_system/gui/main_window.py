@@ -573,7 +573,10 @@ class MainWindow:
         from pathlib import Path
         import yaml
         
-        config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+        config_path = self.rig_config.get("config_path")
+        if not config_path:
+            config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+        
         try:
             with open(config_path) as f:
                 config = yaml.safe_load(f)
@@ -678,21 +681,15 @@ class MainWindow:
         self._startup_cancelled = True
         self._update_startup_status("Cancelling...")
 
-    def _get_current_tab(self) -> ProtocolTab | None:
+    def _get_current_tab(self) -> ProtocolTab:
         """Get the currently selected protocol tab."""
         selection = self.notebook.select()
-        if not selection:
-            return None
-
         tab_text = self.notebook.tab(selection, "text")
-        return self.protocol_tabs.get(tab_text)
+        return self.protocol_tabs[tab_text]
 
     def _start_protocol(self) -> None:
         """Start the currently selected protocol."""
         tab = self._get_current_tab()
-        if tab is None:
-            messagebox.showerror("Error", "No protocol selected")
-            return
 
         # Validate parameters
         is_valid, errors = tab.validate()
@@ -704,17 +701,9 @@ class MainWindow:
             )
             return
         
-        # Validate mouse ID
+        # Get mouse ID and save directory (always have defaults)
         mouse_id = self.mouse_id_var.get().strip()
-        if not mouse_id:
-            messagebox.showerror("Error", "Please select a Mouse ID")
-            return
-        
-        # Get selected save directory
         save_directory = self._get_selected_cohort_directory()
-        if not save_directory:
-            messagebox.showerror("Error", "Please select a Save Location")
-            return
         
         # Store tab and parameters for startup thread
         self._pending_tab = tab
@@ -1001,10 +990,13 @@ class MainWindow:
         self.current_protocol = None
         self.protocol_thread = None
         
-        # Shutdown BehavLink
+        # Shutdown BehavLink (try to gracefully shutdown hardware first)
         if self.link is not None:
             try:
                 self.link.shutdown()
+            except Exception:
+                pass  # Ignore errors during shutdown command
+            try:
                 self.link.stop()
             except Exception:
                 pass

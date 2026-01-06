@@ -16,7 +16,7 @@ rigs:
     serial_port: "COM7"
     enabled: true
     description: "Main behaviour rig"
-    camera_serial: "22181614"
+    camera_serial: "24243513"
 
   - name: "Rig 2"
     serial_port: "COM8"
@@ -96,7 +96,7 @@ processes:
   serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\behaviour_rig_system\\daq\\serial_listen_mega_fast.py"
   
   # Camera executable
-  camera_executable: "C:\\Behaviour\\Camera\\x64\\Release\\Camera.exe"
+  camera_executable: "C:\\Dev\\projects\\Camera\\x64\\Release\\Camera_to_binary.exe"
   
   # Timeout for Arduino connection signal (seconds)
   connection_timeout: 30

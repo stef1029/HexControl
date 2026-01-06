@@ -26,15 +26,16 @@ DEFAULT_RIGS = [
 ]
 
 
-def load_rig_config() -> tuple[list[dict], int, dict]:
+def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict]:
     """
     Load rig configuration from rigs.yaml.
+    
+    Args:
+        config_path: Path to the configuration file
     
     Returns:
         Tuple of (list of rig configs, baud rate, processes config)
     """
-    config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
-    
     if config_path.exists():
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -109,14 +110,17 @@ class RigLauncher:
     connection and opens the rig's control window if successful.
     """
     
-    def __init__(self):
+    def __init__(self, config_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
         self.root.geometry("400x350")
         self.root.resizable(False, False)
         
+        # Store config path for passing to child windows
+        self.config_path = config_path
+        
         # Load configuration
-        self.rigs, self.baud_rate, self.processes = load_rig_config()
+        self.rigs, self.baud_rate, self.processes = load_rig_config(config_path)
         
         # Track open rig windows: {rig_name: (window, button)}
         self.open_windows: dict[str, tuple[tk.Toplevel, ttk.Button]] = {}
@@ -253,10 +257,11 @@ class RigLauncher:
         # Create new window
         window = tk.Toplevel(self.root)
         
-        # Combine rig config with processes config for MainWindow
+        # Combine rig config with processes config and config path for MainWindow
         rig_config = {
             **rig,
             "processes": self.processes,
+            "config_path": self.config_path,
         }
         
         # Create MainWindow content in the toplevel
@@ -317,7 +322,7 @@ class RigLauncher:
         self.root.mainloop()
 
 
-def launch():
+def launch(config_path: Path):
     """Launch the rig launcher."""
-    launcher = RigLauncher()
+    launcher = RigLauncher(config_path)
     launcher.run()

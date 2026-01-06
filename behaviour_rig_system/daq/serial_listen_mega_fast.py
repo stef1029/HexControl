@@ -78,17 +78,28 @@ def delete_backups(backup_folder: Path) -> None:
 
 async def watch_sentinel(signal_path: Path, stop_event: asyncio.Event) -> None:
     """Set *stop_event* when *signal_path* appears (camera finished signal)."""
+    print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Watching for stop signal: {signal_path}")
+    
     if TEST_MODE:
         threading.Thread(target=lambda: keyboard.wait(EXIT_KEY) or stop_event.set(), daemon=True).start()
 
+    check_count = 0
     try:
         while not stop_event.is_set():
+            check_count += 1
             if signal_path.exists():
                 print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel detected -> stopping acquisition")
                 stop_event.set()
                 break
+            # Log every 30 seconds that we're still watching
+            if check_count % 30 == 0:
+                print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Still watching for stop signal... (check #{check_count})")
             await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel watcher cancelled")
+        raise
     finally:
+        print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Sentinel watcher finished (checked {check_count} times)")
         if TEST_MODE:
             keyboard.unhook_all()
 
@@ -223,10 +234,10 @@ async def listen(
     foldername = f"{date_time}_{mouse_id}"
 
     output_path = Path(new_path) if new_path else Path.cwd() / foldername
-    output_path.mkdir(exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     backup_folder = output_path / "backup_files"
-    backup_folder.mkdir(exist_ok=True)
+    backup_folder.mkdir(parents=True, exist_ok=True)
 
     connection_signal_file = output_path / (f"rig_{rig}_arduino_connected.signal" if rig else "arduino_connected.signal")
 
@@ -307,10 +318,13 @@ async def listen(
         await asyncio.sleep(0)  # yield to event‑loop
 
     # -- acquisition ended -------------------------------------------------
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Stop signal received, ending acquisition...")
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Sending end commands to Arduino...")
     for _ in range(3):
         serial_connection.write(b"e")
         time.sleep(0.1)
     serial_connection.close()
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Serial connection closed")
 
     if backup_buffer:  # flush remainder
         # np.save(backup_folder / f"backup-{backup_counter:04d}.npy", np.array(backup_buffer))
@@ -319,8 +333,10 @@ async def listen(
     end_time = time.perf_counter()
 
     # Archive full dataset
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Saving data to HDF5/JSON...")
     save_hdf5_json(foldername, output_path, mouse_id, date_time, list(messages_from_arduino), 
                   message_counter, full_messages, start_time, end_time, error_messages)
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Data saved successfully")
 
     # Consolidate incremental backups
     # combined_backup = read_all_backups(backup_folder)

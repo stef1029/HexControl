@@ -184,7 +184,10 @@ class BaseProtocol(ABC):
     def request_abort(self) -> None:
         """Called when user clicks Stop."""
         self._abort_requested = True
-        self._on_abort()
+        try:
+            self._on_abort()
+        except Exception:
+            pass  # Ignore errors during abort (serial may be disconnected)
 
     def add_event_listener(self, listener: Callable[[ProtocolEvent], None]) -> None:
         """Register a callback to receive events (used by GUI)."""

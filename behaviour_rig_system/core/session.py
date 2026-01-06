@@ -52,15 +52,18 @@ def load_session_config(rig_config: dict, mouse_id: str = "test", save_directory
     Load session configuration from rig config and global settings.
     
     Args:
-        rig_config: Dict with rig-specific settings
+        rig_config: Dict with rig-specific settings (including config_path)
         mouse_id: Mouse identifier for this session
         save_directory: Full path to the save directory (e.g., D:\\behaviour_data\\cohort_name)
         
     Returns:
         SessionConfig with all settings populated
     """
-    # Load full config file
-    config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+    # Load full config file using path from rig_config
+    config_path = rig_config.get("config_path")
+    if not config_path:
+        config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+    
     with open(config_path) as f:
         full_config = yaml.safe_load(f)
     
@@ -76,11 +79,6 @@ def load_session_config(rig_config: dict, mouse_id: str = "test", save_directory
     
     # Create session folder path: save_directory / datetime_mouseID
     date_time = datetime.now().strftime("%y%m%d_%H%M%S")
-    
-    # save_directory must be provided (from cohort_folders config)
-    if not save_directory:
-        raise ValueError("save_directory must be provided - select a Save Location in the GUI")
-    
     session_folder = os.path.join(save_directory, f"{date_time}_{mouse_id}")
     
     return SessionConfig(
@@ -367,20 +365,13 @@ class SessionManager:
         """Stop all session processes in the correct order."""
         self._log("Stopping session...")
         
-        # Stop camera first
-        if self.camera_process is not None:
-            self._log("Stopping camera...")
-            try:
-                self.camera_process.terminate()
-                self.camera_process.wait(timeout=5)
-                self._log("Camera stopped")
-            except subprocess.TimeoutExpired:
-                self._log("Camera did not stop, killing...")
-                self.camera_process.kill()
-            except Exception as e:
-                self._log(f"Error stopping camera: {e}")
-            finally:
-                self.camera_process = None
+        # Stop camera first by creating its stop signal file
+        self._stop_camera_gracefully()
+        
+        # The camera creates camera_finished.signal when it exits,
+        # which tells the DAQ to stop. But if camera didn't run or failed,
+        # we create it manually.
+        self._create_daq_stop_signal()
         
         # Stop DAQ
         self._cleanup_daq()
@@ -388,17 +379,110 @@ class SessionManager:
         self.is_started = False
         self._log("Session stopped")
     
+    def _stop_camera_gracefully(self) -> None:
+        """Stop the camera by creating its stop signal file."""
+        if self.camera_process is None:
+            return
+        
+        self._log("Stopping camera gracefully...")
+        
+        # Create the stop signal file that the camera watches for
+        stop_signal_file = os.path.join(
+            self.config.session_folder,
+            f"stop_camera_{self.config.rig_number}.signal"
+        )
+        self._log(f"Creating camera stop signal: {stop_signal_file}")
+        
+        try:
+            os.makedirs(self.config.session_folder, exist_ok=True)
+            with open(stop_signal_file, 'w') as f:
+                f.write(f"Stop requested at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self._log("Camera stop signal created")
+        except Exception as e:
+            self._log(f"Error creating camera stop signal: {e}")
+        
+        # Wait for camera to stop gracefully (it checks the signal every 30 frames)
+        self._log("Waiting for camera to stop gracefully (max 15s)...")
+        try:
+            self.camera_process.wait(timeout=15)
+            self._log(f"Camera stopped gracefully (exit code: {self.camera_process.returncode})")
+        except subprocess.TimeoutExpired:
+            self._log("Camera did not stop gracefully, terminating...")
+            try:
+                self.camera_process.terminate()
+                self.camera_process.wait(timeout=5)
+                self._log(f"Camera terminated (exit code: {self.camera_process.returncode})")
+            except subprocess.TimeoutExpired:
+                self._log("Camera did not respond to terminate, killing...")
+                self.camera_process.kill()
+                self._log("Camera killed")
+        except Exception as e:
+            self._log(f"Error stopping camera: {e}")
+        finally:
+            self.camera_process = None
+        
+        # Stop DAQ
+        self._cleanup_daq()
+        
+        # Clean up signal files
+        self._cleanup_signal_files()
+        
+        self.is_started = False
+        self._log("Session stopped")
+    
+    def _cleanup_signal_files(self) -> None:
+        """Remove signal files from the session folder."""
+        signal_patterns = [
+            f"rig_{self.config.rig_number}_arduino_connected.signal",
+            f"rig_{self.config.rig_number}_camera_finished.signal",
+            f"stop_camera_{self.config.rig_number}.signal",
+        ]
+        
+        for pattern in signal_patterns:
+            signal_file = os.path.join(self.config.session_folder, pattern)
+            if os.path.exists(signal_file):
+                try:
+                    os.remove(signal_file)
+                    self._log(f"Removed signal file: {pattern}")
+                except Exception as e:
+                    self._log(f"Error removing {pattern}: {e}")
+    
+    def _create_daq_stop_signal(self) -> None:
+        """Create the signal file that tells the DAQ to stop gracefully."""
+        signal_file = os.path.join(
+            self.config.session_folder,
+            f"rig_{self.config.rig_number}_camera_finished.signal"
+        )
+        self._log(f"Creating DAQ stop signal: {signal_file}")
+        try:
+            # Create session folder if it doesn't exist
+            os.makedirs(self.config.session_folder, exist_ok=True)
+            with open(signal_file, 'w') as f:
+                f.write(f"Session stopped at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self._log("DAQ stop signal created")
+        except Exception as e:
+            self._log(f"Error creating stop signal: {e}")
+    
     def _cleanup_daq(self) -> None:
         """Clean up the DAQ process."""
         if self.daq_process is not None:
             self._log("Stopping Arduino DAQ...")
+            
+            # First, wait a bit for DAQ to notice the signal file and stop gracefully
+            self._log("Waiting for DAQ to stop gracefully (max 10s)...")
             try:
-                self.daq_process.terminate()
-                self.daq_process.wait(timeout=5)
-                self._log("Arduino DAQ stopped")
+                self.daq_process.wait(timeout=10)
+                self._log(f"Arduino DAQ stopped gracefully (exit code: {self.daq_process.returncode})")
             except subprocess.TimeoutExpired:
-                self._log("DAQ did not stop, killing...")
-                self.daq_process.kill()
+                self._log("DAQ did not stop gracefully, terminating...")
+                try:
+                    self.daq_process.terminate()
+                    self.daq_process.wait(timeout=5)
+                    self._log(f"Arduino DAQ terminated (exit code: {self.daq_process.returncode})")
+                except subprocess.TimeoutExpired:
+                    self._log("DAQ did not respond to terminate, killing...")
+                    self.daq_process.kill()
+                    self._log("Arduino DAQ killed")
             except Exception as e:
                 self._log(f"Error stopping DAQ: {e}")
             finally:

@@ -22,6 +22,14 @@ sys.path.insert(0, str(project_root))
 
 
 # =============================================================================
+# Configuration
+# =============================================================================
+
+# Path to the rig configuration file
+CONFIG_PATH = Path(r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\rigs.yaml")
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -37,10 +45,11 @@ def main() -> None:
     print("  Behaviour Rig System")
     print("=" * 60)
     print()
+    print(f"  Config: {CONFIG_PATH}")
     print("  Launching rig selector...")
     print()
 
-    launch()
+    launch(config_path=CONFIG_PATH)
 
 
 if __name__ == "__main__":
