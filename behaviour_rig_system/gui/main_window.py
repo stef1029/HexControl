@@ -21,7 +21,7 @@ from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 
 from core.parameter_types import convert_parameters
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
-from core.session import SessionManager, SessionConfig, load_session_config
+from core.peripheral_manager import PeripheralManager, PeripheralConfig, load_peripheral_config
 from protocols import get_available_protocols
 
 from .parameter_widget import ParameterFormBuilder
@@ -358,7 +358,7 @@ class MainWindow:
         self.link: BehaviourRigLink | None = None
         self.current_protocol: BaseProtocol | None = None
         self.protocol_thread: threading.Thread | None = None
-        self.session_manager: SessionManager | None = None
+        self.peripheral_manager: PeripheralManager | None = None
         self.startup_thread: threading.Thread | None = None
 
         self._setup_window()
@@ -733,19 +733,19 @@ class MainWindow:
                 self._on_startup_cancelled()
                 return
             
-            session_config = load_session_config(
+            peripheral_config = load_peripheral_config(
                 self.rig_config,
                 mouse_id=self._pending_mouse_id,
                 save_directory=self._pending_save_directory
             )
             
-            self._update_startup_status("[GUI] Session config created")
-            self._update_startup_status(f"[GUI] Python: {session_config.python_path}")
-            self._update_startup_status(f"[GUI] DAQ script: {session_config.serial_listen_script}")
-            self._update_startup_status(f"[GUI] Session folder: {session_config.session_folder}")
+            self._update_startup_status("[GUI] Peripheral config created")
+            self._update_startup_status(f"[GUI] Python: {peripheral_config.python_path}")
+            self._update_startup_status(f"[GUI] DAQ script: {peripheral_config.serial_listen_script}")
+            self._update_startup_status(f"[GUI] Session folder: {peripheral_config.session_folder}")
             
-            self.session_manager = SessionManager(
-                session_config,
+            self.peripheral_manager = PeripheralManager(
+                peripheral_config,
                 log_callback=self._update_startup_status
             )
             
@@ -756,8 +756,8 @@ class MainWindow:
                 self._on_startup_cancelled()
                 return
             
-            if not self.session_manager._start_daq():
-                error_msg = self.session_manager.last_error or "Failed to start Arduino DAQ"
+            if not self.peripheral_manager._start_daq():
+                error_msg = self.peripheral_manager.last_error or "Failed to start Arduino DAQ"
                 self._update_startup_status(f"[GUI] DAQ start failed: {error_msg}")
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -767,11 +767,11 @@ class MainWindow:
             # Step 3: Wait for Arduino connection
             self._update_startup_status("[GUI] Calling _wait_for_connection()...")
             
-            if not self.session_manager._wait_for_connection():
+            if not self.peripheral_manager._wait_for_connection():
                 if self._startup_cancelled:
                     self._on_startup_cancelled()
                 else:
-                    error_msg = self.session_manager.last_error or "Arduino connection timed out"
+                    error_msg = self.peripheral_manager.last_error or "Arduino connection timed out"
                     self._update_startup_status(f"[GUI] Connection wait failed: {error_msg}")
                     self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -785,8 +785,8 @@ class MainWindow:
             # Step 4: Start camera
             self._update_startup_status("[GUI] Calling _start_camera()...")
             
-            if not self.session_manager._start_camera():
-                error_msg = self.session_manager.last_error or "Failed to start camera"
+            if not self.peripheral_manager._start_camera():
+                error_msg = self.peripheral_manager.last_error or "Failed to start camera"
                 self._update_startup_status(f"[GUI] Camera start failed: {error_msg}")
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -824,7 +824,7 @@ class MainWindow:
                 self._on_startup_cancelled()
                 return
             
-            self.session_manager.is_started = True
+            self.peripheral_manager.is_started = True
             
             # Step 6: Create protocol and start
             self._update_startup_status("[GUI] Step 6: Creating protocol instance...")
@@ -874,9 +874,9 @@ class MainWindow:
         self._hide_startup_overlay()
         
         # Clean up any started processes
-        if self.session_manager:
-            self.session_manager.stop_session()
-            self.session_manager = None
+        if self.peripheral_manager:
+            self.peripheral_manager.stop()
+            self.peripheral_manager = None
         
         if self._serial:
             try:
@@ -898,9 +898,9 @@ class MainWindow:
         """Clean up after cancelled startup."""
         self._hide_startup_overlay()
         
-        if self.session_manager:
-            self.session_manager.stop_session()
-            self.session_manager = None
+        if self.peripheral_manager:
+            self.peripheral_manager.stop()
+            self.peripheral_manager = None
         
         if self._serial:
             try:
@@ -1010,14 +1010,14 @@ class MainWindow:
                 pass
             self._serial = None
         
-        # Stop session manager (DAQ and camera processes)
-        if self.session_manager is not None:
+        # Stop peripheral processes (DAQ and camera)
+        if self.peripheral_manager is not None:
             try:
                 self.status_panel.log_message("Stopping DAQ and camera...")
-                self.session_manager.stop_session()
+                self.peripheral_manager.stop()
             except Exception as e:
-                self.status_panel.log_message(f"Error stopping session: {e}")
-            self.session_manager = None
+                self.status_panel.log_message(f"Error stopping peripherals: {e}")
+            self.peripheral_manager = None
 
     def _start_elapsed_timer(self) -> None:
         """Start the elapsed time update timer."""
