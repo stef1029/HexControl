@@ -249,7 +249,7 @@ class RigLauncher:
     
     def _open_rig_window(self, rig: dict) -> None:
         """Open a control window for the specified rig."""
-        from .main_window import MainWindow
+        from .rig_window import RigWindow
         
         rig_name = rig.get("name", "Unknown")
         serial_port = rig.get("serial_port", "")
@@ -257,15 +257,15 @@ class RigLauncher:
         # Create new window
         window = tk.Toplevel(self.root)
         
-        # Combine rig config with processes config and config path for MainWindow
+        # Combine rig config with processes config and config path for RigWindow
         rig_config = {
             **rig,
             "processes": self.processes,
             "config_path": self.config_path,
         }
         
-        # Create MainWindow content in the toplevel
-        rig_window = MainWindow(
+        # Create RigWindow content in the toplevel
+        rig_window = RigWindow(
             serial_port=serial_port,
             baud_rate=self.baud_rate,
             parent=window,

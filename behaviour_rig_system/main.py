@@ -26,7 +26,7 @@ sys.path.insert(0, str(project_root))
 # =============================================================================
 
 # Path to the rig configuration file
-CONFIG_PATH = Path(r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\rigs.yaml")
+CONFIG_PATH = Path(r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\hex_behav_config.yaml")
 
 
 # =============================================================================
