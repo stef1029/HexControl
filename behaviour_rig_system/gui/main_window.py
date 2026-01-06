@@ -393,21 +393,101 @@ class MainWindow:
         self.content_frame = ttk.Frame(self.root)
         self.content_frame.pack(fill="both", expand=True)
         
+        # Load cohort folders and mice from config
+        self._load_session_options()
+        
         # Session info panel at top
         session_frame = ttk.LabelFrame(
             self.content_frame, text="Session Info", padding=(10, 5)
         )
         session_frame.pack(fill="x", padx=10, pady=5)
         
-        # Mouse ID entry
-        ttk.Label(session_frame, text="Mouse ID:").grid(
-            row=0, column=0, sticky="w", padx=5
+        # Save Location (cohort folders) - vertical list showing path
+        cohort_frame = ttk.LabelFrame(session_frame, text="Save Location", padding=(5, 5))
+        cohort_frame.pack(fill="x", padx=5, pady=(0, 5))
+        
+        first_cohort = self._cohort_folders[0].get("name", "") if self._cohort_folders else ""
+        self.cohort_var = tk.StringVar(value=first_cohort)
+        
+        cohort_inner = ttk.Frame(cohort_frame)
+        cohort_inner.pack(fill="x")
+        
+        for i, cohort in enumerate(self._cohort_folders):
+            name = cohort.get("name", "Unknown")
+            directory = cohort.get("directory", "")
+            
+            rb_frame = ttk.Frame(cohort_inner)
+            rb_frame.pack(fill="x", pady=1)
+            
+            rb = ttk.Radiobutton(
+                rb_frame,
+                text=name,
+                variable=self.cohort_var,
+                value=name,
+                command=self._on_cohort_changed
+            )
+            rb.pack(side="left")
+            
+            if directory:
+                path_label = ttk.Label(rb_frame, text=f"  {directory}", foreground="gray", font=("TkDefaultFont", 8))
+                path_label.pack(side="left")
+        
+        # Mouse ID - vertical list in two columns
+        mouse_frame = ttk.LabelFrame(session_frame, text="Mouse ID", padding=(5, 5))
+        mouse_frame.pack(fill="x", padx=5, pady=(0, 5))
+        
+        first_mouse = self._mice[0].get("id", "test") if self._mice else "test"
+        self.mouse_id_var = tk.StringVar(value=first_mouse)
+        
+        # Create a frame with three columns for mice
+        mouse_inner = ttk.Frame(mouse_frame)
+        mouse_inner.pack(fill="x")
+        mouse_inner.columnconfigure(0, weight=1)
+        mouse_inner.columnconfigure(1, weight=1)
+        mouse_inner.columnconfigure(2, weight=1)
+        
+        # Split mice into three columns
+        num_mice = len(self._mice)
+        rows_needed = (num_mice + 2) // 3  # Round up
+        
+        for i, mouse in enumerate(self._mice):
+            mouse_id = mouse.get("id", "Unknown")
+            desc = mouse.get("description", "")
+            
+            # Determine column and row (fill left to right, then next row)
+            col = i % 3
+            row = i // 3
+            
+            rb_frame = ttk.Frame(mouse_inner)
+            rb_frame.grid(row=row, column=col, sticky="w", padx=5, pady=1)
+            
+            rb = ttk.Radiobutton(
+                rb_frame,
+                text=mouse_id,
+                variable=self.mouse_id_var,
+                value=mouse_id,
+                command=self._on_mouse_changed
+            )
+            rb.pack(side="left")
+            
+            if desc:
+                desc_label = ttk.Label(rb_frame, text=f"({desc})", foreground="gray", font=("TkDefaultFont", 8))
+                desc_label.pack(side="left", padx=(2, 0))
+        
+        # Session path preview (at the bottom)
+        path_frame = ttk.Frame(session_frame)
+        path_frame.pack(fill="x", padx=5, pady=(5, 0))
+        
+        ttk.Label(path_frame, text="Save to:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        self.save_path_var = tk.StringVar(value="")
+        self.save_path_label = ttk.Label(
+            path_frame, 
+            textvariable=self.save_path_var,
+            foreground="blue",
+            font=("TkDefaultFont", 9)
         )
-        self.mouse_id_var = tk.StringVar(value="test")
-        mouse_id_entry = ttk.Entry(
-            session_frame, textvariable=self.mouse_id_var, width=20
-        )
-        mouse_id_entry.grid(row=0, column=1, sticky="w", padx=5)
+        self.save_path_label.pack(side="left", padx=5)
+        self._update_save_path_preview()
         
         # Protocol tabs
         self.notebook = ttk.Notebook(self.content_frame)
@@ -488,6 +568,70 @@ class MainWindow:
         
         self._startup_cancelled = False
     
+    def _load_session_options(self) -> None:
+        """Load cohort folder and mouse options from config file."""
+        from pathlib import Path
+        import yaml
+        
+        config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            config = {}
+        
+        # Load cohort folders (with full directory paths)
+        self._cohort_folders = config.get("cohort_folders", [])
+        if not self._cohort_folders:
+            self._cohort_folders = [{"name": "default", "directory": "D:\\behaviour_data\\default", "description": "Default save location"}]
+        
+        # Load mice (just id and description now)
+        self._mice = config.get("mice", [])
+        if not self._mice:
+            self._mice = [{"id": "test", "description": "Test mouse"}]
+    
+    def _on_cohort_changed(self, event=None) -> None:
+        """Handle cohort folder selection change."""
+        self._update_save_path_preview()
+    
+    def _on_mouse_changed(self, event=None) -> None:
+        """Handle mouse selection change."""
+        self._update_save_path_preview()
+    
+    def _update_save_path_preview(self) -> None:
+        """Update the save path preview label."""
+        cohort_name = self.cohort_var.get()
+        mouse_id = self.mouse_id_var.get()
+        
+        # Find the directory for the selected cohort folder
+        directory = ""
+        for cf in self._cohort_folders:
+            if cf.get("name") == cohort_name:
+                directory = cf.get("directory", "")
+                break
+        
+        if directory and mouse_id:
+            preview = f"{directory}\\<datetime>_{mouse_id}"
+        elif directory:
+            preview = f"{directory}\\<datetime>_<mouse>"
+        else:
+            preview = "<select save location>"
+        
+        self.save_path_var.set(preview)
+    
+    def _get_selected_cohort_directory(self) -> str:
+        """Get the directory path for the currently selected cohort folder."""
+        cohort_name = self.cohort_var.get()
+        for cf in self._cohort_folders:
+            if cf.get("name") == cohort_name:
+                return cf.get("directory", "")
+        return ""
+    
+    def _get_selected_mouse_id(self) -> str:
+        """Get the currently selected mouse ID."""
+        return self.mouse_id_var.get()
+    
     def _show_startup_overlay(self) -> None:
         """Show the startup overlay and disable main content."""
         self._startup_cancelled = False
@@ -563,13 +707,20 @@ class MainWindow:
         # Validate mouse ID
         mouse_id = self.mouse_id_var.get().strip()
         if not mouse_id:
-            messagebox.showerror("Error", "Please enter a Mouse ID")
+            messagebox.showerror("Error", "Please select a Mouse ID")
+            return
+        
+        # Get selected save directory
+        save_directory = self._get_selected_cohort_directory()
+        if not save_directory:
+            messagebox.showerror("Error", "Please select a Save Location")
             return
         
         # Store tab and parameters for startup thread
         self._pending_tab = tab
         self._pending_parameters = tab.get_parameters()
         self._pending_mouse_id = mouse_id
+        self._pending_save_directory = save_directory
         
         # Show startup overlay
         self._show_startup_overlay()
@@ -586,6 +737,8 @@ class MainWindow:
         try:
             # Step 1: Create session config and manager
             self._update_startup_status("[GUI] Creating session config...")
+            self._update_startup_status(f"[GUI] Save directory: {self._pending_save_directory}")
+            self._update_startup_status(f"[GUI] Mouse ID: {self._pending_mouse_id}")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
@@ -593,7 +746,8 @@ class MainWindow:
             
             session_config = load_session_config(
                 self.rig_config,
-                mouse_id=self._pending_mouse_id
+                mouse_id=self._pending_mouse_id,
+                save_directory=self._pending_save_directory
             )
             
             self._update_startup_status("[GUI] Session config created")

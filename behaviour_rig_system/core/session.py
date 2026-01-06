@@ -47,13 +47,14 @@ class SessionConfig:
     camera_window_height: int = 512
 
 
-def load_session_config(rig_config: dict, mouse_id: str = "test") -> SessionConfig:
+def load_session_config(rig_config: dict, mouse_id: str = "test", save_directory: str = "") -> SessionConfig:
     """
     Load session configuration from rig config and global settings.
     
     Args:
         rig_config: Dict with rig-specific settings
         mouse_id: Mouse identifier for this session
+        save_directory: Full path to the save directory (e.g., D:\\behaviour_data\\cohort_name)
         
     Returns:
         SessionConfig with all settings populated
@@ -73,10 +74,14 @@ def load_session_config(rig_config: dict, mouse_id: str = "test") -> SessionConf
     except (ValueError, IndexError):
         rig_number = 1
     
-    # Create session folder
+    # Create session folder path: save_directory / datetime_mouseID
     date_time = datetime.now().strftime("%y%m%d_%H%M%S")
-    data_dir = global_settings.get("data_directory", "D:\\behaviour_data")
-    session_folder = os.path.join(data_dir, f"{date_time}_{mouse_id}")
+    
+    # save_directory must be provided (from cohort_folders config)
+    if not save_directory:
+        raise ValueError("save_directory must be provided - select a Save Location in the GUI")
+    
+    session_folder = os.path.join(save_directory, f"{date_time}_{mouse_id}")
     
     return SessionConfig(
         rig_name=rig_name,

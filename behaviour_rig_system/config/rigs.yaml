@@ -47,11 +47,42 @@ global:
   # Whether to reset Arduino on connection
   reset_on_connect: true
 
-  # Data output directory
-  data_directory: "D:\\behaviour_data"
-
   # Log level (DEBUG, INFO, WARNING, ERROR)
   log_level: "INFO"
+
+
+# Cohort folders
+# --------------
+# List of cohort folders that can be selected in the GUI.
+# Sessions will be saved to the selected directory.
+# Add new cohort folders as needed.
+
+cohort_folders:
+  - name: "Test output"
+    directory: "D:\\behaviour_data\\default"
+    description: "Default folder for testing"
+  - name: "January 2025 cohort"
+    directory: "D:\\behaviour_data\\cohort_2025_01"
+    description: "January 2025 cohort"
+  - name: "February 2025 cohort"
+    directory: "D:\\behaviour_data\\cohort_2025_02"
+    description: "February 2025 cohort"
+
+
+# Mouse IDs
+# ---------
+# List of mouse IDs that can be selected in the GUI.
+# Add/remove mice as needed for your current experiments.
+
+mice:
+  - id: "T1"
+    description: "Photometry"
+  - id: "T2"
+    description: "Electrophysiology, SC plus chrmine opsin"
+  - id: "T3"
+    description: ""
+  - id: "T4"
+    description: ""
 
 
 # External processes
