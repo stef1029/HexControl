@@ -48,35 +48,6 @@ EXIT_KEY   = "esc"     # Emergency‑stop key (test mode only)
 TEST_MODE  = False     # Set to ``True`` to enable hot‑key exit
 BAK_INTSEC = 5.0       # Seconds between incremental back‑ups
 
-# ---------------------------------------------------------------------------
-# UI helpers
-# ---------------------------------------------------------------------------
-
-class StatusWindow:
-    """Popup window showing current script status."""
-
-    def __init__(self) -> None:
-        self.root = tk.Tk()
-        self.root.title("Script Status")
-        self.root.geometry("300x100")
-        self.status_label = tk.Label(self.root, text="Initializing…", font=("Helvetica", 14))
-        self.status_label.pack(expand=True)
-        self.update_flag = True
-
-    def update_status(self, message: str) -> None:
-        """Update the status message displayed in the window."""
-        if self.update_flag:
-            self.status_label.config(text=message)
-            self.root.update()
-
-    def close_window(self) -> None:
-        """Mark the window as disabled and destroy it."""
-        self.update_flag = False
-        self.root.destroy()
-
-    def run(self) -> None:  # blocking
-        """Start the main event loop of the window."""
-        self.root.mainloop()
 
 # ---------------------------------------------------------------------------
 # Utility helpers (back‑up housekeeping, sentinel checking)
@@ -113,7 +84,7 @@ async def watch_sentinel(signal_path: Path, stop_event: asyncio.Event) -> None:
     try:
         while not stop_event.is_set():
             if signal_path.exists():
-                print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel detected → stopping acquisition")
+                print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel detected -> stopping acquisition")
                 stop_event.set()
                 break
             await asyncio.sleep(1)
@@ -233,8 +204,17 @@ async def listen(
     new_date_time: str | None = None,
     new_path:      str | None = None,
     rig:           str | None = None,
+    com_port:      str | None = None,
 ) -> None:
-    """Serial acquisition task (top‑level coroutine)."""
+    """Serial acquisition task (top‑level coroutine).
+    
+    Args:
+        new_mouse_id: Mouse ID for the session
+        new_date_time: Datetime stamp for the session
+        new_path: Output directory path
+        rig: Rig number (1-4) for naming signal files
+        com_port: COM port to use. If None, falls back to rig-based lookup.
+    """
     messages_from_arduino: deque[list[int | float]] = deque()
     backup_buffer: deque[list[int | float]] = deque()
 
@@ -250,19 +230,23 @@ async def listen(
 
     connection_signal_file = output_path / (f"rig_{rig}_arduino_connected.signal" if rig else "arduino_connected.signal")
 
-    # COM‑port determination
-    if rig is None:
-        com_port = "COM2"
-    else:
-        com_port = {"1": "COM10", "2": "COM18", "3": "COM30", "4": "COM17"}.get(rig)
-        if com_port is None:
-            raise ValueError("Rig number not recognised")
+    # COM‑port determination: use provided port, or fall back to rig-based lookup
+    if com_port is None:
+        if rig is None:
+            com_port = "COM2"
+        else:
+            com_port = {"1": "COM10", 
+                        "2": "COM18", 
+                        "3": "COM30", 
+                        "4": "COM17"}.get(rig)
+            if com_port is None:
+                raise ValueError(f"Rig number '{rig}' not recognised and no --port provided")
 
     print(f"Connecting to Arduino Mega on {com_port}…")
     try:
         serial_connection = serial.Serial(com_port, 115200, timeout=1)
     except serial.SerialException:
-        print("Serial not found → retrying in 3 s…")
+        print("Serial not found -> retrying in 3s...")
         time.sleep(3)
         try:
             serial_connection = serial.Serial(com_port, 115200, timeout=1)
@@ -358,13 +342,15 @@ def main() -> None:
         --id: mouse ID (default: NoID)
         --date: date_time stamp (YYMMDD_HHMMSS)
         --path: output directory
-        --rig: rig number [1‑4] (default: 3)
+        --rig: rig number [1‑4] (default: 1)
+        --port: COM port to use (e.g., COM7). If provided, overrides rig-based port selection.
     """
     parser = argparse.ArgumentParser(description="Listen to serial port and save data")
     parser.add_argument("--id",   type=str, help="mouse ID",  default="NoID")
     parser.add_argument("--date", type=str, help="date_time stamp (YYMMDD_HHMMSS)")
     parser.add_argument("--path", type=str, help="output directory")
-    parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="3")
+    parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
+    parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
     args = parser.parse_args()
 
     mouse_id = args.id
@@ -372,7 +358,7 @@ def main() -> None:
     output_path = args.path or str(Path.cwd() / f"{date_time}_{mouse_id}")
 
     try:
-        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig))
+        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=args.port))
     except Exception:
         traceback.print_exc()
         input("ArduinoDAQ error — see traceback above.  Press Enter to exit…")

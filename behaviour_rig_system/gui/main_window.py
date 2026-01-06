@@ -437,7 +437,7 @@ class MainWindow:
         
         # Center the content
         inner_frame = ttk.Frame(self.startup_frame)
-        inner_frame.place(relx=0.5, rely=0.5, anchor="center")
+        inner_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Startup title
         self.startup_title = ttk.Label(
@@ -445,7 +445,7 @@ class MainWindow:
             text="Starting Session...",
             font=("Helvetica", 16, "bold")
         )
-        self.startup_title.pack(pady=20)
+        self.startup_title.pack(pady=(10, 5))
         
         # Progress text
         self.startup_status_var = tk.StringVar(value="Initializing...")
@@ -454,15 +454,29 @@ class MainWindow:
             textvariable=self.startup_status_var,
             font=("Helvetica", 11)
         )
-        self.startup_status.pack(pady=10)
+        self.startup_status.pack(pady=5)
         
         # Progress bar
         self.startup_progress = ttk.Progressbar(
             inner_frame,
             mode="indeterminate",
-            length=300
+            length=400
         )
-        self.startup_progress.pack(pady=20)
+        self.startup_progress.pack(pady=10)
+        
+        # Detailed log area
+        log_label = ttk.Label(inner_frame, text="Startup Log:", font=("Helvetica", 10, "bold"))
+        log_label.pack(anchor="w", pady=(10, 2))
+        
+        self.startup_log = scrolledtext.ScrolledText(
+            inner_frame,
+            height=20,
+            width=80,
+            font=("Consolas", 9),
+            state="disabled",
+            wrap="word"
+        )
+        self.startup_log.pack(fill="both", expand=True, pady=5)
         
         # Cancel button
         self.startup_cancel_btn = ttk.Button(
@@ -477,6 +491,12 @@ class MainWindow:
     def _show_startup_overlay(self) -> None:
         """Show the startup overlay and disable main content."""
         self._startup_cancelled = False
+        # Clear the startup log
+        self.startup_log.config(state="normal")
+        self.startup_log.delete("1.0", tk.END)
+        self.startup_log.config(state="disabled")
+        self.startup_status_var.set("Initializing...")
+        
         self.content_frame.pack_forget()
         self.startup_frame.pack(fill="both", expand=True)
         self.startup_progress.start(10)
@@ -488,8 +508,26 @@ class MainWindow:
         self.content_frame.pack(fill="both", expand=True)
     
     def _update_startup_status(self, message: str) -> None:
-        """Update the startup status message (thread-safe)."""
-        self.root.after(0, lambda: self.startup_status_var.set(message))
+        """Update the startup status message and log (thread-safe)."""
+        self.root.after(0, lambda: self._do_update_startup_status(message))
+    
+    def _do_update_startup_status(self, message: str) -> None:
+        """Actually update the startup status (must be called from main thread)."""
+        # Update the main status label with a shortened version
+        short_msg = message
+        if message.startswith("["):
+            # Extract just the key part for the status label
+            short_msg = message.split("]", 1)[-1].strip() if "]" in message else message
+        self.startup_status_var.set(short_msg[:60] + "..." if len(short_msg) > 60 else short_msg)
+        
+        # Add full message to log with timestamp
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        log_line = f"[{timestamp}] {message}\n"
+        
+        self.startup_log.config(state="normal")
+        self.startup_log.insert(tk.END, log_line)
+        self.startup_log.see(tk.END)
+        self.startup_log.config(state="disabled")
     
     def _cancel_startup(self) -> None:
         """Cancel the startup sequence."""
@@ -547,7 +585,7 @@ class MainWindow:
         """Run the startup sequence in a background thread."""
         try:
             # Step 1: Create session config and manager
-            self._update_startup_status("Creating session...")
+            self._update_startup_status("[GUI] Creating session config...")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
@@ -558,13 +596,18 @@ class MainWindow:
                 mouse_id=self._pending_mouse_id
             )
             
+            self._update_startup_status("[GUI] Session config created")
+            self._update_startup_status(f"[GUI] Python: {session_config.python_path}")
+            self._update_startup_status(f"[GUI] DAQ script: {session_config.serial_listen_script}")
+            self._update_startup_status(f"[GUI] Session folder: {session_config.session_folder}")
+            
             self.session_manager = SessionManager(
                 session_config,
                 log_callback=self._update_startup_status
             )
             
             # Step 2: Start DAQ process
-            self._update_startup_status("Starting Arduino DAQ...")
+            self._update_startup_status("[GUI] Calling _start_daq()...")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
@@ -572,53 +615,67 @@ class MainWindow:
             
             if not self.session_manager._start_daq():
                 error_msg = self.session_manager.last_error or "Failed to start Arduino DAQ"
+                self._update_startup_status(f"[GUI] DAQ start failed: {error_msg}")
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
             
+            self._update_startup_status("[GUI] _start_daq() returned True")
+            
             # Step 3: Wait for Arduino connection
-            self._update_startup_status("Waiting for Arduino connection...")
+            self._update_startup_status("[GUI] Calling _wait_for_connection()...")
             
             if not self.session_manager._wait_for_connection():
                 if self._startup_cancelled:
                     self._on_startup_cancelled()
                 else:
                     error_msg = self.session_manager.last_error or "Arduino connection timed out"
+                    self._update_startup_status(f"[GUI] Connection wait failed: {error_msg}")
                     self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
+            
+            self._update_startup_status("[GUI] _wait_for_connection() returned True")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
                 return
             
             # Step 4: Start camera
-            self._update_startup_status("Starting camera...")
+            self._update_startup_status("[GUI] Calling _start_camera()...")
             
             if not self.session_manager._start_camera():
                 error_msg = self.session_manager.last_error or "Failed to start camera"
+                self._update_startup_status(f"[GUI] Camera start failed: {error_msg}")
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
+            
+            self._update_startup_status("[GUI] _start_camera() returned True")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
                 return
             
             # Step 5: Connect to rig
-            self._update_startup_status("Connecting to rig...")
+            self._update_startup_status("[GUI] Step 5: Connecting to behaviour rig serial...")
+            self._update_startup_status(f"[GUI] Serial port: {self.serial_port}, baud: {self.baud_rate}")
             
             self._serial = serial.Serial(
                 self.serial_port, self.baud_rate, timeout=0.1
             )
+            self._update_startup_status("[GUI] Serial port opened ✓")
             
-            self._update_startup_status("Resetting Arduino...")
+            self._update_startup_status("[GUI] Resetting Arduino via DTR...")
             reset_arduino_via_dtr(self._serial)
+            self._update_startup_status("[GUI] Arduino reset complete ✓")
             
-            self._update_startup_status("Creating BehaviourRigLink...")
+            self._update_startup_status("[GUI] Creating BehaviourRigLink...")
             self.link = BehaviourRigLink(self._serial)
             self.link.start()
+            self._update_startup_status("[GUI] BehaviourRigLink started ✓")
             
-            self._update_startup_status("Handshake...")
+            self._update_startup_status("[GUI] Sending hello handshake...")
             self.link.send_hello()
             self.link.wait_hello(timeout=5.0)
+            self._update_startup_status("[GUI] Handshake complete ✓")
             
             if self._startup_cancelled:
                 self._on_startup_cancelled()
@@ -627,18 +684,25 @@ class MainWindow:
             self.session_manager.is_started = True
             
             # Step 6: Create protocol and start
-            self._update_startup_status("Starting protocol...")
+            self._update_startup_status("[GUI] Step 6: Creating protocol instance...")
             
             self.current_protocol = self._pending_tab.protocol_class(
                 parameters=self._pending_parameters,
                 link=self.link,
             )
             self.current_protocol.add_event_listener(self._on_protocol_event)
+            self._update_startup_status("[GUI] Protocol created ✓")
+            
+            self._update_startup_status("[GUI] ========== STARTUP COMPLETE ==========")
             
             # Success - switch to running state on main thread
             self.root.after(0, self._on_startup_complete)
             
         except Exception as e:
+            import traceback
+            error_detail = f"{e}\n\nTraceback:\n{traceback.format_exc()}"
+            self._update_startup_status(f"[GUI] EXCEPTION: {e}")
+            self._update_startup_status(f"[GUI] {traceback.format_exc()}")
             self.root.after(0, lambda: self._on_startup_error(str(e)))
     
     def _on_startup_complete(self) -> None:

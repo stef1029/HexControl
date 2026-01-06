@@ -139,54 +139,85 @@ class SessionManager:
         Returns:
             True if all processes started successfully, False otherwise
         """
+        self._log("="*50)
+        self._log("SESSION STARTUP SEQUENCE")
+        self._log("="*50)
+        self._log(f"Rig: {self.config.rig_name} (#{self.config.rig_number})")
+        self._log(f"Mouse ID: {self.config.mouse_id}")
+        self._log(f"Session folder: {self.config.session_folder}")
+        self._log("-"*50)
+        
         try:
             # Create session folder
-            self._log(f"Creating session folder: {self.config.session_folder}")
+            self._log("[Step 1/3] Creating session folder...")
             os.makedirs(self.config.session_folder, exist_ok=True)
             self.session_folder_created = True
+            self._log("[Step 1/3] Session folder created ✓")
             
             # Start Arduino DAQ
+            self._log("-"*50)
+            self._log("[Step 2/3] Starting Arduino DAQ...")
             if not self._start_daq():
+                self._log("[Step 2/3] FAILED - DAQ startup failed")
                 return False
+            self._log("[Step 2/3] DAQ started ✓")
             
             # Wait for connection signal
+            self._log("-"*50)
+            self._log("[Step 2b/3] Waiting for DAQ connection...")
             if not self._wait_for_connection():
+                self._log("[Step 2b/3] FAILED - Connection failed")
                 self._cleanup_daq()
                 return False
+            self._log("[Step 2b/3] DAQ connected ✓")
             
             # Start camera
+            self._log("-"*50)
+            self._log("[Step 3/3] Starting camera...")
             if not self._start_camera():
+                self._log("[Step 3/3] FAILED - Camera startup failed")
                 self._cleanup_daq()
                 return False
+            self._log("[Step 3/3] Camera started ✓")
             
             self.is_started = True
-            self._log("Session processes started successfully!")
+            self._log("="*50)
+            self._log("SESSION STARTUP COMPLETE")
+            self._log("="*50)
             return True
             
         except Exception as e:
-            self._log(f"Error starting session: {e}")
+            import traceback
+            self._log(f"[ERROR] Exception during startup: {e}")
+            self._log(f"[ERROR] Traceback: {traceback.format_exc()}")
             self.stop_session()
             return False
     
     def _start_daq(self) -> bool:
         """Start the Arduino DAQ process."""
+        self._log("[DAQ] Checking configuration...")
+        
         if not self.config.serial_listen_script:
-            self._log("Warning: No serial listen script configured, skipping DAQ")
+            self._log("[DAQ] Warning: No serial listen script configured, skipping DAQ")
             return True
         
+        self._log(f"[DAQ] Script path: {self.config.serial_listen_script}")
         if not os.path.exists(self.config.serial_listen_script):
             error_msg = f"Serial listen script not found: {self.config.serial_listen_script}"
-            self._log(f"Error: {error_msg}")
+            self._log(f"[DAQ] Error: {error_msg}")
             self.last_error = error_msg
             return False
+        self._log("[DAQ] Script exists ✓")
         
+        self._log(f"[DAQ] Python path: {self.config.python_path}")
         if not os.path.exists(self.config.python_path):
             error_msg = f"Python executable not found: {self.config.python_path}"
-            self._log(f"Error: {error_msg}")
+            self._log(f"[DAQ] Error: {error_msg}")
             self.last_error = error_msg
             return False
+        self._log("[DAQ] Python exists ✓")
         
-        self._log("Starting Arduino DAQ process...")
+        self._log("[DAQ] Building command...")
         
         command = [
             self.config.python_path,
@@ -197,24 +228,30 @@ class SessionManager:
             "--rig", str(self.config.rig_number),
         ]
         
+        self._log(f"[DAQ] Command: {' '.join(command)}")
+        self._log("[DAQ] Launching subprocess...")
+        
         try:
+            # Note: Don't use stdout/stderr PIPE with CREATE_NEW_CONSOLE
+            # The new console handles the output - piping can cause hangs
             self.daq_process = subprocess.Popen(
                 command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NEW_CONSOLE,  # Windows: new console window
             )
-            self._log(f"Arduino DAQ process started (PID: {self.daq_process.pid})")
+            self._log(f"[DAQ] Process started (PID: {self.daq_process.pid}) ✓")
             return True
         except Exception as e:
             error_msg = f"Failed to start Arduino DAQ: {e}"
-            self._log(error_msg)
+            self._log(f"[DAQ] Error: {error_msg}")
             self.last_error = error_msg
             return False
     
     def _wait_for_connection(self) -> bool:
         """Wait for the Arduino connection signal file."""
+        self._log("[Connection] Starting connection wait...")
+        
         if self.daq_process is None:
+            self._log("[Connection] No DAQ process, skipping wait")
             return True  # DAQ not configured, skip
         
         signal_file = os.path.join(
@@ -222,39 +259,59 @@ class SessionManager:
             f"rig_{self.config.rig_number}_arduino_connected.signal"
         )
         
-        self._log(f"Waiting for Arduino connection signal...")
-        self._log(f"Signal file: {signal_file}")
+        self._log(f"[Connection] Waiting for signal file...")
+        self._log(f"[Connection] Path: {signal_file}")
+        self._log(f"[Connection] Timeout: {self.config.connection_timeout}s")
         
         start_time = time.time()
+        last_status_time = start_time
+        
         while time.time() - start_time < self.config.connection_timeout:
+            elapsed = time.time() - start_time
+            
+            # Log progress every 3 seconds
+            if time.time() - last_status_time >= 3.0:
+                self._log(f"[Connection] Still waiting... ({elapsed:.0f}s / {self.config.connection_timeout}s)")
+                # Check if DAQ process is still alive
+                poll_result = self.daq_process.poll()
+                if poll_result is None:
+                    self._log(f"[Connection] DAQ process still running (PID: {self.daq_process.pid})")
+                last_status_time = time.time()
+            
             # Check if signal file exists
             if os.path.exists(signal_file):
-                elapsed = time.time() - start_time
-                self._log(f"Arduino connected! ({elapsed:.1f}s)")
+                self._log(f"[Connection] Signal file found! ({elapsed:.1f}s) ✓")
                 return True
             
             # Check if DAQ process died
             if self.daq_process.poll() is not None:
-                # Try to get stderr output for more details
-                stderr_output = ""
-                try:
-                    _, stderr = self.daq_process.communicate(timeout=1)
-                    stderr_output = stderr.decode('utf-8', errors='ignore').strip()
-                except:
-                    pass
+                self._log(f"[Connection] DAQ process has terminated!")
+                # Note: Can't get stdout/stderr since we're using CREATE_NEW_CONSOLE
+                # Check the DAQ console window for error messages
                 
-                error_msg = f"DAQ process terminated unexpectedly (exit code: {self.daq_process.returncode})"
-                if stderr_output:
-                    error_msg += f"\n\nProcess output:\n{stderr_output[:500]}"
+                error_msg = f"DAQ process terminated unexpectedly (exit code: {self.daq_process.returncode}). Check the DAQ console window for details."
                 
-                self._log(f"Error: {error_msg}")
+                self._log(f"[Connection] Error: {error_msg}")
                 self.last_error = error_msg
                 return False
             
             time.sleep(0.5)
         
+        # Timeout reached - gather diagnostic info
+        self._log(f"[Connection] TIMEOUT after {self.config.connection_timeout}s")
+        self._log(f"[Connection] Checking folder contents...")
+        
+        try:
+            if os.path.exists(self.config.session_folder):
+                contents = os.listdir(self.config.session_folder)
+                self._log(f"[Connection] Folder contains: {contents}")
+            else:
+                self._log(f"[Connection] Session folder does not exist!")
+        except Exception as e:
+            self._log(f"[Connection] Could not list folder: {e}")
+        
         error_msg = f"Timeout waiting for Arduino connection ({self.config.connection_timeout}s)\n\nExpected signal file: {signal_file}"
-        self._log(error_msg)
+        self._log(f"[Connection] {error_msg}")
         self.last_error = error_msg
         return False
     
