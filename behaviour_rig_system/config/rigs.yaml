@@ -62,7 +62,7 @@ processes:
   python_path: "C:\\Users\\Stefan R Coltman\\.conda\\envs\\behaviour_analysis\\python.exe"
   
   # Arduino DAQ / serial listen script
-  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\hex_behav_control\\peripherals\\serial_listen_mega_fast.py"
+  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\behaviour_rig_system\\daq\\serial_listen_mega_fast.py"
   
   # Camera executable
   camera_executable: "C:\\Behaviour\\Camera\\x64\\Release\\Camera.exe"
