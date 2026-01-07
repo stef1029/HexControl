@@ -435,7 +435,7 @@ class BehaviourRigLink:
         consume: bool = True,
         auto_acknowledge: bool = True,
         drain_first: bool = True
-    ) -> SensorEvent:
+    ) -> Optional[SensorEvent]:
         """
         Waits for a sensor event to arrive.
 
@@ -451,10 +451,9 @@ class BehaviourRigLink:
                          waiting, ensuring only fresh events are returned.
 
         Returns:
-            The matching SensorEvent.
+            The matching SensorEvent, or None if timeout expires.
 
         Raises:
-            TimeoutError: If no matching event arrives within the timeout.
             RuntimeError: If the receive thread encountered an error.
         """
         # Drain stale events if requested (default behaviour)
@@ -501,7 +500,7 @@ class BehaviourRigLink:
                 if deadline is not None:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise TimeoutError("Timed out waiting for sensor event")
+                        return None
                     self._sensor_event_signal.wait(timeout=remaining)
                 else:
                     self._sensor_event_signal.wait()

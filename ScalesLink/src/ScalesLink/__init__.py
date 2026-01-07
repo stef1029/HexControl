@@ -20,10 +20,16 @@ For subprocess architecture (recommended for behaviour sessions):
     client = ScalesClient(tcp_port=5100)
     client.connect()
     weight = client.get_weight()
+
+For zeroing scales before sessions:
+    from ScalesLink import zero_scales, zero_all_scales
+    
+    success, message = zero_scales("COM10")
 """
 
 from .scales import Scales, ScalesConfig, run_calibration
 from .client import ScalesClient, quick_get_weight
+from .zero import zero_scales, zero_all_scales, ZeroResult, get_summary
 
 __all__ = [
     # Direct hardware access
@@ -33,4 +39,9 @@ __all__ = [
     # Client for subprocess architecture
     "ScalesClient",
     "quick_get_weight",
+    # Zeroing utilities
+    "zero_scales",
+    "zero_all_scales",
+    "ZeroResult",
+    "get_summary",
 ]

@@ -113,7 +113,7 @@ class RigLauncher:
     def __init__(self, config_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("400x380")
+        self.root.geometry("400x420")
         self.root.resizable(False, False)
         
         # Store config path for passing to child windows
@@ -216,6 +216,16 @@ class RigLauncher:
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
         
+        # Zero Scales button
+        zero_btn = ttk.Button(
+            self.root,
+            text="Zero All Scales",
+            command=self._on_zero_scales_click,
+            width=20,
+        )
+        zero_btn.pack(pady=(5, 10))
+        self._zero_btn = zero_btn
+        
         # Status label at bottom
         self.status_var = tk.StringVar(value="Ready")
         status_label = ttk.Label(
@@ -224,6 +234,40 @@ class RigLauncher:
             font=("Helvetica", 9)
         )
         status_label.pack(pady=15)
+    
+    def _on_zero_scales_click(self) -> None:
+        """Handle zero scales button click."""
+        from ScalesLink import zero_all_scales, get_summary
+        
+        # Disable button
+        self._zero_btn.configure(state="disabled")
+        self.status_var.set("Zeroing scales...")
+        self.root.update()
+        
+        def do_zeroing():
+            def progress_callback(rig_name: str, message: str):
+                # Update status in main thread
+                self.root.after(0, lambda: self.status_var.set(f"{rig_name}: {message}"))
+            
+            results = zero_all_scales(self.rigs, callback=progress_callback)
+            summary = get_summary(results)
+            
+            # Show results in main thread
+            self.root.after(0, lambda: self._show_zero_results(summary, results))
+        
+        thread = threading.Thread(target=do_zeroing, daemon=True)
+        thread.start()
+    
+    def _show_zero_results(self, summary: str, results) -> None:
+        """Show zeroing results and re-enable button."""
+        self._zero_btn.configure(state="normal")
+        
+        successful = sum(1 for r in results if r.success)
+        total = len([r for r in results if r.message != "No scales configured"])
+        
+        self.status_var.set(f"Zeroing complete: {successful}/{total} successful")
+        
+        messagebox.showinfo("Scales Zeroing Results", summary)
     
     def _on_rig_click(self, rig: dict) -> None:
         """Handle rig button click."""
