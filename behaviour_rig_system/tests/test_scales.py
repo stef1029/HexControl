@@ -1,11 +1,12 @@
 """
-Scales System Test Script
-=========================
+Scales Server-Client System Test
+================================
 
-Tests the scales system by:
-1. Reading weights for a few seconds
-2. Detecting threshold crossing events
-3. Saving all data to CSV and verifying the file
+Tests the scales system using the server-client architecture (as used by the main GUI):
+1. Starts the ScalesLink server subprocess
+2. Connects via ScalesClient and reads weights
+3. Shuts down the server gracefully
+4. Verifies the saved CSV data
 
 Usage:
     python -m tests.test_scales
@@ -16,6 +17,8 @@ Requirements:
     - Correct COM port and baud rate configured in rigs.yaml
 """
 
+import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +31,7 @@ import yaml
 # =============================================================================
 
 RIG = 1
-THRESHOLD = 15.0  # grams - for event detection
+TEST_DURATION = 10  # seconds to read weights
 TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
 
 # =============================================================================
@@ -57,88 +60,152 @@ def load_scales_config(rig: int) -> dict:
 
 
 def main():
-    from ScalesLink import Scales, ScalesConfig
+    from ScalesLink import ScalesClient
     
     print("=" * 60)
-    print("  Scales System Test")
+    print("  Scales Server-Client System Test")
     print("=" * 60)
     
-    # Setup
+    # Setup paths
     TEST_SAVE_PATH.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
     log_file = TEST_SAVE_PATH / f"scales_test_{timestamp}.csv"
     
     print(f"  Rig: {RIG}")
-    print(f"  Threshold: {THRESHOLD}g")
+    print(f"  Test duration: {TEST_DURATION}s")
     print(f"  Save file: {log_file}")
     print()
     
-    # Load config
+    # Load config from rigs.yaml
     print("Loading scales config from rigs.yaml...")
     scales_yaml = load_scales_config(RIG)
-    print(f"  COM Port: {scales_yaml['com_port']}")
-    print(f"  Baud Rate: {scales_yaml['baud_rate']}")
     
-    config = ScalesConfig.from_yaml_dict(scales_yaml)
+    com_port = scales_yaml["com_port"]
+    baud_rate = scales_yaml.get("baud_rate", 115200)
+    tcp_port = scales_yaml.get("tcp_port", 5100)
+    is_wired = scales_yaml.get("is_wired", False)
+    calibration_scale = scales_yaml.get("calibration_scale", 1.0)
+    calibration_intercept = scales_yaml.get("calibration_intercept", 0.0)
     
-    # Start scales with logging
-    print("\nStarting scales (with CSV logging)...")
-    scales = Scales(config, log_path=log_file)
-    scales.start()
+    print(f"  COM Port: {com_port}")
+    print(f"  Baud Rate: {baud_rate}")
+    print(f"  TCP Port: {tcp_port}")
+    print(f"  Is Wired: {is_wired}")
+    print(f"  Calibration: scale={calibration_scale}, intercept={calibration_intercept}")
     
-    time.sleep(2)  # Let scales stabilise
-    
-    # --- Part 1: Read weights ---
+    # --- Part 1: Start server subprocess ---
     print("\n" + "-" * 60)
-    print("PART 1: Reading weights")
+    print("PART 1: Starting scales server subprocess")
     print("-" * 60)
     
-    for i in range(10):
-        weight = scales.get_weight()
-        if weight is not None:
-            print(f"  [{i+1}/10] Weight: {weight:.2f}g")
-        else:
-            print(f"  [{i+1}/10] Weight: None")
-        time.sleep(0.5)
+    command = [
+        sys.executable,
+        "-m", "ScalesLink.server",
+        "--port", com_port,
+        "--baud", str(baud_rate),
+        "--tcp", str(tcp_port),
+        "--log", str(log_file),
+        "--scale", str(calibration_scale),
+        "--intercept", str(calibration_intercept),
+    ]
     
-    # --- Part 2: Threshold events ---
-    print("\n" + "-" * 60)
-    print("PART 2: Threshold event detection")
-    print("-" * 60)
-    print(f"  Threshold: {THRESHOLD}g")
-    print(f"  Detecting crossings for 20 seconds...")
-    print(f"  (Add/remove weight to trigger events, or wait)")
+    if is_wired:
+        command.append("--wired")
+    
+    print(f"  Command: {' '.join(command)}")
     print()
     
-    current_weight = scales.get_weight()
-    above_threshold = current_weight is not None and current_weight > THRESHOLD
-    last_above = above_threshold
-    events = []
+    server_process = subprocess.Popen(
+        command,
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+    )
+    print(f"  ✓ Server started (PID: {server_process.pid})")
     
-    start_time = time.time()
-    while time.time() - start_time < 20:
-        weight = scales.get_weight()
-        if weight is not None:
-            now_above = weight > THRESHOLD
-            
-            if now_above != last_above:
-                direction = "UP" if now_above else "DOWN"
-                event_time = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                events.append({"time": event_time, "direction": direction, "weight": weight})
-                print(f"  ✓ [{event_time}] Crossed {direction} - {weight:.2f}g")
-                last_above = now_above
-        
-        time.sleep(0.05)
+    # Wait for server to initialise
+    print("  Waiting for server to initialise...")
+    time.sleep(3)
     
-    print(f"\n  Events detected: {len(events)}")
+    # Check process is still running
+    if server_process.poll() is not None:
+        print(f"  ✗ Server terminated unexpectedly (exit code: {server_process.returncode})")
+        return
     
-    # --- Stop scales ---
-    print("\nStopping scales...")
-    scales.stop()
+    print("  ✓ Server is running")
     
-    # --- Part 3: Verify saved data ---
+    # --- Part 2: Connect client ---
     print("\n" + "-" * 60)
-    print("PART 3: Verifying saved data")
+    print("PART 2: Connecting client")
+    print("-" * 60)
+    
+    client = ScalesClient(tcp_port=tcp_port)
+    
+    # Retry ping a few times
+    connected = False
+    for attempt in range(5):
+        if client.ping(timeout=2.0):
+            connected = True
+            break
+        print(f"  Ping attempt {attempt + 1}/5 failed, retrying...")
+        time.sleep(1)
+    
+    if not connected:
+        print("  ✗ Failed to connect to server")
+        server_process.terminate()
+        return
+    
+    print("  ✓ Client connected (ping successful)")
+    
+    # --- Part 3: Read weights ---
+    print("\n" + "-" * 60)
+    print(f"PART 3: Reading weights for {TEST_DURATION} seconds")
+    print("-" * 60)
+    
+    readings = []
+    start_time = time.time()
+    read_count = 0
+    
+    while time.time() - start_time < TEST_DURATION:
+        weight = client.get_weight()
+        read_count += 1
+        
+        if weight is not None:
+            readings.append(weight)
+            elapsed = time.time() - start_time
+            print(f"  [{elapsed:5.1f}s] Weight: {weight:.2f}g")
+        
+        time.sleep(0.5)
+    
+    print()
+    print(f"  Total requests: {read_count}")
+    print(f"  Successful readings: {len(readings)}")
+    if readings:
+        print(f"  Weight range: {min(readings):.2f}g - {max(readings):.2f}g")
+        print(f"  Average weight: {sum(readings)/len(readings):.2f}g")
+    
+    # --- Part 4: Shutdown server ---
+    print("\n" + "-" * 60)
+    print("PART 4: Shutting down server")
+    print("-" * 60)
+    
+    if client.shutdown():
+        print("  ✓ Shutdown command acknowledged")
+    else:
+        print("  ✗ Shutdown command failed")
+    
+    # Wait for process to terminate
+    time.sleep(2)
+    
+    if server_process.poll() is not None:
+        print(f"  ✓ Server process terminated (exit code: {server_process.returncode})")
+    else:
+        print("  ! Server still running, terminating...")
+        server_process.terminate()
+        server_process.wait(timeout=5)
+        print("  ✓ Server terminated")
+    
+    # --- Part 5: Verify saved data ---
+    print("\n" + "-" * 60)
+    print("PART 5: Verifying saved data")
     print("-" * 60)
     
     if log_file.exists():
@@ -148,13 +215,19 @@ def main():
         print(f"  ✓ File created: {log_file.name}")
         print(f"  ✓ File size: {log_file.stat().st_size} bytes")
         print(f"  ✓ Total lines: {len(lines)} ({len(lines)-1} data rows)")
-        print(f"\n  Header: {lines[0].strip()}")
-        print(f"\n  First 3 data rows:")
-        for line in lines[1:4]:
-            print(f"    {line.strip()}")
-        print(f"\n  Last 3 data rows:")
-        for line in lines[-3:]:
-            print(f"    {line.strip()}")
+        
+        if lines:
+            print(f"\n  Header: {lines[0].strip()}")
+            
+            if len(lines) > 1:
+                print(f"\n  First 3 data rows:")
+                for line in lines[1:4]:
+                    print(f"    {line.strip()}")
+                
+                if len(lines) > 4:
+                    print(f"\n  Last 3 data rows:")
+                    for line in lines[-3:]:
+                        print(f"    {line.strip()}")
     else:
         print(f"  ✗ File not found: {log_file}")
     
@@ -162,6 +235,8 @@ def main():
     print("\n" + "=" * 60)
     print("  Test Complete!")
     print("=" * 60)
+    print(f"  Server-client communication: {'✓ OK' if connected else '✗ FAILED'}")
+    print(f"  Weight readings: {len(readings)}/{read_count}")
     print(f"  Data saved to: {log_file}")
 
 

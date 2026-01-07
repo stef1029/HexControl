@@ -428,8 +428,9 @@ class PeripheralManager:
         
         self._log(f"Starting scales on {scales_cfg.com_port} (TCP port {scales_cfg.tcp_port})...")
         
-        # Build log path in session folder
-        log_path = os.path.join(self.config.session_folder, "scales.csv")
+        # Build log path in session folder with datetime and mouse name
+        log_filename = f"{self.config.date_time}_{self.config.mouse_id}_scales_data.csv"
+        log_path = os.path.join(self.config.session_folder, log_filename)
         
         # Build command to run scales server
         command = [

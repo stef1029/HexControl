@@ -72,8 +72,18 @@ class RunningMode(ttk.Frame):
         self._accuracy_label = ttk.Label(stats_row, text="--", font=("Consolas", 11, "bold"), foreground="blue")
         self._accuracy_label.pack(side="left", padx=(5, 15))
         
-        # Rolling accuracy (last 20)
-        ttk.Label(stats_row, text="Last 20:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        # Rolling accuracy with selectable window
+        ttk.Label(stats_row, text="Last", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        self._rolling_n_var = tk.StringVar(value="20")
+        self._rolling_n_combo = ttk.Combobox(
+            stats_row, 
+            textvariable=self._rolling_n_var,
+            values=["5", "10", "20", "50", "100"],
+            width=4,
+            state="readonly"
+        )
+        self._rolling_n_combo.pack(side="left", padx=(3, 3))
+        ttk.Label(stats_row, text=":", font=("TkDefaultFont", 9, "bold")).pack(side="left")
         self._rolling_label = ttk.Label(stats_row, text="--", font=("Consolas", 11), foreground="darkblue")
         self._rolling_label.pack(side="left", padx=(5, 15))
         
@@ -195,9 +205,13 @@ class RunningMode(ttk.Frame):
         else:
             self._accuracy_label.config(text="--", foreground="blue")
         
-        # Rolling accuracy (last 20)
+        # Rolling accuracy (last N trials, user-selectable)
         if tracker.total_trials > 0:
-            rolling = tracker.rolling_accuracy(20)
+            try:
+                n = int(self._rolling_n_var.get())
+            except ValueError:
+                n = 20
+            rolling = tracker.rolling_accuracy(n)
             self._rolling_label.config(text=f"{rolling:.0f}%")
         else:
             self._rolling_label.config(text="--")

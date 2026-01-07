@@ -111,7 +111,7 @@ class ScalesServer:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
             self._log_file = open(self._log_path, 'w', newline='')
             self._csv_writer = csv.writer(self._log_file)
-            self._csv_writer.writerow(['timestamp_s', 'weight_g'])
+            self._csv_writer.writerow(['timestamp_s', 'weight_g', 'message_id'])
             self._log_start_time = time.time()
             print(f"[ScalesServer] Logging to {self._log_path}")
         
@@ -222,9 +222,11 @@ class ScalesServer:
         if weight == self._last_logged_weight:
             return
         
+        message_id = self._scales.get_message_id()
+        
         with self._log_lock:
             timestamp = time.time() - self._log_start_time
-            self._csv_writer.writerow([f"{timestamp:.6f}", f"{weight:.4f}"])
+            self._csv_writer.writerow([f"{timestamp:.6f}", f"{weight:.4f}", message_id])
             self._log_file.flush()
             self._last_logged_weight = weight
     

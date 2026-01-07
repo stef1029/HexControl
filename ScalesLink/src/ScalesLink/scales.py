@@ -234,6 +234,16 @@ class Scales:
             age = time.monotonic() - self._last_update_time
             return self._current_weight, age
 
+    def get_message_id(self) -> Optional[int]:
+        """
+        Returns the most recent message ID (for wired scales).
+
+        Returns:
+            The message ID, or None if not available (wireless scales).
+        """
+        with self._weight_lock:
+            return self._message_id
+
     def clear(self) -> None:
         """
         Clears the current weight reading.
