@@ -17,24 +17,48 @@ rigs:
     enabled: true
     description: "Main behaviour rig"
     camera_serial: "24243513"
+    scales:
+      com_port: "COM12"
+      baud_rate: 9600
+      is_wired: True
+      calibration_scale: 0.22375971500351627
+      calibration_intercept: -5617.39
 
   - name: "Rig 2"
     serial_port: "COM8"
     enabled: true
     description: "Secondary rig"
     camera_serial: "20530175"
+    scales:
+      com_port: "COM5"
+      baud_rate: 9600
+      is_wired: true
+      calibration_scale: 0.27978473586250524
+      calibration_intercept: 475.86
 
   - name: "Rig 3"
     serial_port: "COM9"
     enabled: true
     description: "Third rig"
     camera_serial: "24174008"
+    scales:
+      com_port: "COM10"
+      baud_rate: 9600
+      is_wired: true
+      calibration_scale: 0.1725046376146776
+      calibration_intercept: -1327.66
 
   - name: "Rig 4"
     serial_port: "COM10"
     enabled: true
     description: "Fourth rig"
     camera_serial: "24243513"
+    scales:
+      com_port: "COM12"
+      baud_rate: 9600
+      is_wired: true
+      calibration_scale: 0.16461420192565693
+      calibration_intercept: -616.28
 
 
 # Global settings
@@ -92,8 +116,8 @@ processes:
   # Python executable path
   python_path: "C:\\Users\\Stefan R Coltman\\.conda\\envs\\behaviour_analysis\\python.exe"
   
-  # Arduino DAQ / serial listen script
-  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\behaviour_rig_system\\daq\\serial_listen_mega_fast.py"
+  # Arduino DAQ / serial listen script (now in DAQLink library)
+  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\DAQLink\\src\\DAQLink\\serial_listen.py"
   
   # Camera executable
   camera_executable: "C:\\Dev\\projects\\Camera\\x64\\Release\\Camera_to_binary.exe"

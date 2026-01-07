@@ -299,6 +299,17 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
+            # Start scales (always)
+            self._update_startup_status("Starting scales...")
+            if not self.peripheral_manager._start_scales():
+                error_msg = self.peripheral_manager.last_error or "Failed to start scales"
+                self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
+                return
+            
+            if self._startup_cancelled:
+                self._on_startup_cancelled()
+                return
+            
             # Connect to rig
             self._update_startup_status("Connecting to behaviour rig...")
             self._serial = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
@@ -320,12 +331,25 @@ class RigWindow:
             
             self.peripheral_manager.is_started = True
             
+            # Extract rig number from rig name
+            try:
+                rig_number = int(self.rig_name.split()[-1])
+            except (ValueError, IndexError):
+                rig_number = 1
+            
             # Create protocol
             self._update_startup_status("Creating protocol...")
             self.current_protocol = config["protocol_class"](
                 parameters=config["parameters"],
                 link=self.link,
             )
+            # Set rig number so protocol can access it
+            self.current_protocol.rig_number = rig_number
+            
+            # Pass scales client to protocol (always available)
+            if self.peripheral_manager.scales_client is not None:
+                self.current_protocol._scales_client = self.peripheral_manager.scales_client
+            
             self.current_protocol.add_event_listener(self._on_protocol_event)
             
             self._update_startup_status("Startup complete!")

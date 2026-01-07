@@ -34,7 +34,7 @@ class Scales():
                 self.intercept = -1327.66
                 baudrate = 9600
             elif rig == 4:
-                self.port = "COM11"
+                self.port = "COM12"
                 self.scale = float(0.16461420192565693)
                 self.intercept = -616.28
                 baudrate = 9600

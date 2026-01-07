@@ -113,7 +113,7 @@ class RigLauncher:
     def __init__(self, config_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("400x350")
+        self.root.geometry("400x380")
         self.root.resizable(False, False)
         
         # Store config path for passing to child windows
@@ -128,20 +128,52 @@ class RigLauncher:
         # Track buttons for enabling/disabling
         self.rig_buttons: dict[str, ttk.Button] = {}
         
+        # Clock update ID
+        self._clock_update_id: str | None = None
+        
         self._create_widgets()
+        self._update_clock()
         
         # Handle main window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
+    def _update_clock(self) -> None:
+        """Update the clock display."""
+        from datetime import datetime
+        now = datetime.now()
+        self._clock_var.set(now.strftime("%H:%M"))
+        self._date_var.set(now.strftime("%A, %d %B %Y"))
+        self._clock_update_id = self.root.after(1000, self._update_clock)
+    
     def _create_widgets(self) -> None:
         """Create the launcher widgets."""
+        # Clock and date at top
+        clock_frame = ttk.Frame(self.root)
+        clock_frame.pack(pady=(15, 5))
+        
+        self._clock_var = tk.StringVar(value="--:--")
+        clock_label = ttk.Label(
+            clock_frame,
+            textvariable=self._clock_var,
+            font=("Helvetica", 24, "bold")
+        )
+        clock_label.pack()
+        
+        self._date_var = tk.StringVar(value="")
+        date_label = ttk.Label(
+            clock_frame,
+            textvariable=self._date_var,
+            font=("Helvetica", 10)
+        )
+        date_label.pack()
+        
         # Title
         title_label = ttk.Label(
             self.root,
             text="Behaviour Rig System",
             font=("Helvetica", 16, "bold")
         )
-        title_label.pack(pady=20)
+        title_label.pack(pady=(15, 5))
         
         # Instructions
         instructions = ttk.Label(
@@ -307,6 +339,24 @@ class RigLauncher:
     
     def _on_close(self) -> None:
         """Handle launcher window close."""
+        # Warn if rig windows are still open
+        if self.open_windows:
+            open_rigs = ", ".join(self.open_windows.keys())
+            result = messagebox.askyesno(
+                "Confirm Close",
+                f"The following rig windows are still open:\n\n{open_rigs}\n\n"
+                "Closing the launcher will close all rig windows.\n"
+                "If a session is running, it may be interrupted.\n\n"
+                "Are you sure you want to close?",
+                icon="warning"
+            )
+            if not result:
+                return
+        
+        # Cancel clock update
+        if self._clock_update_id:
+            self.root.after_cancel(self._clock_update_id)
+        
         # Close all open rig windows
         for rig_name in list(self.open_windows.keys()):
             window, _ = self.open_windows[rig_name]

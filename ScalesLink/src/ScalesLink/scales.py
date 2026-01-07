@@ -38,46 +38,33 @@ class ScalesConfig:
         baud_rate: Serial baud rate.
         scale: Calibration scale factor (gradient).
         intercept: Calibration intercept (zero offset).
-        is_wired: True for wired scales (rigs 3, 4), False for wireless (rigs 1, 2).
+        is_wired: True for wired scales, False for wireless.
     """
     port: str
     baud_rate: int
-    scale: float
-    intercept: float
-    is_wired: bool
+    scale: float = 1.0
+    intercept: float = 0.0
+    is_wired: bool = False
 
-
-# Predefined configurations for each rig
-RIG_CONFIGS = {
-    1: ScalesConfig(
-        port="COM12",
-        baud_rate=115200,
-        scale=0.22375971500351627,
-        intercept=-5617.39,
-        is_wired=False,
-    ),
-    2: ScalesConfig(
-        port="COM5",
-        baud_rate=115200,
-        scale=0.27978473586250524,
-        intercept=475.86,
-        is_wired=False,
-    ),
-    3: ScalesConfig(
-        port="COM10",
-        baud_rate=9600,
-        scale=0.1725046376146776,
-        intercept=-1327.66,
-        is_wired=True,
-    ),
-    4: ScalesConfig(
-        port="COM8",
-        baud_rate=9600,
-        scale=0.16461420192565693,
-        intercept=-616.28,
-        is_wired=True,
-    ),
-}
+    @classmethod
+    def from_yaml_dict(cls, config_dict: dict) -> "ScalesConfig":
+        """
+        Create a ScalesConfig from a YAML configuration dictionary.
+        
+        Expected keys:
+            - com_port: Serial port name
+            - baud_rate: Serial baud rate
+            - is_wired: (optional) Whether scales are wired type
+            - calibration_scale: (optional) Scale factor for calibration
+            - calibration_intercept: (optional) Intercept for calibration
+        """
+        return cls(
+            port=config_dict["com_port"],
+            baud_rate=config_dict["baud_rate"],
+            scale=config_dict.get("calibration_scale", 1.0),
+            intercept=config_dict.get("calibration_intercept", 0.0),
+            is_wired=config_dict.get("is_wired", False),
+        )
 
 
 # =============================================================================
@@ -105,26 +92,17 @@ class Scales:
 
     def __init__(
         self,
-        rig: Optional[int] = None,
-        config: Optional[ScalesConfig] = None,
+        config: ScalesConfig,
         log_path: Optional[str | Path] = None,
     ):
         """
         Initialises the scales interface.
 
         Args:
-            rig: Rig number (1-4) for predefined configuration.
-            config: Custom configuration (takes precedence over rig).
+            config: ScalesConfig with port, baud_rate, and calibration settings.
             log_path: Optional path for CSV logging of all readings.
         """
-        if config is not None:
-            self._config = config
-        elif rig is not None:
-            if rig not in RIG_CONFIGS:
-                raise ValueError(f"Unknown rig number: {rig}. Valid options: 1, 2, 3, 4")
-            self._config = RIG_CONFIGS[rig]
-        else:
-            raise ValueError("Must provide either 'rig' or 'config' parameter")
+        self._config = config
 
         self._log_path = Path(log_path) if log_path is not None else None
 
@@ -148,6 +126,7 @@ class Scales:
         self._log_file = None
         self._csv_writer = None
         self._log_lock = threading.Lock()
+        self._log_start_time: Optional[float] = None
 
     # -------------------------------------------------------------------------
     # Context Manager
@@ -189,7 +168,8 @@ class Scales:
         if self._log_path is not None:
             self._log_file = open(self._log_path, 'w', newline='')
             self._csv_writer = csv.writer(self._log_file)
-            self._csv_writer.writerow(['timestamp', 'weight_g', 'raw_value', 'message_id'])
+            self._csv_writer.writerow(['timestamp_s', 'weight_g', 'message_id'])
+            self._log_start_time = time.time()
 
         # Start background thread
         self._stop_flag.clear()
@@ -386,7 +366,8 @@ class Scales:
         # Log to file
         if self._csv_writer is not None:
             with self._log_lock:
-                self._csv_writer.writerow([timestamp, weight_g, raw_value, message_id])
+                relative_time = timestamp - self._log_start_time
+                self._csv_writer.writerow([f"{relative_time:.4f}", f"{weight_g:.4f}", message_id])
                 self._log_file.flush()
 
 
@@ -488,7 +469,7 @@ def run_calibration(rig: int) -> None:
 
 if __name__ == "__main__":
 
-    rig_num = 1
+    rig_num = 4
 
     calibrate = False
 

@@ -1,18 +1,31 @@
 """
 Peripheral Manager
 
-Handles the startup and shutdown of peripheral processes (DAQ, camera) for behaviour sessions.
+Handles the startup and shutdown of peripheral processes (DAQ, camera, scales) for behaviour sessions.
 """
 
 import os
 import subprocess
+import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
 import yaml
+
+
+@dataclass
+class ScalesProcessConfig:
+    """Configuration for scales subprocess."""
+    enabled: bool = False
+    com_port: str = ""
+    baud_rate: int = 115200
+    is_wired: bool = False
+    calibration_scale: float = 1.0
+    calibration_intercept: float = 0.0
+    tcp_port: int = 5100
 
 
 @dataclass
@@ -38,6 +51,42 @@ class PeripheralConfig:
     camera_fps: int = 30
     camera_window_width: int = 640
     camera_window_height: int = 512
+    
+    # Scales subprocess config
+    scales: Optional[ScalesProcessConfig] = None
+
+
+def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesProcessConfig]:
+    """
+    Load scales configuration from rig config.
+    
+    Args:
+        rig_config: Dict with rig-specific settings (including scales sub-dict)
+        rig_number: Rig number for TCP port assignment
+        
+    Returns:
+        ScalesProcessConfig if scales are configured, None otherwise
+    """
+    scales_yaml = rig_config.get("scales")
+    if not scales_yaml:
+        return None
+    
+    com_port = scales_yaml.get("com_port", "")
+    if not com_port:
+        return None
+    
+    # Assign unique TCP port per rig (5100 + rig_number)
+    tcp_port = 5100 + rig_number
+    
+    return ScalesProcessConfig(
+        enabled=True,
+        com_port=com_port,
+        baud_rate=scales_yaml.get("baud_rate", 115200),
+        is_wired=scales_yaml.get("is_wired", False),
+        calibration_scale=scales_yaml.get("calibration_scale", 1.0),
+        calibration_intercept=scales_yaml.get("calibration_intercept", 0.0),
+        tcp_port=tcp_port,
+    )
 
 
 def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_directory: str = "") -> PeripheralConfig:
@@ -70,6 +119,9 @@ def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_direct
     date_time = datetime.now().strftime("%y%m%d_%H%M%S")
     session_folder = os.path.join(save_directory, f"{date_time}_{mouse_id}")
     
+    # Load scales config
+    scales_config = _load_scales_config(rig_config, rig_number)
+    
     return PeripheralConfig(
         rig_name=rig_name,
         rig_number=rig_number,
@@ -84,12 +136,13 @@ def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_direct
         camera_fps=process_settings.get("camera_fps", 30),
         camera_window_width=process_settings.get("camera_window_width", 640),
         camera_window_height=process_settings.get("camera_window_height", 512),
+        scales=scales_config,
     )
 
 
 class PeripheralManager:
     """
-    Manages the startup and shutdown of peripheral processes (DAQ, camera).
+    Manages the startup and shutdown of peripheral processes (DAQ, camera, scales).
     """
     
     def __init__(
@@ -103,6 +156,10 @@ class PeripheralManager:
         # Process handles
         self.daq_process: Optional[subprocess.Popen] = None
         self.camera_process: Optional[subprocess.Popen] = None
+        self.scales_process: Optional[subprocess.Popen] = None
+        
+        # Scales client (for protocols to use)
+        self.scales_client = None  # ScalesClient instance
         
         # State
         self.is_started = False
@@ -142,6 +199,7 @@ class PeripheralManager:
         """Stop all peripheral processes in the correct order."""
         self._log("Stopping peripherals...")
         
+        self._stop_scales()
         self._stop_camera_gracefully()
         self._create_daq_stop_signal()
         self._cleanup_daq()
@@ -348,3 +406,137 @@ class PeripheralManager:
                     os.remove(path)
                 except Exception:
                     pass
+
+    # -------------------------------------------------------------------------
+    # Scales Subprocess Management
+    # -------------------------------------------------------------------------
+
+    def _start_scales(self) -> bool:
+        """
+        Start the scales server subprocess.
+        
+        Spawns a subprocess running the ScalesLink server, then connects
+        the client to verify communication.
+        
+        Returns:
+            True if scales started successfully, False otherwise.
+        """
+        scales_cfg = self.config.scales
+        if scales_cfg is None or not scales_cfg.enabled:
+            self._log("No scales configured for this rig")
+            return True  # Not an error, just no scales
+        
+        self._log(f"Starting scales on {scales_cfg.com_port} (TCP port {scales_cfg.tcp_port})...")
+        
+        # Build log path in session folder
+        log_path = os.path.join(self.config.session_folder, "scales.csv")
+        
+        # Build command to run scales server
+        command = [
+            sys.executable,  # Use same Python interpreter
+            "-m", "ScalesLink.server",
+            "--port", scales_cfg.com_port,
+            "--baud", str(scales_cfg.baud_rate),
+            "--tcp", str(scales_cfg.tcp_port),
+            "--log", log_path,
+            "--scale", str(scales_cfg.calibration_scale),
+            "--intercept", str(scales_cfg.calibration_intercept),
+        ]
+        
+        if scales_cfg.is_wired:
+            command.append("--wired")
+        
+        try:
+            self.scales_process = subprocess.Popen(
+                command,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+            self._log(f"Scales server started (PID: {self.scales_process.pid})")
+            
+        except Exception as e:
+            self.last_error = f"Failed to start scales server: {e}"
+            self._log(self.last_error)
+            return False
+        
+        # Wait for server to start up
+        time.sleep(3)
+        
+        # Check if process is still running
+        if self.scales_process.poll() is not None:
+            self.last_error = f"Scales server terminated (exit code: {self.scales_process.returncode})"
+            self._log(self.last_error)
+            self.scales_process = None
+            return False
+        
+        # Create client and connect
+        try:
+            from ScalesLink import ScalesClient
+            
+            self.scales_client = ScalesClient(tcp_port=scales_cfg.tcp_port)
+            
+            # Wait for server to be ready (retry ping a few times)
+            for attempt in range(5):
+                if self.scales_client.ping(timeout=2.0):
+                    self._log("Scales server connected")
+                    
+                    # Get initial weight
+                    weight = self.scales_client.get_weight()
+                    if weight is not None:
+                        self._log(f"Initial weight: {weight:.2f}g")
+                    else:
+                        self._log("Scales ready (no initial reading)")
+                    
+                    return True
+                
+                time.sleep(1)
+            
+            self.last_error = "Failed to connect to scales server (timeout)"
+            self._log(self.last_error)
+            self._cleanup_scales()
+            return False
+            
+        except ImportError as e:
+            self.last_error = f"ScalesLink not installed: {e}"
+            self._log(self.last_error)
+            self._cleanup_scales()
+            return False
+        except Exception as e:
+            self.last_error = f"Failed to connect scales client: {e}"
+            self._log(self.last_error)
+            self._cleanup_scales()
+            return False
+
+    def _stop_scales(self) -> None:
+        """Stop the scales server gracefully via shutdown command."""
+        if self.scales_client is not None:
+            try:
+                self._log("Sending shutdown to scales server...")
+                self.scales_client.shutdown()
+            except Exception as e:
+                self._log(f"Error sending shutdown to scales: {e}")
+            finally:
+                self.scales_client = None
+        
+        self._cleanup_scales()
+
+    def _cleanup_scales(self) -> None:
+        """Clean up the scales process if still running."""
+        if self.scales_process is None:
+            return
+        
+        try:
+            # Give it a moment to shut down gracefully
+            self.scales_process.wait(timeout=5)
+            self._log(f"Scales server stopped (exit code: {self.scales_process.returncode})")
+        except subprocess.TimeoutExpired:
+            self._log("Scales server timeout, terminating...")
+            try:
+                self.scales_process.terminate()
+                self.scales_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.scales_process.kill()
+        except Exception as e:
+            self._log(f"Error stopping scales server: {e}")
+        finally:
+            self.scales_process = None
+            self.scales_client = None
