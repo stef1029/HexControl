@@ -37,7 +37,7 @@ PARAMETERS = {
 }
 
 
-def run(link, params, log, check_abort):
+def run(link, params, log, check_abort, scales, perf_tracker):
     """
     Main behaviour loop.
     
@@ -45,6 +45,8 @@ def run(link, params, log, check_abort):
     params: Dict of parameter values
     log: Function to print to GUI log
     check_abort: Returns True if user clicked Stop
+    scales: ScalesClient (not used in this protocol)
+    perf_tracker: PerformanceTracker (not used in this protocol)
     """
     log(f"Starting {params['num_trials']} trials")
     

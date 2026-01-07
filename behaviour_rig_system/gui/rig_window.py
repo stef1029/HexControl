@@ -18,6 +18,7 @@ import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
+from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 
 from .modes import SetupMode, RunningMode, PostSessionMode
@@ -349,6 +350,12 @@ class RigWindow:
             # Pass scales client to protocol (always available)
             if self.peripheral_manager.scales_client is not None:
                 self.current_protocol._scales_client = self.peripheral_manager.scales_client
+            
+            # Create and pass performance tracker
+            self._perf_tracker = PerformanceTracker(
+                on_update=lambda t: self.running_mode.update_performance(t)
+            )
+            self.current_protocol._perf_tracker = self._perf_tracker
             
             self.current_protocol.add_event_listener(self._on_protocol_event)
             

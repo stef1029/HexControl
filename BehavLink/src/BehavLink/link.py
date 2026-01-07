@@ -433,19 +433,22 @@ class BehaviourRigLink:
         port: Optional[int] = None,
         timeout: Optional[float] = None,
         consume: bool = True,
-        auto_acknowledge: bool = True
+        auto_acknowledge: bool = True,
+        drain_first: bool = True
     ) -> SensorEvent:
         """
         Waits for a sensor event to arrive.
 
-        If events are already buffered, returns the most recent matching event
-        immediately. Otherwise, blocks until an event arrives.
+        By default, drains any stale events first, then blocks until a new
+        event arrives. This prevents returning old events from previous trials.
 
         Args:
             port: If specified, only returns events from this port.
             timeout: Maximum time to wait in seconds (None = wait forever).
             consume: If True, removes the event from the buffer after returning.
             auto_acknowledge: If True, automatically acknowledges the event.
+            drain_first: If True (default), clears all buffered events before
+                         waiting, ensuring only fresh events are returned.
 
         Returns:
             The matching SensorEvent.
@@ -454,6 +457,10 @@ class BehaviourRigLink:
             TimeoutError: If no matching event arrives within the timeout.
             RuntimeError: If the receive thread encountered an error.
         """
+        # Drain stale events if requested (default behaviour)
+        if drain_first:
+            self.drain_events()
+        
         deadline = None if timeout is None else (time.monotonic() + timeout)
 
         with self._sensor_event_lock:

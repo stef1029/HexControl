@@ -11,22 +11,23 @@ Creates protocol classes from simple definitions. A protocol file just needs:
         "led_duration": {"default": 1.0, "label": "LED Duration (s)"},
     }
     
-    def run(link, params, log, check_abort, scales):
+    def run(link, params, log, check_abort, scales, perf_tracker):
         '''
         link: BehaviourRigLink - use link.led_set(), link.valve_pulse(), etc.
         params: Dict of parameter values from GUI
         log: Function to print to GUI log
         check_abort: Function that returns True if user clicked Stop
         scales: ScalesClient instance for weight readings (always provided)
+        perf_tracker: PerformanceTracker for recording trial outcomes
         '''
         for trial in range(params["num_trials"]):
             if check_abort():
                 return
-            log(f"Trial {trial + 1}")
-            weight = scales.get_weight()  # Returns grams or None
-            link.led_set(0, 255)
-            time.sleep(params["led_duration"])
-            link.led_set(0, 0)
+            # ... run trial ...
+            if correct:
+                perf_tracker.success()
+            else:
+                perf_tracker.failure()
 """
 
 from typing import Callable, Optional
@@ -82,6 +83,7 @@ def create_protocol_class(name: str, description: str, parameters: dict, run_fun
         """Auto-generated protocol from simple definition."""
         
         _scales_client = None  # Set by rig_window.py
+        _perf_tracker = None  # Set by rig_window.py
         
         @classmethod
         def get_name(cls) -> str:
@@ -128,13 +130,19 @@ def create_protocol_class(name: str, description: str, parameters: dict, run_fun
             else:
                 log("Warning: No scales client available")
             
-            # Run user's function (scales always passed)
+            # Get tracker from protocol instance (set by rig_window.py)
+            perf_tracker = getattr(self, '_perf_tracker', None)
+            if perf_tracker is not None:
+                perf_tracker.reset()  # Start fresh for this session
+            
+            # Run user's function (scales and tracker always passed)
             run_func(
                 self.link,
                 self.parameters,
                 log,
                 self._check_abort,
                 scales,
+                perf_tracker,
             )
     
     return GeneratedProtocol

@@ -3,6 +3,7 @@ Running Mode - Monitor an active session.
 
 Shows:
     - Session summary (protocol, mouse, save path)
+    - Performance stats (accuracy, rolling accuracy)
     - Elapsed timer
     - Status indicator
     - Event log
@@ -12,9 +13,12 @@ Shows:
 import tkinter as tk
 from datetime import datetime
 from tkinter import scrolledtext, ttk
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
 from core.protocol_base import ProtocolEvent, ProtocolStatus
+
+if TYPE_CHECKING:
+    from core.performance_tracker import PerformanceTracker
 
 
 class RunningMode(ttk.Frame):
@@ -49,6 +53,45 @@ class RunningMode(ttk.Frame):
             value_label = ttk.Label(row, text="", font=("TkDefaultFont", 9))
             value_label.pack(side="left", padx=5)
             self._summary_labels[key] = value_label
+        
+        # Performance stats frame
+        perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 5))
+        perf_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Main stats row
+        stats_row = ttk.Frame(perf_frame)
+        stats_row.pack(fill="x", pady=2)
+        
+        # Trials counter
+        ttk.Label(stats_row, text="Trials:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        self._trials_label = ttk.Label(stats_row, text="0", font=("Consolas", 11))
+        self._trials_label.pack(side="left", padx=(5, 15))
+        
+        # Overall accuracy
+        ttk.Label(stats_row, text="Accuracy:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        self._accuracy_label = ttk.Label(stats_row, text="--", font=("Consolas", 11, "bold"), foreground="blue")
+        self._accuracy_label.pack(side="left", padx=(5, 15))
+        
+        # Rolling accuracy (last 20)
+        ttk.Label(stats_row, text="Last 20:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        self._rolling_label = ttk.Label(stats_row, text="--", font=("Consolas", 11), foreground="darkblue")
+        self._rolling_label.pack(side="left", padx=(5, 15))
+        
+        # Breakdown row
+        breakdown_row = ttk.Frame(perf_frame)
+        breakdown_row.pack(fill="x", pady=2)
+        
+        ttk.Label(breakdown_row, text="Correct:", font=("TkDefaultFont", 9)).pack(side="left")
+        self._correct_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="green")
+        self._correct_label.pack(side="left", padx=(5, 15))
+        
+        ttk.Label(breakdown_row, text="Incorrect:", font=("TkDefaultFont", 9)).pack(side="left")
+        self._incorrect_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="red")
+        self._incorrect_label.pack(side="left", padx=(5, 15))
+        
+        ttk.Label(breakdown_row, text="Timeouts:", font=("TkDefaultFont", 9)).pack(side="left")
+        self._timeout_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="gray")
+        self._timeout_label.pack(side="left", padx=(5, 15))
         
         # Timer and status row
         timer_frame = ttk.Frame(self)
@@ -102,9 +145,62 @@ class RunningMode(ttk.Frame):
         self._summary_labels["mouse"].config(text=session_config.get("mouse_id", ""))
         self._summary_labels["save_path"].config(text=session_config.get("save_path", ""))
         
+        # Reset performance stats
+        self._reset_performance_display()
+        
         # Reset timer state
         self._start_time = None
         self._timer_label.config(text="00:00:00")
+    
+    def _reset_performance_display(self) -> None:
+        """Reset all performance stats to initial state."""
+        self._trials_label.config(text="0")
+        self._accuracy_label.config(text="--")
+        self._rolling_label.config(text="--")
+        self._correct_label.config(text="0")
+        self._incorrect_label.config(text="0")
+        self._timeout_label.config(text="0")
+    
+    def update_performance(self, tracker: "PerformanceTracker") -> None:
+        """
+        Update the performance display from a tracker.
+        
+        Called by the tracker's on_update callback.
+        Thread-safe: schedules update on main thread.
+        
+        Args:
+            tracker: The PerformanceTracker instance with current stats.
+        """
+        # Schedule update on main thread (called from protocol thread)
+        self.after(0, lambda: self._update_performance_display(tracker))
+    
+    def _update_performance_display(self, tracker: "PerformanceTracker") -> None:
+        """Actually update the performance display (must be called on main thread)."""
+        self._trials_label.config(text=str(tracker.total_trials))
+        self._correct_label.config(text=str(tracker.successes))
+        self._incorrect_label.config(text=str(tracker.failures))
+        self._timeout_label.config(text=str(tracker.timeouts))
+        
+        # Overall accuracy
+        if tracker.responses > 0:
+            acc = tracker.accuracy
+            self._accuracy_label.config(text=f"{acc:.0f}%")
+            # Color based on performance
+            if acc >= 70:
+                self._accuracy_label.config(foreground="green")
+            elif acc >= 50:
+                self._accuracy_label.config(foreground="orange")
+            else:
+                self._accuracy_label.config(foreground="red")
+        else:
+            self._accuracy_label.config(text="--", foreground="blue")
+        
+        # Rolling accuracy (last 20)
+        if tracker.total_trials > 0:
+            rolling = tracker.rolling_accuracy(20)
+            self._rolling_label.config(text=f"{rolling:.0f}%")
+        else:
+            self._rolling_label.config(text="--")
     
     def deactivate(self) -> dict:
         """
