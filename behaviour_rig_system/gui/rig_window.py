@@ -7,10 +7,12 @@ This is the main window for a single rig, managing transitions between:
     - PostSessionMode: Review completed session
 """
 
+import json
 import threading
 import tkinter as tk
 from datetime import datetime
 from enum import Enum, auto
+from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Optional
 
@@ -250,10 +252,14 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
+            # Check for shared multi-session folder from linked rig launch
+            shared_multi_session = self.rig_config.get("shared_multi_session")
+            
             peripheral_config = load_peripheral_config(
                 self.rig_config,
                 mouse_id=config["mouse_id"],
-                save_directory=config["save_directory"]
+                save_directory=config["save_directory"],
+                shared_multi_session=shared_multi_session
             )
             
             self._session_save_path = peripheral_config.session_folder
@@ -331,6 +337,10 @@ class RigWindow:
                 return
             
             self.peripheral_manager.is_started = True
+
+            # Persist session metadata (parameters, selections, rig info)
+            self._update_startup_status("Writing session metadata...")
+            self._write_session_metadata(config, peripheral_config)
             
             # Extract rig number from rig name
             try:
@@ -568,6 +578,55 @@ class RigWindow:
         """Start the application main loop."""
         if self.parent is None:
             self.root.mainloop()
+
+    # =========================================================================
+    # Metadata
+    # =========================================================================
+
+    def _write_session_metadata(self, session_config: dict, peripheral_config) -> None:
+        """Save session setup details to a metadata JSON in the session folder."""
+        try:
+            # Create multi-session folder first (parent folder with just datetime)
+            multi_session_folder = Path(peripheral_config.multi_session_folder)
+            multi_session_folder.mkdir(parents=True, exist_ok=True)
+            
+            # Create individual session folder inside multi-session folder
+            session_folder = Path(peripheral_config.session_folder)
+            session_folder.mkdir(parents=True, exist_ok=True)
+            session_id = session_folder.name
+
+            metadata_path = session_folder / f"{session_id}-metadata.json"
+
+            metadata = {
+                "session_id": session_id,
+                "mouse_id": session_config.get("mouse_id", ""),
+                "protocol_name": session_config.get("protocol_name", ""),
+                "protocol_parameters": session_config.get("parameters", {}),
+                "save_directory": session_config.get("save_directory", ""),
+                "multi_session_folder": str(multi_session_folder),
+                "session_folder": str(session_folder),
+                "start_timestamp": peripheral_config.date_time,
+                "rig": {
+                    "name": peripheral_config.rig_name,
+                    "number": peripheral_config.rig_number,
+                    "camera_serial": peripheral_config.camera_serial,
+                },
+                "peripherals": {
+                    "camera_fps": peripheral_config.camera_fps,
+                    "camera_window": {
+                        "width": peripheral_config.camera_window_width,
+                        "height": peripheral_config.camera_window_height,
+                    },
+                    "scales_enabled": bool(peripheral_config.scales and peripheral_config.scales.enabled),
+                },
+            }
+
+            with metadata_path.open("w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+            self._update_startup_status(f"Metadata saved: {metadata_path.name}")
+        except Exception as e:
+            self._update_startup_status(f"Failed to write metadata: {e}")
 
 
 def launch_rig_window(serial_port: str = "COM7", baud_rate: int = 115200) -> None:

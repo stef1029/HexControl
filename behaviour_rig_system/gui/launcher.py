@@ -3,12 +3,15 @@ Rig Launcher Window.
 
 Provides a simple launcher interface for selecting and connecting to
 multiple behaviour rigs. Each rig gets its own control window.
+
+Supports linked sessions where multiple rigs share a common multi-session folder.
 """
 
+import os
 import threading
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, messagebox
-from typing import Optional
 
 import serial
 import yaml
@@ -113,7 +116,7 @@ class RigLauncher:
     def __init__(self, config_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("400x420")
+        self.root.geometry("400x450")
         self.root.resizable(False, False)
         
         # Store config path for passing to child windows
@@ -123,14 +126,20 @@ class RigLauncher:
         self.rigs, self.baud_rate, self.processes = load_rig_config(config_path)
         
         # Track open rig windows: {rig_name: (window, button)}
-        self.open_windows: dict[str, tuple[tk.Toplevel, ttk.Button]] = {}
+        self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button]] = {}
         
         # Track buttons for enabling/disabling
-        self.rig_buttons: dict[str, ttk.Button] = {}
+        self.rig_buttons: dict[str, tk.Button] = {}
         
+        # Track selection state for each rig
+        self.rig_selected: dict[str, bool] = {}
+
         # Clock update ID
         self._clock_update_id: str | None = None
         
+        # Shared multi-session folder for linked sessions
+        self._shared_multi_session_folder: str | None = None
+
         self._create_widgets()
         self._update_clock()
         
@@ -178,53 +187,86 @@ class RigLauncher:
         # Instructions
         instructions = ttk.Label(
             self.root,
-            text="Select a rig to connect:",
+            text="Select rigs to launch:",
             font=("Helvetica", 10)
         )
         instructions.pack(pady=(0, 15))
         
-        # Rig buttons frame
+        # Rig selection frame (toggle buttons in 2x2 grid)
         button_frame = ttk.Frame(self.root)
         button_frame.pack(padx=20, pady=10, fill="both", expand=True)
         
-        # Create a button for each rig (2x2 grid)
+        # Create a toggle button for each rig (2x2 grid)
         for i, rig in enumerate(self.rigs[:4]):  # Max 4 rigs
             row = i // 2
             col = i % 2
             
             rig_name = rig.get("name", f"Rig {i+1}")
-            serial_port = rig.get("serial_port", f"COM{7+i}")
             enabled = rig.get("enabled", True)
             
-            # Create button
-            btn = ttk.Button(
+            # Selection state
+            self.rig_selected[rig_name] = False
+            
+            # Create toggle button using tk.Button for color control
+            btn = tk.Button(
                 button_frame,
                 text=rig_name,
-                command=lambda r=rig: self._on_rig_click(r),
-                width=18,
+                command=lambda r=rig: self._on_rig_toggle(r),
+                width=15,
+                height=2,
+                font=("Helvetica", 10),
+                relief="raised",
+                bg="#f0f0f0",
+                activebackground="#e0e0e0",
             )
-            btn.grid(row=row, column=col, padx=10, pady=10, ipady=15)
+            btn.grid(row=row, column=col, padx=10, pady=10, ipady=10)
             
             # Store reference
             self.rig_buttons[rig_name] = btn
             
             # Disable if not enabled in config
             if not enabled:
-                btn.configure(state="disabled")
+                btn.configure(state="disabled", bg="#d0d0d0")
         
         # Configure grid weights for centering
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
         
+        # Launch Selected button
+        launch_frame = ttk.Frame(self.root)
+        launch_frame.pack(pady=(5, 10))
+        
+        self._launch_selected_btn = ttk.Button(
+            launch_frame,
+            text="Launch Selected Rigs",
+            command=self._on_launch_selected_click,
+            width=25,
+            state="disabled",  # Disabled until rigs are selected
+        )
+        self._launch_selected_btn.pack(pady=5)
+
+        # Utility buttons frame
+        utility_frame = ttk.Frame(self.root)
+        utility_frame.pack(pady=(5, 10))
+
         # Zero Scales button
         zero_btn = ttk.Button(
-            self.root,
+            utility_frame,
             text="Zero All Scales",
             command=self._on_zero_scales_click,
             width=20,
         )
-        zero_btn.pack(pady=(5, 10))
+        zero_btn.pack(side="left", padx=5)
         self._zero_btn = zero_btn
+
+        # Post Processing button
+        post_process_btn = ttk.Button(
+            utility_frame,
+            text="Post Processing",
+            command=self._on_post_processing_click,
+            width=20,
+        )
+        post_process_btn.pack(side="left", padx=5)
         
         # Status label at bottom
         self.status_var = tk.StringVar(value="Ready")
@@ -261,70 +303,223 @@ class RigLauncher:
     def _show_zero_results(self, summary: str, results) -> None:
         """Show zeroing results and re-enable button."""
         self._zero_btn.configure(state="normal")
-        
+
         successful = sum(1 for r in results if r.success)
         total = len([r for r in results if r.message != "No scales configured"])
-        
+
         self.status_var.set(f"Zeroing complete: {successful}/{total} successful")
-        
+
         messagebox.showinfo("Scales Zeroing Results", summary)
-    
-    def _on_rig_click(self, rig: dict) -> None:
-        """Handle rig button click."""
+
+    def _on_rig_toggle(self, rig: dict) -> None:
+        """Handle rig button toggle for selection."""
         rig_name = rig.get("name", "Unknown")
-        serial_port = rig.get("serial_port", "")
         
-        # Check if already open
+        # Don't allow selection if rig is already open
         if rig_name in self.open_windows:
-            messagebox.showinfo("Already Open", f"{rig_name} is already open.")
             return
         
-        # Disable button and show testing status
-        btn = self.rig_buttons.get(rig_name)
-        if btn:
-            btn.configure(state="disabled")
+        # Toggle selection state
+        self.rig_selected[rig_name] = not self.rig_selected.get(rig_name, False)
         
-        self.status_var.set(f"Testing connection to {rig_name}...")
+        # Update button appearance
+        self._update_button_appearance(rig_name)
+        
+        # Update launch button state
+        self._update_launch_button()
+
+    def _update_button_appearance(self, rig_name: str) -> None:
+        """Update button appearance based on selection and open state."""
+        btn = self.rig_buttons.get(rig_name)
+        if not btn:
+            return
+        
+        if rig_name in self.open_windows:
+            # Rig is open - gray out
+            btn.configure(
+                state="disabled",
+                bg="#a0a0a0",
+                relief="sunken",
+            )
+        elif self.rig_selected.get(rig_name, False):
+            # Rig is selected - highlight
+            btn.configure(
+                state="normal",
+                bg="#90EE90",  # Light green
+                relief="sunken",
+                activebackground="#7DD87D",
+            )
+        else:
+            # Rig is not selected - default
+            btn.configure(
+                state="normal",
+                bg="#f0f0f0",
+                relief="raised",
+                activebackground="#e0e0e0",
+            )
+
+    def _update_launch_button(self) -> None:
+        """Update launch button state based on selections."""
+        selected_count = sum(1 for selected in self.rig_selected.values() if selected)
+        
+        if selected_count > 0:
+            self._launch_selected_btn.configure(state="normal")
+            self._launch_selected_btn.configure(text=f"Launch {selected_count} Rig{'s' if selected_count > 1 else ''}")
+        else:
+            self._launch_selected_btn.configure(state="disabled")
+            self._launch_selected_btn.configure(text="Launch Selected Rigs")
+
+    def _on_launch_selected_click(self) -> None:
+        """Handle launch selected rigs button click."""
+        # Get selected rigs
+        selected_rigs = []
+        for rig in self.rigs:
+            rig_name = rig.get("name", f"Rig {self.rigs.index(rig)+1}")
+            if self.rig_selected.get(rig_name, False):
+                # Check if already open
+                if rig_name in self.open_windows:
+                    continue
+                selected_rigs.append(rig)
+        
+        if not selected_rigs:
+            messagebox.showinfo("No Rigs Selected", "Please select at least one rig to launch.")
+            return
+        
+        # Create shared multi-session folder timestamp
+        date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+        self._shared_multi_session_folder = date_time
+        
+        # Disable launch button during connection tests
+        self._launch_selected_btn.configure(state="disabled")
+        
+        self.status_var.set(f"Testing connections to {len(selected_rigs)} rig(s)...")
         self.root.update()
         
-        # Test connection in background thread
-        def test_and_open():
-            success, message = test_rig_connection(serial_port, self.baud_rate)
+        # Test connections and open windows sequentially
+        def test_and_open_all():
+            successful_rigs = []
+            failed_rigs = []
             
-            # Update UI in main thread
-            self.root.after(0, lambda: self._handle_connection_result(
-                rig, success, message
+            for rig in selected_rigs:
+                rig_name = rig.get("name", "Unknown")
+                serial_port = rig.get("serial_port", "")
+                
+                self.root.after(0, lambda n=rig_name: self.status_var.set(f"Testing {n}..."))
+                
+                success, message = test_rig_connection(serial_port, self.baud_rate)
+                
+                if success:
+                    successful_rigs.append(rig)
+                else:
+                    failed_rigs.append((rig, message))
+            
+            # Open windows in main thread
+            self.root.after(0, lambda: self._handle_multi_connection_result(
+                successful_rigs, failed_rigs
             ))
         
-        thread = threading.Thread(target=test_and_open, daemon=True)
+        thread = threading.Thread(target=test_and_open_all, daemon=True)
         thread.start()
-    
-    def _handle_connection_result(
-        self, rig: dict, success: bool, message: str
+
+    def _handle_multi_connection_result(
+        self, successful_rigs: list, failed_rigs: list
     ) -> None:
-        """Handle the result of a connection test."""
-        rig_name = rig.get("name", "Unknown")
-        serial_port = rig.get("serial_port", "")
-        btn = self.rig_buttons.get(rig_name)
+        """Handle the result of multiple connection tests."""
+        # Clear selections and update button appearances
+        for rig_name in self.rig_selected:
+            self.rig_selected[rig_name] = False
+            self._update_button_appearance(rig_name)
+        self._update_launch_button()
         
-        if success:
-            self.status_var.set(f"{rig_name}: Connected!")
-            
-            # Open the rig control window
-            self._open_rig_window(rig)
-        else:
-            self.status_var.set(f"{rig_name}: {message}")
-            messagebox.showerror(
-                "Connection Failed",
-                f"Could not connect to {rig_name} on {serial_port}:\n\n{message}"
+        # Report failures
+        if failed_rigs:
+            failure_msgs = "\n".join([
+                f"  • {rig.get('name', 'Unknown')}: {msg}"
+                for rig, msg in failed_rigs
+            ])
+            messagebox.showwarning(
+                "Some Connections Failed",
+                f"Could not connect to the following rigs:\n\n{failure_msgs}"
             )
+        
+        # Open successful rigs
+        if successful_rigs:
+            for rig in successful_rigs:
+                self._open_rig_window(rig, shared_multi_session=self._shared_multi_session_folder)
             
-            # Re-enable button
-            if btn:
-                btn.configure(state="normal")
+            rig_names = ", ".join([r.get("name", "Unknown") for r in successful_rigs])
+            self.status_var.set(f"Opened: {rig_names}")
+        else:
+            self.status_var.set("No rigs connected")
+            self._shared_multi_session_folder = None
+
+    def _on_post_processing_click(self) -> None:
+        """Handle post processing button click."""
+        # Check if any rig windows are open
+        if self.open_windows:
+            open_rigs = ", ".join(self.open_windows.keys())
+            messagebox.showwarning(
+                "Rigs Open",
+                f"Cannot open post-processing while rig windows are open.\n\n"
+                f"Currently open rigs: {open_rigs}\n\n"
+                f"Please close all rig windows before opening post-processing."
+            )
+            return
+
+        from .post_processing_window import open_post_processing_window
+
+        self.status_var.set("Opening post-processing window...")
+        self.root.update()
+
+        # Disable launcher while post-processing is open
+        self._disable_launcher()
+
+        # Open the post-processing window (modal)
+        open_post_processing_window(self.root, self.config_path)
+
+        # Re-enable launcher when post-processing closes
+        self._enable_launcher()
+
+        self.status_var.set("Ready")
+
+    def _disable_launcher(self) -> None:
+        """Disable launcher controls while post-processing is open."""
+        # Disable all rig buttons
+        for btn in self.rig_buttons.values():
+            btn.configure(state="disabled", bg="#d0d0d0")
+
+        # Disable utility buttons
+        self._zero_btn.configure(state="disabled")
+        
+        # Disable launch button
+        self._launch_selected_btn.configure(state="disabled")
+
+    def _enable_launcher(self) -> None:
+        """Re-enable launcher controls after post-processing closes."""
+        # Re-enable rig buttons (if they were originally enabled)
+        for rig in self.rigs:
+            rig_name = rig.get("name", f"Rig {self.rigs.index(rig)+1}")
+            enabled = rig.get("enabled", True)
+            if enabled:
+                # Update button appearance based on current state
+                self._update_button_appearance(rig_name)
+
+        # Re-enable utility buttons
+        self._zero_btn.configure(state="normal")
+        
+        # Update launch button state
+        self._update_launch_button()
     
-    def _open_rig_window(self, rig: dict) -> None:
-        """Open a control window for the specified rig."""
+    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None) -> None:
+        """
+        Open a control window for the specified rig.
+        
+        Args:
+            rig: Rig configuration dictionary
+            shared_multi_session: Optional shared multi-session folder timestamp.
+                                  If provided, all rigs with the same value will
+                                  save to the same parent folder.
+        """
         from .rig_window import RigWindow
         
         rig_name = rig.get("name", "Unknown")
@@ -338,6 +533,7 @@ class RigLauncher:
             **rig,
             "processes": self.processes,
             "config_path": self.config_path,
+            "shared_multi_session": shared_multi_session,
         }
         
         # Create RigWindow content in the toplevel
@@ -352,6 +548,9 @@ class RigLauncher:
         # Track this window
         btn = self.rig_buttons.get(rig_name)
         self.open_windows[rig_name] = (window, btn)
+        
+        # Update button appearance to show it's open (grayed out)
+        self._update_button_appearance(rig_name)
         
         # Handle window close
         def on_window_close():
@@ -375,9 +574,9 @@ class RigLauncher:
             # Remove from tracking
             del self.open_windows[rig_name]
             
-            # Re-enable button
-            if btn:
-                btn.configure(state="normal")
+            # Update button appearance (restore to normal unselected state)
+            self.rig_selected[rig_name] = False
+            self._update_button_appearance(rig_name)
             
             self.status_var.set(f"{rig_name} closed")
     

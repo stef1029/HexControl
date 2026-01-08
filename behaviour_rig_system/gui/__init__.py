@@ -6,6 +6,7 @@ This module provides the graphical user interface components:
     - Rig window with mode-based navigation (setup, running, post-session)
     - Dynamic parameter form builder
     - Protocol execution management
+    - Post-processing window for batch cohort processing
 
 The GUI is built using tkinter for cross-platform compatibility and
 ease of deployment (no additional dependencies required).
@@ -14,10 +15,13 @@ ease of deployment (no additional dependencies required).
 from .launcher import RigLauncher, launch
 from .rig_window import RigWindow
 from .parameter_widget import ParameterFormBuilder
+from .post_processing_window import PostProcessingWindow, open_post_processing_window
 
 __all__ = [
     "RigLauncher",
     "launch",
     "RigWindow",
     "ParameterFormBuilder",
+    "PostProcessingWindow",
+    "open_post_processing_window",
 ]

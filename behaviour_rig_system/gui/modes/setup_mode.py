@@ -246,7 +246,8 @@ class SetupMode(ttk.Frame):
         directory = self._get_selected_cohort_directory()
         
         if directory and mouse_id:
-            preview = f"{directory}\\<datetime>_{mouse_id}"
+            # Show the multi-session folder structure: directory/<datetime>/<datetime>_mouseID
+            preview = f"{directory}\\<datetime>\\<datetime>_{mouse_id}"
         else:
             preview = "<select save location>"
         

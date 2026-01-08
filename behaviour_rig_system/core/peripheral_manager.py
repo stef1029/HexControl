@@ -39,6 +39,7 @@ class PeripheralConfig:
     # Session info
     mouse_id: str
     session_folder: str
+    multi_session_folder: str  # Parent folder containing all sessions from this run
     date_time: str
     
     # Process paths
@@ -89,7 +90,12 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesPro
     )
 
 
-def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_directory: str = "") -> PeripheralConfig:
+def load_peripheral_config(
+    rig_config: dict, 
+    mouse_id: str = "test", 
+    save_directory: str = "",
+    shared_multi_session: str | None = None
+) -> PeripheralConfig:
     """
     Load peripheral configuration from rig config and global settings.
     
@@ -97,6 +103,10 @@ def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_direct
         rig_config: Dict with rig-specific settings (including config_path)
         mouse_id: Mouse identifier for this session
         save_directory: Full path to the save directory (e.g., D:\\behaviour_data\\cohort_name)
+        shared_multi_session: Optional shared multi-session folder timestamp.
+                              If provided, uses this for the multi-session folder
+                              instead of generating a new one. This allows multiple
+                              rigs to share the same parent folder.
         
     Returns:
         PeripheralConfig with all settings populated
@@ -116,8 +126,14 @@ def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_direct
     except (ValueError, IndexError):
         rig_number = 1
     
-    date_time = datetime.now().strftime("%y%m%d_%H%M%S")
-    session_folder = os.path.join(save_directory, f"{date_time}_{mouse_id}")
+    # Use shared multi-session folder if provided, otherwise generate new timestamp
+    if shared_multi_session:
+        date_time = shared_multi_session
+    else:
+        date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+    
+    multi_session_folder = os.path.join(save_directory, date_time)
+    session_folder = os.path.join(multi_session_folder, f"{date_time}_{mouse_id}")
     
     # Load scales config
     scales_config = _load_scales_config(rig_config, rig_number)
@@ -128,6 +144,7 @@ def load_peripheral_config(rig_config: dict, mouse_id: str = "test", save_direct
         camera_serial=rig_config.get("camera_serial", ""),
         mouse_id=mouse_id,
         session_folder=session_folder,
+        multi_session_folder=multi_session_folder,
         date_time=date_time,
         python_path=process_settings.get("python_path", "python"),
         serial_listen_script=process_settings.get("serial_listen_script", ""),
