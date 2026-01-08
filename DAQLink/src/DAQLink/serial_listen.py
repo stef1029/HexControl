@@ -181,9 +181,9 @@ def save_hdf5_json(
     }
 
     # JSON
-    json_file_path = output_directory / f"{foldername}-ArduinoDAQ.json"
-    with open(json_file_path, "w") as file_handle:
-        json.dump(metadata_dict, file_handle, indent=4)
+    # json_file_path = output_directory / f"{foldername}-ArduinoDAQ.json"
+    # with open(json_file_path, "w") as file_handle:
+    #     json.dump(metadata_dict, file_handle, indent=4)
 
     # HDF5
     hdf5_file_path = output_directory / f"{foldername}-ArduinoDAQ.h5"

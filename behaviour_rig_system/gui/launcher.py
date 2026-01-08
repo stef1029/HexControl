@@ -7,17 +7,23 @@ multiple behaviour rigs. Each rig gets its own control window.
 Supports linked sessions where multiple rigs share a common multi-session folder.
 """
 
+from __future__ import annotations
+
 import os
 import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import ttk, messagebox
+from typing import TYPE_CHECKING
 
 import serial
 import yaml
 from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+
+if TYPE_CHECKING:
+    from .rig_window import RigWindow
 
 
 # Default rig configuration if config file not found
@@ -125,8 +131,8 @@ class RigLauncher:
         # Load configuration
         self.rigs, self.baud_rate, self.processes = load_rig_config(config_path)
         
-        # Track open rig windows: {rig_name: (window, button)}
-        self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button]] = {}
+        # Track open rig windows: {rig_name: (window, button, rig_window)}
+        self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button, "RigWindow"]] = {}
         
         # Track buttons for enabling/disabling
         self.rig_buttons: dict[str, tk.Button] = {}
@@ -545,9 +551,9 @@ class RigLauncher:
             rig_config=rig_config,
         )
         
-        # Track this window
+        # Track this window (including rig_window for session checking)
         btn = self.rig_buttons.get(rig_name)
-        self.open_windows[rig_name] = (window, btn)
+        self.open_windows[rig_name] = (window, btn, rig_window)
         
         # Update button appearance to show it's open (grayed out)
         self._update_button_appearance(rig_name)
@@ -563,7 +569,19 @@ class RigLauncher:
     def _on_rig_window_close(self, rig_name: str) -> None:
         """Handle a rig window being closed."""
         if rig_name in self.open_windows:
-            window, btn = self.open_windows[rig_name]
+            window, btn, rig_window = self.open_windows[rig_name]
+            
+            # Check if a session is running
+            if rig_window.current_protocol is not None and rig_window.current_protocol.is_running:
+                messagebox.showwarning(
+                    "Session Running",
+                    f"A session is currently running on {rig_name}.\n\n"
+                    "Please stop the session before closing the window."
+                )
+                return
+            
+            # Clean up the rig window
+            rig_window._cleanup_session()
             
             # Destroy the window
             try:
@@ -602,8 +620,9 @@ class RigLauncher:
         
         # Close all open rig windows
         for rig_name in list(self.open_windows.keys()):
-            window, _ = self.open_windows[rig_name]
+            window, _, rig_window = self.open_windows[rig_name]
             try:
+                rig_window._cleanup_session()
                 window.destroy()
             except:
                 pass

@@ -363,7 +363,8 @@ class RigWindow:
             
             # Create and pass performance tracker
             self._perf_tracker = PerformanceTracker(
-                on_update=lambda t: self.running_mode.update_performance(t)
+                on_update=lambda t: self.running_mode.update_performance(t),
+                on_stimulus=lambda port: self.running_mode.log_stimulus(port),
             )
             self.current_protocol._perf_tracker = self._perf_tracker
             
@@ -577,12 +578,10 @@ class RigWindow:
     def _on_close(self) -> None:
         """Handle window close event."""
         if self.current_protocol is not None and self.current_protocol.is_running:
-            if messagebox.askyesno(
-                "Confirm Exit",
-                "A session is currently running. Stop it and exit?"
-            ):
-                self._stop_session()
-                self.root.after(500, self._force_close)
+            messagebox.showwarning(
+                "Session Running",
+                "A session is currently running.\n\nPlease stop the session before closing the window."
+            )
             return
         
         self._force_close()

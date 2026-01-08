@@ -75,6 +75,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         
         # === STIMULUS ON ===
         link.led_set(target_port, led_brightness)
+        perf_tracker.stimulus(target_port)  # Log stimulus presentation
         trial_start_time = time.time()  # Start timing from LED on
         
         # === WAIT FOR RESPONSE ===

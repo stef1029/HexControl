@@ -117,6 +117,7 @@ class RunningMode(ttk.Frame):
         self._trial_log.tag_config("success", foreground="green")
         self._trial_log.tag_config("failure", foreground="red")
         self._trial_log.tag_config("timeout", foreground="darkorange")
+        self._trial_log.tag_config("stimulus", foreground="blue")
         
         # Timer and status row
         timer_frame = ttk.Frame(self)
@@ -190,6 +191,27 @@ class RunningMode(ttk.Frame):
         # Clear trial log
         self._trial_log.config(state="normal")
         self._trial_log.delete("1.0", tk.END)
+        self._trial_log.config(state="disabled")
+    
+    def log_stimulus(self, target_port: int) -> None:
+        """
+        Log a stimulus presentation to the trial log.
+        
+        Thread-safe: schedules update on main thread.
+        
+        Args:
+            target_port: The port that is the correct response.
+        """
+        self.after(0, lambda: self._do_log_stimulus(target_port))
+    
+    def _do_log_stimulus(self, target_port: int) -> None:
+        """Actually log the stimulus (must be called on main thread)."""
+        trial_num = self._last_logged_trial + 1
+        line = f"Trial {trial_num}: → Stimulus ON - Target port {target_port}\n"
+        
+        self._trial_log.config(state="normal")
+        self._trial_log.insert(tk.END, line, "stimulus")
+        self._trial_log.see(tk.END)
         self._trial_log.config(state="disabled")
     
     def update_performance(self, tracker: "PerformanceTracker") -> None:

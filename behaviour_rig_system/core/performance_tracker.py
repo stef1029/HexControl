@@ -53,14 +53,21 @@ class PerformanceTracker:
     Emits events when trials are recorded so the GUI can update.
     """
     
-    def __init__(self, on_update: Optional[Callable[["PerformanceTracker"], None]] = None):
+    def __init__(
+        self,
+        on_update: Optional[Callable[["PerformanceTracker"], None]] = None,
+        on_stimulus: Optional[Callable[[int], None]] = None,
+    ):
         """
         Args:
             on_update: Callback called after each trial is recorded.
                        Receives the tracker instance for querying stats.
+            on_stimulus: Callback called when stimulus() is called.
+                        Receives the target port number.
         """
         self._trials: list[TrialRecord] = []
         self._on_update = on_update
+        self._on_stimulus = on_stimulus
         self._start_time: Optional[float] = None
     
     def reset(self) -> None:
@@ -68,6 +75,21 @@ class PerformanceTracker:
         self._trials.clear()
         self._start_time = datetime.now().timestamp()
         self._notify_update()
+    
+    def stimulus(self, target_port: int) -> None:
+        """
+        Signal that a stimulus has been presented.
+        
+        This is for display purposes only and is not saved to the trials log.
+        
+        Args:
+            target_port: The port that is the correct response for this trial.
+        """
+        if self._on_stimulus:
+            try:
+                self._on_stimulus(target_port)
+            except Exception:
+                pass  # Don't let GUI errors crash the protocol
     
     # -------------------------------------------------------------------------
     # Recording Outcomes
