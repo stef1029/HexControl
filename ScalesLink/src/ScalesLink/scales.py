@@ -128,6 +128,11 @@ class Scales:
         self._log_lock = threading.Lock()
         self._log_start_time: Optional[float] = None
 
+        # In-memory storage for all readings (for end-of-session save)
+        self._store_readings = False
+        self._readings_buffer: list[tuple[float, float, Optional[int]]] = []
+        self._readings_lock = threading.Lock()
+
     # -------------------------------------------------------------------------
     # Context Manager
     # -------------------------------------------------------------------------
@@ -271,6 +276,70 @@ class Scales:
         time.sleep(3)
 
     # -------------------------------------------------------------------------
+    # In-Memory Storage (for end-of-session save)
+    # -------------------------------------------------------------------------
+
+    def enable_reading_storage(self) -> None:
+        """
+        Enable storing all readings in memory.
+        
+        When enabled, every reading received will be stored in an internal
+        buffer. Use get_all_readings() to retrieve them, and save_readings_to_csv()
+        to write them to a file at the end of the session.
+        """
+        with self._readings_lock:
+            self._store_readings = True
+            self._readings_buffer.clear()
+            self._log_start_time = time.time()
+
+    def disable_reading_storage(self) -> None:
+        """Disable storing readings in memory."""
+        with self._readings_lock:
+            self._store_readings = False
+
+    def get_all_readings(self) -> list[tuple[float, float, Optional[int]]]:
+        """
+        Get all stored readings.
+        
+        Returns:
+            List of (timestamp_s, weight_g, message_id) tuples.
+        """
+        with self._readings_lock:
+            return list(self._readings_buffer)
+
+    def get_reading_count(self) -> int:
+        """Get the number of readings stored in memory."""
+        with self._readings_lock:
+            return len(self._readings_buffer)
+
+    def save_readings_to_csv(self, path: Path) -> int:
+        """
+        Save all stored readings to a CSV file.
+        
+        Args:
+            path: Path to the output CSV file.
+            
+        Returns:
+            Number of readings saved.
+        """
+        with self._readings_lock:
+            readings = list(self._readings_buffer)
+        
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['timestamp_s', 'weight_g', 'message_id'])
+            for timestamp, weight, msg_id in readings:
+                writer.writerow([f"{timestamp:.6f}", f"{weight:.4f}", msg_id])
+        
+        return len(readings)
+
+    def clear_readings_buffer(self) -> None:
+        """Clear all stored readings from memory."""
+        with self._readings_lock:
+            self._readings_buffer.clear()
+
+    # -------------------------------------------------------------------------
     # Background Reading
     # -------------------------------------------------------------------------
 
@@ -373,7 +442,14 @@ class Scales:
             self._last_update_time = time.monotonic()
             self._message_id = message_id
 
-        # Log to file
+        # Store reading in memory buffer if enabled
+        if self._store_readings:
+            with self._readings_lock:
+                if self._log_start_time is not None:
+                    relative_time = timestamp - self._log_start_time
+                    self._readings_buffer.append((relative_time, weight_g, message_id))
+
+        # Log to file (immediate logging, if configured)
         if self._csv_writer is not None:
             with self._log_lock:
                 relative_time = timestamp - self._log_start_time

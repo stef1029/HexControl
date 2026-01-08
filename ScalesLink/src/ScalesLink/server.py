@@ -2,8 +2,8 @@
 Scales Server - TCP server subprocess for scales communication.
 
 This module runs as a separate subprocess to avoid blocking the main behaviour loop.
-It continuously reads weight data from the scales hardware, logs to CSV, and serves
-weight data to clients via TCP.
+It continuously reads weight data from the scales hardware, stores all readings in
+memory, and serves weight data to clients via TCP. Readings are saved to CSV at shutdown.
 
 Usage (as subprocess):
     python -m ScalesLink.server --port COM7 --baud 115200 --tcp 5100 --log scales.csv
@@ -15,11 +15,7 @@ The server accepts TCP commands:
 """
 
 import argparse
-import csv
-import select
 import socket
-import sys
-import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -47,6 +43,9 @@ class ScalesServer:
     
     Runs in a separate process, reads from scales hardware in a background thread,
     and serves weight data to clients via TCP socket commands.
+    
+    All readings are stored in memory throughout the session and saved to CSV
+    at shutdown (if log_path is configured).
     """
     
     def __init__(
@@ -61,7 +60,7 @@ class ScalesServer:
         Args:
             scales_config: Configuration for the scales hardware.
             tcp_port: TCP port to listen on for client connections.
-            log_path: Optional path for CSV logging of all readings.
+            log_path: Optional path for CSV logging of all readings (saved at shutdown).
         """
         self._scales_config = scales_config
         self._tcp_port = tcp_port
@@ -73,15 +72,6 @@ class ScalesServer:
         # TCP server
         self._server_socket: Optional[socket.socket] = None
         self._running = False
-        
-        # Logging
-        self._log_file = None
-        self._csv_writer = None
-        self._log_start_time: Optional[float] = None
-        self._log_lock = threading.Lock()
-        
-        # Last weight for logging (to avoid duplicate reads from Scales)
-        self._last_logged_weight: Optional[float] = None
     
     def start(self) -> None:
         """
@@ -98,6 +88,11 @@ class ScalesServer:
         self._scales.start()
         print("[ScalesServer] Scales hardware started")
         
+        # Enable in-memory storage if logging is configured
+        if self._log_path is not None:
+            self._scales.enable_reading_storage()
+            print(f"[ScalesServer] Will save readings to {self._log_path} at shutdown")
+        
         # Wait for initial reading
         time.sleep(2)
         weight = self._scales.get_weight()
@@ -105,15 +100,6 @@ class ScalesServer:
             print(f"[ScalesServer] Initial weight: {weight:.2f}g")
         else:
             print("[ScalesServer] No initial weight reading")
-        
-        # Open log file if configured
-        if self._log_path is not None:
-            self._log_path.parent.mkdir(parents=True, exist_ok=True)
-            self._log_file = open(self._log_path, 'w', newline='')
-            self._csv_writer = csv.writer(self._log_file)
-            self._csv_writer.writerow(['timestamp_s', 'weight_g', 'message_id'])
-            self._log_start_time = time.time()
-            print(f"[ScalesServer] Logging to {self._log_path}")
         
         # Start TCP server
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -132,8 +118,6 @@ class ScalesServer:
         """Main server loop - accepts connections and handles commands."""
         while self._running:
             try:
-                # Log current weight periodically
-                self._log_weight()
                 
                 # Accept new connection
                 try:
@@ -209,29 +193,8 @@ class ScalesServer:
         else:
             return f"ERROR: Unknown command: {command}"
     
-    def _log_weight(self) -> None:
-        """Log the current weight to CSV if configured."""
-        if self._csv_writer is None or self._scales is None:
-            return
-        
-        weight = self._scales.get_weight()
-        if weight is None:
-            return
-        
-        # Only log if weight changed (to avoid flooding log with identical values)
-        if weight == self._last_logged_weight:
-            return
-        
-        message_id = self._scales.get_message_id()
-        
-        with self._log_lock:
-            timestamp = time.time() - self._log_start_time
-            self._csv_writer.writerow([f"{timestamp:.6f}", f"{weight:.4f}", message_id])
-            self._log_file.flush()
-            self._last_logged_weight = weight
-    
     def stop(self) -> None:
-        """Stop the scales server."""
+        """Stop the scales server and save readings to CSV."""
         print("[ScalesServer] Stopping...")
         self._running = False
         
@@ -243,16 +206,17 @@ class ScalesServer:
                 pass
             self._server_socket = None
         
+        # Save readings to CSV before stopping scales
+        if self._scales is not None and self._log_path is not None:
+            reading_count = self._scales.get_reading_count()
+            print(f"[ScalesServer] Saving {reading_count} readings to {self._log_path}")
+            saved = self._scales.save_readings_to_csv(self._log_path)
+            print(f"[ScalesServer] Saved {saved} readings")
+        
         # Stop scales hardware
         if self._scales is not None:
             self._scales.stop()
             self._scales = None
-        
-        # Close log file
-        if self._log_file is not None:
-            self._log_file.close()
-            self._log_file = None
-            self._csv_writer = None
         
         print("[ScalesServer] Stopped")
 
