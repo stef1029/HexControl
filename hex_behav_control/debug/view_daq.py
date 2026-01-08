@@ -84,7 +84,7 @@ def plot_multiple_channels(arduino_daq_h5_path, channel_names):
     plt.show()
 
 def main():
-    arduino_daq_h5_path = r"D:\Electrophysiology\250416_Pitx2_ephys_cohort_recordings\250422_165504\250422_165525_mtaq11-3b\250422_165525_mtaq11-3b-ArduinoDAQ.h5"
+    arduino_daq_h5_path = r"D:\behaviour_data\default\260108_162701\260108_162701_T1\260108_162701_T1-ArduinoDAQ.h5"
     channel_names = ["CAMERA", "SCALES", "LASER"]
     plot_multiple_channels(arduino_daq_h5_path, channel_names)
 

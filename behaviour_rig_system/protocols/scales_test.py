@@ -54,7 +54,6 @@ def run(link, params, log, check_abort, scales, perf_tracker):
     punishment_s = params["punishment_duration"]
     led_brightness = params["led_brightness"]
     
-    log(f"Starting {num_trials} trials. Target port: {target_port}, Threshold: {threshold}g")
     
     for trial in range(1, num_trials + 1):
         if check_abort():
@@ -62,7 +61,6 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             break
         
         # === WAIT FOR MOUSE ON SCALES ===
-        log(f"Trial {trial}/{num_trials} - Waiting for mouse on platform...")
         
         while not check_abort():
             weight = scales.get_weight()
@@ -74,31 +72,31 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             break
         
         weight = scales.get_weight()
-        log(f"Mouse detected ({weight:.1f}g) - LED {target_port} ON")
         
         # === STIMULUS ON ===
         link.led_set(target_port, led_brightness)
+        trial_start_time = time.time()  # Start timing from LED on
         
         # === WAIT FOR RESPONSE ===
         # (wait_for_event auto-drains stale events by default)
         event = link.wait_for_event(timeout=response_timeout)
+        
+        # Calculate trial duration from LED on to response/timeout
+        trial_duration = time.time() - trial_start_time
         
         # === STIMULUS OFF ===
         link.led_set(target_port, 0)
         
         # === PROCESS RESPONSE ===
         if event is None:
-            perf_tracker.timeout()
-            log(f"Trial {trial}: TIMEOUT")
+            perf_tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
         
         elif event.port == target_port:
-            perf_tracker.success()
-            log(f"Trial {trial}: CORRECT (Port {event.port}) - Reward!")
+            perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
             link.valve_pulse(target_port, reward_ms)
         
         else:
-            perf_tracker.failure()
-            log(f"Trial {trial}: INCORRECT (Port {event.port}) - Punishment")
+            perf_tracker.failure(correct_port=target_port, chosen_port=event.port, trial_duration=trial_duration)
             link.spotlight_set(255, 255)  # All spotlights on
             time.sleep(punishment_s)
             link.spotlight_set(255, 0)    # All spotlights off
@@ -107,5 +105,3 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         if trial < num_trials and not check_abort():
             time.sleep(iti)
     
-    # Final summary
-    log(f"Done! {perf_tracker.get_summary()}")

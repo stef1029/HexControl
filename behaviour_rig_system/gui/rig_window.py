@@ -484,13 +484,31 @@ class RigWindow:
         
         status_map = {
             ProtocolStatus.COMPLETED: "Completed",
-            ProtocolStatus.ABORTED: "Aborted",
+            ProtocolStatus.ABORTED: "Stopped",
             ProtocolStatus.ERROR: "Error",
         }
         status_str = status_map.get(final_status, "Unknown")
         
         self.running_mode.log_message(f"Session {status_str.lower()}")
         self.running_mode.log_message("Cleaning up...")
+        
+        # Get performance report before cleanup (tracker is cleaned up with protocol)
+        performance_report = None
+        if hasattr(self, '_perf_tracker') and self._perf_tracker is not None:
+            performance_report = self._perf_tracker.get_report()
+            
+            # Save trial data to file
+            if self._session_save_path:
+                try:
+                    session_id = Path(self._session_save_path).name
+                    saved_path = self._perf_tracker.save_trials_to_file(
+                        self._session_save_path,
+                        session_id=session_id
+                    )
+                    if saved_path:
+                        self.running_mode.log_message(f"Trial data saved: {saved_path.name}")
+                except Exception as e:
+                    self.running_mode.log_message(f"Failed to save trial data: {e}")
         
         # Clean up resources
         self._cleanup_session()
@@ -502,6 +520,7 @@ class RigWindow:
             "mouse_id": self._session_mouse_id,
             "elapsed_time": elapsed,
             "save_path": self._session_save_path,
+            "performance_report": performance_report,
         })
         
         # Switch to post-session mode

@@ -36,6 +36,7 @@ class RunningMode(ttk.Frame):
         self._on_stop = on_stop
         self._start_time: datetime | None = None
         self._timer_id: str | None = None
+        self._last_logged_trial: int = 0
         
         self._create_widgets()
     
@@ -56,7 +57,7 @@ class RunningMode(ttk.Frame):
         
         # Performance stats frame
         perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 5))
-        perf_frame.pack(fill="x", padx=10, pady=5)
+        perf_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Main stats row
         stats_row = ttk.Frame(perf_frame)
@@ -103,6 +104,20 @@ class RunningMode(ttk.Frame):
         self._timeout_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="gray")
         self._timeout_label.pack(side="left", padx=(5, 15))
         
+        # Trial log - shows each trial as it happens
+        trial_log_label = ttk.Label(perf_frame, text="Trial Log:", font=("TkDefaultFont", 9, "bold"))
+        trial_log_label.pack(anchor="w", pady=(10, 2))
+        
+        self._trial_log = scrolledtext.ScrolledText(
+            perf_frame, height=12, font=("Consolas", 9), state="disabled"
+        )
+        self._trial_log.pack(fill="both", expand=True)
+        
+        # Configure tags for trial log coloring
+        self._trial_log.tag_config("success", foreground="green")
+        self._trial_log.tag_config("failure", foreground="red")
+        self._trial_log.tag_config("timeout", foreground="darkorange")
+        
         # Timer and status row
         timer_frame = ttk.Frame(self)
         timer_frame.pack(fill="x", padx=10, pady=5)
@@ -120,14 +135,14 @@ class RunningMode(ttk.Frame):
         )
         self._status_label.pack(side="right", padx=10)
         
-        # Event log
+        # Event log (smaller)
         log_frame = ttk.LabelFrame(self, text="Session Log", padding=(5, 5))
-        log_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        log_frame.pack(fill="x", padx=10, pady=5)
         
         self._log_text = scrolledtext.ScrolledText(
-            log_frame, height=15, font=("Consolas", 9), state="disabled"
+            log_frame, height=5, font=("Consolas", 9), state="disabled"
         )
-        self._log_text.pack(fill="both", expand=True)
+        self._log_text.pack(fill="x")
         
         # Stop button
         button_frame = ttk.Frame(self)
@@ -170,6 +185,12 @@ class RunningMode(ttk.Frame):
         self._correct_label.config(text="0")
         self._incorrect_label.config(text="0")
         self._timeout_label.config(text="0")
+        self._last_logged_trial = 0
+        
+        # Clear trial log
+        self._trial_log.config(state="normal")
+        self._trial_log.delete("1.0", tk.END)
+        self._trial_log.config(state="disabled")
     
     def update_performance(self, tracker: "PerformanceTracker") -> None:
         """
@@ -215,6 +236,41 @@ class RunningMode(ttk.Frame):
             self._rolling_label.config(text=f"{rolling:.0f}%")
         else:
             self._rolling_label.config(text="--")
+        
+        # Log new trials to the trial log
+        trials = tracker.get_trials()
+        while self._last_logged_trial < len(trials):
+            trial = trials[self._last_logged_trial]
+            self._log_trial(trial)
+            self._last_logged_trial += 1
+    
+    def _log_trial(self, trial) -> None:
+        """Log a single trial to the trial log with colored output."""
+        from core.performance_tracker import TrialOutcome
+        
+        # Build trial description
+        trial_num = trial.trial_number
+        outcome = trial.outcome
+        correct_port = trial.correct_port
+        chosen_port = trial.chosen_port
+        duration = trial.trial_duration
+        
+        # Format the log line based on outcome
+        if outcome == TrialOutcome.SUCCESS:
+            line = f"Trial {trial_num}: ✓ CORRECT - Port {correct_port} ({duration:.2f}s)\n"
+            tag = "success"
+        elif outcome == TrialOutcome.FAILURE:
+            line = f"Trial {trial_num}: ✗ WRONG - Chose port {chosen_port}, correct was {correct_port} ({duration:.2f}s)\n"
+            tag = "failure"
+        else:  # TIMEOUT
+            line = f"Trial {trial_num}: ⏱ TIMEOUT - Correct was port {correct_port} ({duration:.2f}s)\n"
+            tag = "timeout"
+        
+        # Add to trial log
+        self._trial_log.config(state="normal")
+        self._trial_log.insert(tk.END, line, tag)
+        self._trial_log.see(tk.END)
+        self._trial_log.config(state="disabled")
     
     def deactivate(self) -> dict:
         """
@@ -286,7 +342,7 @@ class RunningMode(ttk.Frame):
             ProtocolStatus.IDLE: ("IDLE", "gray"),
             ProtocolStatus.RUNNING: ("RUNNING", "green"),
             ProtocolStatus.COMPLETED: ("COMPLETED", "darkgreen"),
-            ProtocolStatus.ABORTED: ("ABORTED", "darkorange"),
+            ProtocolStatus.ABORTED: ("STOPPED", "darkorange"),
             ProtocolStatus.ERROR: ("ERROR", "red"),
         }
         text, color = status_config.get(status, ("UNKNOWN", "black"))
