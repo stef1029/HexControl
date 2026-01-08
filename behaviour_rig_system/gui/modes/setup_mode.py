@@ -18,6 +18,7 @@ import yaml
 from core.protocol_base import BaseProtocol
 from protocols import get_available_protocols
 from gui.parameter_widget import ParameterFormBuilder
+from gui.theme import Theme
 
 
 class ProtocolTab(ttk.Frame):
@@ -31,20 +32,30 @@ class ProtocolTab(ttk.Frame):
     
     def _create_widgets(self) -> None:
         """Create the tab widgets."""
+        palette = Theme.palette
+        
         # Protocol description
         desc_frame = ttk.Frame(self)
-        desc_frame.pack(fill="x", padx=10, pady=10)
+        desc_frame.pack(fill="x", padx=10, pady=8)
         
         description = self.protocol_class.get_description()
-        desc_label = ttk.Label(desc_frame, text=description, wraplength=500, justify="left")
+        desc_label = ttk.Label(
+            desc_frame, text=description, 
+            wraplength=520, justify="left",
+            foreground=palette.text_secondary,
+            font=Theme.font_small()
+        )
         desc_label.pack(anchor="w")
         
-        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=10, pady=5)
+        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=10, pady=3)
         
         # Parameter form in scrollable frame
-        canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0)
+        canvas = tk.Canvas(
+            self, borderwidth=0, highlightthickness=0,
+            background=palette.bg_secondary
+        )
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        scrollable_frame = ttk.Frame(canvas, style="Card.TFrame")
         
         scrollable_frame.bind(
             "<Configure>",
@@ -64,11 +75,12 @@ class ProtocolTab(ttk.Frame):
         
         # Reset button
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=10, pady=10)
+        button_frame.pack(fill="x", padx=10, pady=8)
         
         reset_button = ttk.Button(
             button_frame, text="Reset to Defaults",
-            command=self._reset_to_defaults
+            command=self._reset_to_defaults,
+            style="Secondary.TButton"
         )
         reset_button.pack(side="right")
     
@@ -134,13 +146,15 @@ class SetupMode(ttk.Frame):
     
     def _create_widgets(self) -> None:
         """Create the setup UI widgets."""
+        palette = Theme.palette
+        
         # Session info panel
-        session_frame = ttk.LabelFrame(self, text="Session Info", padding=(10, 5))
-        session_frame.pack(fill="x", padx=10, pady=5)
+        session_frame = ttk.LabelFrame(self, text="Session Info", padding=(10, 6))
+        session_frame.pack(fill="x", padx=10, pady=6)
         
         # Save Location
-        cohort_frame = ttk.LabelFrame(session_frame, text="Save Location", padding=(5, 5))
-        cohort_frame.pack(fill="x", padx=5, pady=(0, 5))
+        cohort_frame = ttk.LabelFrame(session_frame, text="Save Location", padding=(8, 4))
+        cohort_frame.pack(fill="x", padx=3, pady=(0, 5))
         
         first_cohort = self._cohort_folders[0].get("name", "") if self._cohort_folders else ""
         self.cohort_var = tk.StringVar(value=first_cohort)
@@ -164,13 +178,13 @@ class SetupMode(ttk.Frame):
             if directory:
                 path_label = ttk.Label(
                     rb_frame, text=f"  {directory}",
-                    foreground="gray", font=("TkDefaultFont", 8)
+                    style="Muted.TLabel"
                 )
                 path_label.pack(side="left")
         
         # Mouse ID
-        mouse_frame = ttk.LabelFrame(session_frame, text="Mouse ID", padding=(5, 5))
-        mouse_frame.pack(fill="x", padx=5, pady=(0, 5))
+        mouse_frame = ttk.LabelFrame(session_frame, text="Mouse ID", padding=(8, 4))
+        mouse_frame.pack(fill="x", padx=3, pady=(0, 5))
         
         first_mouse = self._mice[0].get("id", "test") if self._mice else "test"
         self.mouse_id_var = tk.StringVar(value=first_mouse)
@@ -189,7 +203,7 @@ class SetupMode(ttk.Frame):
             row = i // 3
             
             rb_frame = ttk.Frame(mouse_inner)
-            rb_frame.grid(row=row, column=col, sticky="w", padx=5, pady=1)
+            rb_frame.grid(row=row, column=col, sticky="w", padx=3, pady=1)
             
             rb = ttk.Radiobutton(
                 rb_frame, text=mouse_id, variable=self.mouse_id_var,
@@ -200,46 +214,47 @@ class SetupMode(ttk.Frame):
             if desc:
                 desc_label = ttk.Label(
                     rb_frame, text=f"({desc})",
-                    foreground="gray", font=("TkDefaultFont", 8)
+                    style="Muted.TLabel"
                 )
-                desc_label.pack(side="left", padx=(2, 0))
+                desc_label.pack(side="left", padx=(3, 0))
         
         # Session-level parameters (apply to all protocols)
-        session_params_frame = ttk.LabelFrame(session_frame, text="Session Parameters", padding=(5, 5))
-        session_params_frame.pack(fill="x", padx=5, pady=(0, 5))
+        session_params_frame = ttk.LabelFrame(session_frame, text="Session Parameters", padding=(8, 4))
+        session_params_frame.pack(fill="x", padx=3, pady=(0, 5))
         
         # Mouse weight
         weight_frame = ttk.Frame(session_params_frame)
         weight_frame.pack(fill="x", pady=2)
         ttk.Label(weight_frame, text="Mouse Weight (g):").pack(side="left")
         self.mouse_weight_var = tk.StringVar(value="25.0")
-        self.mouse_weight_entry = ttk.Entry(weight_frame, textvariable=self.mouse_weight_var, width=10)
-        self.mouse_weight_entry.pack(side="left", padx=5)
+        self.mouse_weight_entry = ttk.Entry(weight_frame, textvariable=self.mouse_weight_var, width=12)
+        self.mouse_weight_entry.pack(side="left", padx=6)
         
         # Number of trials
         trials_frame = ttk.Frame(session_params_frame)
         trials_frame.pack(fill="x", pady=2)
         ttk.Label(trials_frame, text="Number of Trials:").pack(side="left")
         self.num_trials_var = tk.StringVar(value="100")
-        self.num_trials_entry = ttk.Entry(trials_frame, textvariable=self.num_trials_var, width=10)
-        self.num_trials_entry.pack(side="left", padx=5)
+        self.num_trials_entry = ttk.Entry(trials_frame, textvariable=self.num_trials_var, width=12)
+        self.num_trials_entry.pack(side="left", padx=6)
         
         # Session path preview
         path_frame = ttk.Frame(session_frame)
-        path_frame.pack(fill="x", padx=5, pady=(5, 0))
+        path_frame.pack(fill="x", padx=3, pady=(4, 0))
         
-        ttk.Label(path_frame, text="Save to:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        ttk.Label(path_frame, text="Save to:", style="Subheading.TLabel").pack(side="left")
         self.save_path_var = tk.StringVar(value="")
         self.save_path_label = ttk.Label(
             path_frame, textvariable=self.save_path_var,
-            foreground="blue", font=("TkDefaultFont", 9)
+            foreground=palette.accent_primary,
+            font=Theme.font_small()
         )
-        self.save_path_label.pack(side="left", padx=5)
+        self.save_path_label.pack(side="left", padx=6)
         self._update_save_path_preview()
         
         # Protocol tabs
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=6)
         
         self.protocol_tabs: dict[str, ProtocolTab] = {}
         for protocol_class in get_available_protocols():
@@ -250,13 +265,14 @@ class SetupMode(ttk.Frame):
         
         # Start button
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=10, pady=10)
+        button_frame.pack(fill="x", padx=10, pady=8)
         
         self.start_button = ttk.Button(
             button_frame, text="Start Session",
-            command=self._on_start_clicked
+            command=self._on_start_clicked,
+            style="Success.TButton"
         )
-        self.start_button.pack(side="right", padx=5)
+        self.start_button.pack(side="right", padx=3)
     
     def _update_save_path_preview(self) -> None:
         """Update the save path preview label."""

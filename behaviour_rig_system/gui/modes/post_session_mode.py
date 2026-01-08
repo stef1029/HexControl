@@ -18,6 +18,8 @@ matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from gui.theme import Theme, get_accuracy_color
+
 
 class PostSessionMode(ttk.Frame):
     """
@@ -37,16 +39,18 @@ class PostSessionMode(ttk.Frame):
     
     def _create_widgets(self) -> None:
         """Create the post-session UI widgets."""
+        palette = Theme.palette
+        
         # Session complete header
         self._header = ttk.Label(
             self, text="Session Complete",
-            font=("Helvetica", 18, "bold")
+            style="Title.TLabel"
         )
-        self._header.pack(pady=20)
+        self._header.pack(pady=14)
         
         # Session summary
-        summary_frame = ttk.LabelFrame(self, text="Session Summary", padding=(15, 10))
-        summary_frame.pack(fill="x", padx=20, pady=10)
+        summary_frame = ttk.LabelFrame(self, text="Session Summary", padding=(14, 10))
+        summary_frame.pack(fill="x", padx=18, pady=8)
         
         self._summary_labels = {}
         summary_items = [
@@ -59,18 +63,22 @@ class PostSessionMode(ttk.Frame):
         
         for key, label_text in summary_items:
             row = ttk.Frame(summary_frame)
-            row.pack(fill="x", pady=3)
+            row.pack(fill="x", pady=2)
             ttk.Label(
                 row, text=label_text,
-                font=("TkDefaultFont", 10, "bold"), width=15, anchor="e"
+                style="Subheading.TLabel", width=16, anchor="e"
             ).pack(side="left")
-            value_label = ttk.Label(row, text="", font=("TkDefaultFont", 10))
-            value_label.pack(side="left", padx=10)
+            value_label = ttk.Label(
+                row, text="", 
+                foreground=palette.text_secondary,
+                font=Theme.font_body()
+            )
+            value_label.pack(side="left", padx=8)
             self._summary_labels[key] = value_label
         
         # Performance Report Section
-        self._perf_frame = ttk.LabelFrame(self, text="Performance Report", padding=(15, 10))
-        self._perf_frame.pack(fill="x", padx=20, pady=10)
+        self._perf_frame = ttk.LabelFrame(self, text="Performance Report", padding=(14, 10))
+        self._perf_frame.pack(fill="x", padx=18, pady=8)
         
         # Create two-column grid layout for performance stats
         perf_container = ttk.Frame(self._perf_frame)
@@ -79,7 +87,7 @@ class PostSessionMode(ttk.Frame):
         # Configure grid columns to expand properly
         perf_container.columnconfigure(0, weight=0)  # Left label
         perf_container.columnconfigure(1, weight=1)  # Left value
-        perf_container.columnconfigure(2, weight=0, minsize=20)  # Spacer
+        perf_container.columnconfigure(2, weight=0, minsize=25)  # Spacer
         perf_container.columnconfigure(3, weight=0)  # Right label
         perf_container.columnconfigure(4, weight=1)  # Right value
         
@@ -108,10 +116,13 @@ class PostSessionMode(ttk.Frame):
                 key, label_text = left_items[row_idx]
                 ttk.Label(
                     perf_container, text=label_text,
-                    font=("TkDefaultFont", 10, "bold"), anchor="e"
+                    style="Subheading.TLabel", anchor="e"
                 ).grid(row=row_idx, column=0, sticky="e", pady=2)
-                value_label = ttk.Label(perf_container, text="-", font=("TkDefaultFont", 10))
-                value_label.grid(row=row_idx, column=1, sticky="w", padx=(5, 0), pady=2)
+                value_label = ttk.Label(
+                    perf_container, text="-", 
+                    font=Theme.font_body()
+                )
+                value_label.grid(row=row_idx, column=1, sticky="w", padx=(6, 0), pady=2)
                 self._perf_labels[key] = value_label
             
             # Right side
@@ -119,38 +130,46 @@ class PostSessionMode(ttk.Frame):
                 key, label_text = right_items[row_idx]
                 ttk.Label(
                     perf_container, text=label_text,
-                    font=("TkDefaultFont", 10, "bold"), anchor="e"
+                    style="Subheading.TLabel", anchor="e"
                 ).grid(row=row_idx, column=3, sticky="e", pady=2)
-                value_label = ttk.Label(perf_container, text="-", font=("TkDefaultFont", 10))
-                value_label.grid(row=row_idx, column=4, sticky="w", padx=(5, 0), pady=2)
+                value_label = ttk.Label(
+                    perf_container, text="-", 
+                    font=Theme.font_body()
+                )
+                value_label.grid(row=row_idx, column=4, sticky="w", padx=(6, 0), pady=2)
                 self._perf_labels[key] = value_label
         
         # Additional stats row
         extra_row = ttk.Frame(self._perf_frame)
-        extra_row.pack(fill="x", pady=(10, 0))
+        extra_row.pack(fill="x", pady=(8, 0))
         extra_row.columnconfigure(1, weight=1)
         extra_row.columnconfigure(4, weight=1)
         
         ttk.Label(
             extra_row, text="Trial Rate:",
-            font=("TkDefaultFont", 10, "bold"), anchor="e"
+            style="Subheading.TLabel", anchor="e"
         ).grid(row=0, column=0, sticky="e")
-        self._perf_labels["trial_rate"] = ttk.Label(extra_row, text="-", font=("TkDefaultFont", 10))
-        self._perf_labels["trial_rate"].grid(row=0, column=1, sticky="w", padx=(5, 0))
+        self._perf_labels["trial_rate"] = ttk.Label(
+            extra_row, text="-", 
+            font=Theme.font_body()
+        )
+        self._perf_labels["trial_rate"].grid(row=0, column=1, sticky="w", padx=(8, 0))
         
         ttk.Label(
             extra_row, text="Last 20 Accuracy:",
-            font=("TkDefaultFont", 10, "bold"), anchor="e"
-        ).grid(row=0, column=3, sticky="e", padx=(20, 0))
-        self._perf_labels["rolling_20"] = ttk.Label(extra_row, text="-", font=("TkDefaultFont", 10))
-        self._perf_labels["rolling_20"].grid(row=0, column=4, sticky="w", padx=(5, 0))
+            style="Subheading.TLabel", anchor="e"
+        ).grid(row=0, column=3, sticky="e", padx=(18, 0))
+        self._perf_labels["rolling_20"] = ttk.Label(
+            extra_row, text="-", 
+            font=Theme.font_body()
+        )
+        self._perf_labels["rolling_20"].grid(row=0, column=4, sticky="w", padx=(6, 0))
         
         # No trials message (hidden by default)
         self._no_trials_label = ttk.Label(
             self._perf_frame, 
             text="No trials were recorded during this session.",
-            font=("TkDefaultFont", 10, "italic"),
-            foreground="gray"
+            style="Muted.TLabel"
         )
         
         # Performance Plot Section
@@ -161,11 +180,12 @@ class PostSessionMode(ttk.Frame):
         
         # New session button
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=20, pady=20)
+        button_frame.pack(fill="x", padx=18, pady=14)
         
         self._new_session_button = ttk.Button(
             button_frame, text="New Session",
-            command=self._on_new_session_clicked
+            command=self._on_new_session_clicked,
+            style="Primary.TButton"
         )
         self._new_session_button.pack(side="right", padx=5)
     
@@ -193,10 +213,11 @@ class PostSessionMode(ttk.Frame):
         self._summary_labels["save_path"].config(text=session_result.get("save_path", ""))
         
         # Color-code status
+        palette = Theme.palette
         status_colors = {
-            "Completed": "darkgreen",
-            "Stopped": "darkorange",
-            "Error": "red",
+            "Completed": palette.success,
+            "Stopped": palette.warning,
+            "Error": palette.error,
         }
         color = status_colors.get(status, "black")
         self._summary_labels["status"].config(foreground=color)
@@ -217,6 +238,8 @@ class PostSessionMode(ttk.Frame):
             report: Performance report dict from PerformanceTracker.get_report(),
                    or None if no trials were recorded
         """
+        palette = Theme.palette
+        
         # Hide/show the no trials message based on whether we have data
         if report is None or report.get("total_trials", 0) == 0:
             # No trials - show message, hide stats
@@ -232,34 +255,34 @@ class PostSessionMode(ttk.Frame):
         self._perf_labels["total_trials"].config(text=str(report.get("total_trials", 0)))
         self._perf_labels["successes"].config(
             text=str(report.get("successes", 0)),
-            foreground="darkgreen"
+            foreground=palette.success
         )
         self._perf_labels["failures"].config(
             text=str(report.get("failures", 0)),
-            foreground="darkred"
+            foreground=palette.error
         )
         self._perf_labels["timeouts"].config(
             text=str(report.get("timeouts", 0)),
-            foreground="darkorange"
+            foreground=palette.warning
         )
         
         # Update accuracy stats
         accuracy = report.get("accuracy", 0)
         self._perf_labels["accuracy"].config(
             text=f"{accuracy:.1f}%",
-            foreground="black"
+            foreground=palette.text_primary
         )
         
         accuracy_with_to = report.get("accuracy_with_timeouts", 0)
         self._perf_labels["accuracy_with_to"].config(
             text=f"{accuracy_with_to:.1f}%",
-            foreground="black"
+            foreground=palette.text_primary
         )
         
         timeout_rate = report.get("timeout_rate", 0)
         self._perf_labels["timeout_rate"].config(
             text=f"{timeout_rate:.1f}%",
-            foreground="darkorange" if timeout_rate > 20 else "black"
+            foreground=palette.warning if timeout_rate > 20 else palette.text_primary
         )
         
         # Update trial rate
@@ -272,37 +295,38 @@ class PostSessionMode(ttk.Frame):
         rolling_20 = report.get("rolling_accuracy_20", 0)
         self._perf_labels["rolling_20"].config(
             text=f"{rolling_20:.1f}%",
-            foreground=self._get_accuracy_color(rolling_20)
+            foreground=get_accuracy_color(rolling_20)
         )
     
     def _get_accuracy_color(self, accuracy: float) -> str:
         """Get color for accuracy value (green=good, orange=ok, red=poor)."""
-        if accuracy >= 70:
-            return "darkgreen"
-        elif accuracy >= 50:
-            return "darkorange"
-        else:
-            return "darkred"
+        return get_accuracy_color(accuracy)
     
     def _create_performance_plot(self) -> None:
         """Create the performance plot section (initially empty)."""
-        # Plot frame
-        self._plot_frame = ttk.LabelFrame(self, text="Performance Over Time", padding=(15, 10))
-        self._plot_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        palette = Theme.palette
         
-        # Create matplotlib figure
-        self._figure = Figure(figsize=(6, 3), dpi=100)
+        # Plot frame
+        self._plot_frame = ttk.LabelFrame(self, text="Performance Over Time", padding=(20, 15))
+        self._plot_frame.pack(fill="both", expand=True, padx=25, pady=12)
+        
+        # Create matplotlib figure with themed colors
+        self._figure = Figure(figsize=(6, 3), dpi=100, facecolor=palette.bg_secondary)
         self._ax = self._figure.add_subplot(111)
+        self._ax.set_facecolor(palette.bg_secondary)
         
         # Initial empty plot setup
-        self._ax.set_xlabel('Time (minutes)')
-        self._ax.set_ylabel('Accuracy (%)')
-        self._ax.set_title('Performance Over Session')
+        self._ax.set_xlabel('Time (minutes)', fontsize=10, color=palette.text_secondary)
+        self._ax.set_ylabel('Accuracy (%)', fontsize=10, color=palette.text_secondary)
+        self._ax.set_title('Performance Over Session', fontsize=11, fontweight='bold', color=palette.text_primary)
         self._ax.set_ylim(0, 100)
-        self._ax.grid(True, alpha=0.3)
+        self._ax.grid(True, alpha=0.3, color=palette.border_medium)
+        self._ax.tick_params(colors=palette.text_secondary)
+        for spine in self._ax.spines.values():
+            spine.set_color(palette.border_light)
         self._ax.text(0.5, 0.5, 'No data available', 
                      transform=self._ax.transAxes, ha='center', va='center',
-                     fontsize=12, color='gray')
+                     fontsize=12, color=palette.text_disabled)
         
         self._figure.tight_layout()
         
@@ -379,20 +403,25 @@ class PostSessionMode(ttk.Frame):
             return
         
         # Clear and update plot
+        palette = Theme.palette
         self._ax.clear()
         
-        # Plot the data
-        self._ax.plot(time_bins, accuracy_bins, 'b-o', linewidth=2, markersize=6, 
+        # Plot the data with themed colors
+        self._ax.plot(time_bins, accuracy_bins, color=palette.accent_primary, 
+                     linewidth=2, marker='o', markersize=6,
                      label='Accuracy (2-min bins)')
         
-        # Configure axes
-        self._ax.set_xlabel('Time (minutes)')
-        self._ax.set_ylabel('Accuracy (%)')
-        self._ax.set_title('Performance Over Session')
+        # Configure axes with themed styling
+        self._ax.set_xlabel('Time (minutes)', fontsize=10, color=palette.text_secondary)
+        self._ax.set_ylabel('Accuracy (%)', fontsize=10, color=palette.text_secondary)
+        self._ax.set_title('Performance Over Session', fontsize=11, fontweight='bold', color=palette.text_primary)
         self._ax.set_ylim(0, 100)
         self._ax.set_xlim(0, max(time_bins) + 1)
-        self._ax.grid(True, alpha=0.3)
-        self._ax.legend(loc='lower right')
+        self._ax.grid(True, alpha=0.3, color=palette.border_medium)
+        self._ax.tick_params(colors=palette.text_secondary)
+        for spine in self._ax.spines.values():
+            spine.set_color(palette.border_light)
+        self._ax.legend(loc='lower right', fontsize=9)
         
         self._figure.tight_layout()
         self._canvas.draw()

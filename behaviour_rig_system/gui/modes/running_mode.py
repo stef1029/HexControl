@@ -16,6 +16,7 @@ from tkinter import scrolledtext, ttk
 from typing import Callable, TYPE_CHECKING
 
 from core.protocol_base import ProtocolEvent, ProtocolStatus
+from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 
 if TYPE_CHECKING:
     from core.performance_tracker import PerformanceTracker
@@ -42,39 +43,49 @@ class RunningMode(ttk.Frame):
     
     def _create_widgets(self) -> None:
         """Create the running UI widgets."""
+        palette = Theme.palette
+        
         # Session summary at top
-        summary_frame = ttk.LabelFrame(self, text="Session", padding=(10, 5))
-        summary_frame.pack(fill="x", padx=10, pady=5)
+        summary_frame = ttk.LabelFrame(self, text="Session", padding=(10, 6))
+        summary_frame.pack(fill="x", padx=10, pady=6)
         
         self._summary_labels = {}
         for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
             row = ttk.Frame(summary_frame)
             row.pack(fill="x", pady=1)
-            ttk.Label(row, text=label_text, font=("TkDefaultFont", 9, "bold")).pack(side="left")
-            value_label = ttk.Label(row, text="", font=("TkDefaultFont", 9))
-            value_label.pack(side="left", padx=5)
+            ttk.Label(row, text=label_text, style="Subheading.TLabel").pack(side="left")
+            value_label = ttk.Label(row, text="", foreground=palette.text_secondary)
+            value_label.pack(side="left", padx=6)
             self._summary_labels[key] = value_label
         
         # Performance stats frame
-        perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 5))
+        perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
         perf_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Main stats row
         stats_row = ttk.Frame(perf_frame)
-        stats_row.pack(fill="x", pady=2)
+        stats_row.pack(fill="x", pady=3)
         
         # Trials counter
-        ttk.Label(stats_row, text="Trials:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
-        self._trials_label = ttk.Label(stats_row, text="0", font=("Consolas", 11))
-        self._trials_label.pack(side="left", padx=(5, 15))
+        ttk.Label(stats_row, text="Trials:", style="Subheading.TLabel").pack(side="left")
+        self._trials_label = ttk.Label(
+            stats_row, text="0", 
+            font=Theme.font_mono(size=12),
+            foreground=palette.accent_primary
+        )
+        self._trials_label.pack(side="left", padx=(6, 16))
         
         # Overall accuracy
-        ttk.Label(stats_row, text="Accuracy:", font=("TkDefaultFont", 9, "bold")).pack(side="left")
-        self._accuracy_label = ttk.Label(stats_row, text="--", font=("Consolas", 11, "bold"), foreground="blue")
-        self._accuracy_label.pack(side="left", padx=(5, 15))
+        ttk.Label(stats_row, text="Accuracy:", style="Subheading.TLabel").pack(side="left")
+        self._accuracy_label = ttk.Label(
+            stats_row, text="--", 
+            font=(Theme.FONT_FAMILY_MONO, 12, "bold"),
+            foreground=palette.info
+        )
+        self._accuracy_label.pack(side="left", padx=(6, 16))
         
         # Rolling accuracy with selectable window
-        ttk.Label(stats_row, text="Last", font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        ttk.Label(stats_row, text="Last", style="Subheading.TLabel").pack(side="left")
         self._rolling_n_var = tk.StringVar(value="20")
         self._rolling_n_combo = ttk.Combobox(
             stats_row, 
@@ -83,77 +94,98 @@ class RunningMode(ttk.Frame):
             width=4,
             state="readonly"
         )
-        self._rolling_n_combo.pack(side="left", padx=(3, 3))
-        ttk.Label(stats_row, text=":", font=("TkDefaultFont", 9, "bold")).pack(side="left")
-        self._rolling_label = ttk.Label(stats_row, text="--", font=("Consolas", 11), foreground="darkblue")
-        self._rolling_label.pack(side="left", padx=(5, 15))
+        self._rolling_n_combo.pack(side="left", padx=(4, 2))
+        ttk.Label(stats_row, text=":", style="Subheading.TLabel").pack(side="left")
+        self._rolling_label = ttk.Label(
+            stats_row, text="--", 
+            font=Theme.font_mono(size=12),
+            foreground=palette.accent_secondary
+        )
+        self._rolling_label.pack(side="left", padx=(6, 0))
         
         # Breakdown row
         breakdown_row = ttk.Frame(perf_frame)
-        breakdown_row.pack(fill="x", pady=2)
+        breakdown_row.pack(fill="x", pady=3)
         
-        ttk.Label(breakdown_row, text="Correct:", font=("TkDefaultFont", 9)).pack(side="left")
-        self._correct_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="green")
-        self._correct_label.pack(side="left", padx=(5, 15))
+        ttk.Label(breakdown_row, text="Correct:").pack(side="left")
+        self._correct_label = ttk.Label(
+            breakdown_row, text="0", 
+            font=Theme.font_mono(size=10),
+            foreground=palette.success
+        )
+        self._correct_label.pack(side="left", padx=(4, 14))
         
-        ttk.Label(breakdown_row, text="Incorrect:", font=("TkDefaultFont", 9)).pack(side="left")
-        self._incorrect_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="red")
-        self._incorrect_label.pack(side="left", padx=(5, 15))
+        ttk.Label(breakdown_row, text="Incorrect:").pack(side="left")
+        self._incorrect_label = ttk.Label(
+            breakdown_row, text="0", 
+            font=Theme.font_mono(size=10),
+            foreground=palette.error
+        )
+        self._incorrect_label.pack(side="left", padx=(4, 14))
         
-        ttk.Label(breakdown_row, text="Timeouts:", font=("TkDefaultFont", 9)).pack(side="left")
-        self._timeout_label = ttk.Label(breakdown_row, text="0", font=("Consolas", 10), foreground="gray")
-        self._timeout_label.pack(side="left", padx=(5, 15))
+        ttk.Label(breakdown_row, text="Timeouts:").pack(side="left")
+        self._timeout_label = ttk.Label(
+            breakdown_row, text="0", 
+            font=Theme.font_mono(size=10),
+            foreground=palette.warning
+        )
+        self._timeout_label.pack(side="left", padx=(4, 0))
         
         # Trial log - shows each trial as it happens
-        trial_log_label = ttk.Label(perf_frame, text="Trial Log:", font=("TkDefaultFont", 9, "bold"))
-        trial_log_label.pack(anchor="w", pady=(10, 2))
+        trial_log_label = ttk.Label(perf_frame, text="Trial Log:", style="Subheading.TLabel")
+        trial_log_label.pack(anchor="w", pady=(8, 3))
         
         self._trial_log = scrolledtext.ScrolledText(
-            perf_frame, height=12, font=("Consolas", 9), state="disabled"
+            perf_frame, height=10, state="disabled"
         )
+        style_scrolled_text(self._trial_log, log_style=True)
         self._trial_log.pack(fill="both", expand=True)
         
         # Configure tags for trial log coloring
-        self._trial_log.tag_config("success", foreground="green")
-        self._trial_log.tag_config("failure", foreground="red")
-        self._trial_log.tag_config("timeout", foreground="darkorange")
-        self._trial_log.tag_config("stimulus", foreground="blue")
+        self._trial_log.tag_config("success", foreground=palette.success)
+        self._trial_log.tag_config("failure", foreground=palette.error)
+        self._trial_log.tag_config("timeout", foreground=palette.warning)
+        self._trial_log.tag_config("stimulus", foreground=palette.info)
         
         # Timer and status row
         timer_frame = ttk.Frame(self)
-        timer_frame.pack(fill="x", padx=10, pady=5)
+        timer_frame.pack(fill="x", padx=10, pady=6)
         
-        ttk.Label(timer_frame, text="Elapsed:", font=("TkDefaultFont", 10, "bold")).pack(side="left")
+        ttk.Label(timer_frame, text="Elapsed:", style="Subheading.TLabel").pack(side="left")
         self._timer_label = ttk.Label(
             timer_frame, text="00:00:00",
-            font=("Consolas", 24, "bold"), foreground="green"
+            font=(Theme.FONT_FAMILY_MONO, 22, "bold"), 
+            foreground=palette.success
         )
         self._timer_label.pack(side="left", padx=10)
         
         self._status_label = ttk.Label(
             timer_frame, text="RUNNING",
-            font=("TkDefaultFont", 12, "bold"), foreground="green"
+            font=Theme.font(size=12, weight="bold"), 
+            foreground=palette.success
         )
         self._status_label.pack(side="right", padx=10)
         
         # Event log (smaller)
-        log_frame = ttk.LabelFrame(self, text="Session Log", padding=(5, 5))
+        log_frame = ttk.LabelFrame(self, text="Session Log", padding=(8, 5))
         log_frame.pack(fill="x", padx=10, pady=5)
         
         self._log_text = scrolledtext.ScrolledText(
-            log_frame, height=5, font=("Consolas", 9), state="disabled"
+            log_frame, height=4, state="disabled"
         )
+        style_scrolled_text(self._log_text, log_style=True)
         self._log_text.pack(fill="x")
         
         # Stop button
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=10, pady=10)
+        button_frame.pack(fill="x", padx=10, pady=8)
         
         self._stop_button = ttk.Button(
             button_frame, text="Stop Session",
-            command=self._on_stop_clicked
+            command=self._on_stop_clicked,
+            style="Danger.TButton"
         )
-        self._stop_button.pack(side="right", padx=5)
+        self._stop_button.pack(side="right", padx=3)
     
     def activate(self, session_config: dict) -> None:
         """
@@ -229,6 +261,8 @@ class RunningMode(ttk.Frame):
     
     def _update_performance_display(self, tracker: "PerformanceTracker") -> None:
         """Actually update the performance display (must be called on main thread)."""
+        palette = Theme.palette
+        
         self._trials_label.config(text=str(tracker.total_trials))
         self._correct_label.config(text=str(tracker.successes))
         self._incorrect_label.config(text=str(tracker.failures))
@@ -238,15 +272,10 @@ class RunningMode(ttk.Frame):
         if tracker.responses > 0:
             acc = tracker.accuracy
             self._accuracy_label.config(text=f"{acc:.0f}%")
-            # Color based on performance
-            if acc >= 70:
-                self._accuracy_label.config(foreground="green")
-            elif acc >= 50:
-                self._accuracy_label.config(foreground="orange")
-            else:
-                self._accuracy_label.config(foreground="red")
+            # Color based on performance using theme
+            self._accuracy_label.config(foreground=get_accuracy_color(acc))
         else:
-            self._accuracy_label.config(text="--", foreground="blue")
+            self._accuracy_label.config(text="--", foreground=palette.info)
         
         # Rolling accuracy (last N trials, user-selectable)
         if tracker.total_trials > 0:
@@ -360,21 +389,24 @@ class RunningMode(ttk.Frame):
     
     def _set_status(self, status: ProtocolStatus) -> None:
         """Update the status display."""
+        palette = Theme.palette
+        
         status_config = {
-            ProtocolStatus.IDLE: ("IDLE", "gray"),
-            ProtocolStatus.RUNNING: ("RUNNING", "green"),
-            ProtocolStatus.COMPLETED: ("COMPLETED", "darkgreen"),
-            ProtocolStatus.ABORTED: ("STOPPED", "darkorange"),
-            ProtocolStatus.ERROR: ("ERROR", "red"),
+            ProtocolStatus.IDLE: ("IDLE", palette.text_secondary),
+            ProtocolStatus.RUNNING: ("RUNNING", palette.success),
+            ProtocolStatus.COMPLETED: ("COMPLETED", "#1e8449"),  # Darker green
+            ProtocolStatus.ABORTED: ("STOPPED", palette.warning),
+            ProtocolStatus.ERROR: ("ERROR", palette.error),
         }
-        text, color = status_config.get(status, ("UNKNOWN", "black"))
+        text, color = status_config.get(status, ("UNKNOWN", palette.text_primary))
         self._status_label.config(text=text, foreground=color)
         self._timer_label.config(foreground=color)
     
     def set_stopping(self) -> None:
         """Update UI to show stopping state."""
+        palette = Theme.palette
         self._stop_button.config(state="disabled", text="Stopping...")
-        self._status_label.config(text="STOPPING", foreground="orange")
+        self._status_label.config(text="STOPPING", foreground=palette.warning)
     
     def _clear_log(self) -> None:
         """Clear the log."""

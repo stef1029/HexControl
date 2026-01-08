@@ -33,6 +33,7 @@ from core.parameter_types import (
     IntParameter,
     Parameter,
 )
+from gui.theme import Theme
 
 
 class ParameterWidget:
@@ -78,7 +79,8 @@ class ParameterWidget:
     def show_error(self, message: str) -> None:
         """Display an error message below the widget."""
         if self.error_label is not None:
-            self.error_label.config(text=message, foreground="red")
+            palette = Theme.palette
+            self.error_label.config(text=message, foreground=palette.error)
 
     def clear_error(self) -> None:
         """Clear any error message."""
@@ -104,10 +106,11 @@ class IntParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         """Create label, spinbox, and error label."""
         param: IntParameter = self.parameter
+        palette = Theme.palette
 
         # Label
         label = ttk.Label(self.frame, text=param.display_name + ":")
-        label.grid(row=0, column=0, sticky="w", padx=(0, 10))
+        label.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Spinbox
         self.variable = tk.IntVar(value=param.default)
@@ -121,7 +124,7 @@ class IntParameterWidget(ParameterWidget):
             to=to_val,
             increment=param.step,
             textvariable=self.variable,
-            width=15,
+            width=16,
         )
         self.spinbox.grid(row=0, column=1, sticky="w")
 
@@ -130,13 +133,16 @@ class IntParameterWidget(ParameterWidget):
             tooltip_label = ttk.Label(
                 self.frame,
                 text=f"({param.description})",
-                foreground="gray",
-                font=("TkDefaultFont", 8),
+                style="Muted.TLabel",
             )
             tooltip_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
         # Error label
-        self.error_label = ttk.Label(self.frame, text="", foreground="red")
+        self.error_label = ttk.Label(
+            self.frame, text="", 
+            foreground=palette.error,
+            font=Theme.font_small()
+        )
         self.error_label.grid(row=2, column=0, columnspan=2, sticky="w")
 
     def get_value(self) -> int:
@@ -162,10 +168,11 @@ class FloatParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         """Create label, spinbox, and error label."""
         param: FloatParameter = self.parameter
+        palette = Theme.palette
 
         # Label
         label = ttk.Label(self.frame, text=param.display_name + ":")
-        label.grid(row=0, column=0, sticky="w", padx=(0, 10))
+        label.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Spinbox
         self.variable = tk.DoubleVar(value=param.default)
@@ -179,7 +186,7 @@ class FloatParameterWidget(ParameterWidget):
             to=to_val,
             increment=param.step,
             textvariable=self.variable,
-            width=15,
+            width=16,
             format=f"%.{param.precision}f",
         )
         self.spinbox.grid(row=0, column=1, sticky="w")
@@ -189,13 +196,16 @@ class FloatParameterWidget(ParameterWidget):
             tooltip_label = ttk.Label(
                 self.frame,
                 text=f"({param.description})",
-                foreground="gray",
-                font=("TkDefaultFont", 8),
+                style="Muted.TLabel",
             )
             tooltip_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
         # Error label
-        self.error_label = ttk.Label(self.frame, text="", foreground="red")
+        self.error_label = ttk.Label(
+            self.frame, text="", 
+            foreground=palette.error,
+            font=Theme.font_small()
+        )
         self.error_label.grid(row=2, column=0, columnspan=2, sticky="w")
 
     def get_value(self) -> float:
@@ -220,6 +230,7 @@ class BoolParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         """Create checkbox and error label."""
         param: BoolParameter = self.parameter
+        palette = Theme.palette
 
         # Checkbox
         self.variable = tk.BooleanVar(value=param.default)
@@ -236,13 +247,16 @@ class BoolParameterWidget(ParameterWidget):
             tooltip_label = ttk.Label(
                 self.frame,
                 text=f"({param.description})",
-                foreground="gray",
-                font=("TkDefaultFont", 8),
+                style="Muted.TLabel",
             )
             tooltip_label.grid(row=1, column=0, sticky="w")
 
         # Error label (rarely used for booleans, but included for consistency)
-        self.error_label = ttk.Label(self.frame, text="", foreground="red")
+        self.error_label = ttk.Label(
+            self.frame, text="", 
+            foreground=palette.error,
+            font=Theme.font_small()
+        )
         self.error_label.grid(row=2, column=0, sticky="w")
 
     def get_value(self) -> bool:
@@ -264,10 +278,11 @@ class ChoiceParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         """Create label, combobox, and error label."""
         param: ChoiceParameter = self.parameter
+        palette = Theme.palette
 
         # Label
         label = ttk.Label(self.frame, text=param.display_name + ":")
-        label.grid(row=0, column=0, sticky="w", padx=(0, 10))
+        label.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Combobox
         self.variable = tk.StringVar(value=param.default)
@@ -277,7 +292,7 @@ class ChoiceParameterWidget(ParameterWidget):
             textvariable=self.variable,
             values=param.choices,
             state="readonly",
-            width=20,
+            width=22,
         )
         self.combobox.grid(row=0, column=1, sticky="w")
 
@@ -286,13 +301,16 @@ class ChoiceParameterWidget(ParameterWidget):
             tooltip_label = ttk.Label(
                 self.frame,
                 text=f"({param.description})",
-                foreground="gray",
-                font=("TkDefaultFont", 8),
+                style="Muted.TLabel",
             )
             tooltip_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
         # Error label
-        self.error_label = ttk.Label(self.frame, text="", foreground="red")
+        self.error_label = ttk.Label(
+            self.frame, text="", 
+            foreground=palette.error,
+            font=Theme.font_small()
+        )
         self.error_label.grid(row=2, column=0, columnspan=2, sticky="w")
 
     def get_value(self) -> str:
@@ -366,10 +384,10 @@ class ParameterFormBuilder:
         for group_name, group_params in groups.items():
             # Group label frame
             group_frame = ttk.LabelFrame(
-                self.frame, text=group_name, padding=(10, 5)
+                self.frame, text=group_name, padding=(10, 6)
             )
             group_frame.grid(
-                row=row, column=0, sticky="ew", padx=5, pady=5
+                row=row, column=0, sticky="ew", padx=6, pady=5
             )
             self.frame.columnconfigure(0, weight=1)
             row += 1
@@ -378,7 +396,7 @@ class ParameterFormBuilder:
             for param_idx, param in enumerate(group_params):
                 widget = self._create_widget(group_frame, param)
                 widget.grid(
-                    row=param_idx, column=0, sticky="w", padx=5, pady=3
+                    row=param_idx, column=0, sticky="w", padx=6, pady=3
                 )
                 self.widgets[param.name] = widget
 

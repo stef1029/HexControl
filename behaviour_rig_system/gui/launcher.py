@@ -21,6 +21,7 @@ import yaml
 from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+from .theme import apply_theme, Theme, style_rig_button, create_rig_button
 
 if TYPE_CHECKING:
     from .rig_window import RigWindow
@@ -122,8 +123,11 @@ class RigLauncher:
     def __init__(self, config_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("400x450")
+        self.root.geometry("420x460")
         self.root.resizable(False, False)
+        
+        # Apply modern theme
+        apply_theme(self.root)
         
         # Store config path for passing to child windows
         self.config_path = config_path
@@ -162,15 +166,26 @@ class RigLauncher:
     
     def _create_widgets(self) -> None:
         """Create the launcher widgets."""
-        # Clock and date at top
-        clock_frame = ttk.Frame(self.root)
-        clock_frame.pack(pady=(15, 5))
+        palette = Theme.palette
+        
+        # Main container with padding
+        main_container = ttk.Frame(self.root, padding=(16, 10))
+        main_container.pack(fill="both", expand=True)
+        
+        # Header section with clock
+        header_frame = ttk.Frame(main_container)
+        header_frame.pack(fill="x", pady=(0, 6))
+        
+        # Clock and date
+        clock_frame = ttk.Frame(header_frame)
+        clock_frame.pack()
         
         self._clock_var = tk.StringVar(value="--:--")
         clock_label = ttk.Label(
             clock_frame,
             textvariable=self._clock_var,
-            font=("Helvetica", 24, "bold")
+            font=(Theme.FONT_FAMILY, 26, "bold"),
+            foreground=palette.accent_primary
         )
         clock_label.pack()
         
@@ -178,29 +193,35 @@ class RigLauncher:
         date_label = ttk.Label(
             clock_frame,
             textvariable=self._date_var,
-            font=("Helvetica", 10)
+            style="Muted.TLabel"
         )
         date_label.pack()
         
+        # Separator
+        ttk.Separator(main_container, orient="horizontal").pack(fill="x", pady=6)
+        
         # Title
         title_label = ttk.Label(
-            self.root,
+            main_container,
             text="Behaviour Rig System",
-            font=("Helvetica", 16, "bold")
+            style="Heading.TLabel"
         )
-        title_label.pack(pady=(15, 5))
+        title_label.pack(pady=(3, 2))
         
         # Instructions
         instructions = ttk.Label(
-            self.root,
+            main_container,
             text="Select rigs to launch:",
-            font=("Helvetica", 10)
+            style="Muted.TLabel"
         )
-        instructions.pack(pady=(0, 15))
+        instructions.pack(pady=(0, 8))
+        
+        # Store main_container for use in other widget creation
+        self._main_container = main_container
         
         # Rig selection frame (toggle buttons in 2x2 grid)
-        button_frame = ttk.Frame(self.root)
-        button_frame.pack(padx=20, pady=10, fill="both", expand=True)
+        button_frame = ttk.Frame(self._main_container)
+        button_frame.pack(pady=6, fill="both", expand=True)
         
         # Create a toggle button for each rig (2x2 grid)
         for i, rig in enumerate(self.rigs[:4]):  # Max 4 rigs
@@ -213,54 +234,54 @@ class RigLauncher:
             # Selection state
             self.rig_selected[rig_name] = False
             
-            # Create toggle button using tk.Button for color control
-            btn = tk.Button(
+            # Create toggle button using themed rig button
+            btn = create_rig_button(
                 button_frame,
                 text=rig_name,
                 command=lambda r=rig: self._on_rig_toggle(r),
-                width=15,
-                height=2,
-                font=("Helvetica", 10),
-                relief="raised",
-                bg="#f0f0f0",
-                activebackground="#e0e0e0",
             )
-            btn.grid(row=row, column=col, padx=10, pady=10, ipady=10)
+            btn.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             
             # Store reference
             self.rig_buttons[rig_name] = btn
             
             # Disable if not enabled in config
             if not enabled:
-                btn.configure(state="disabled", bg="#d0d0d0")
+                style_rig_button(btn, is_open=True)
+                btn.configure(state="disabled")
         
-        # Configure grid weights for centering
+        # Configure grid weights for even distribution
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
+        button_frame.rowconfigure(0, weight=1)
+        button_frame.rowconfigure(1, weight=1)
+        
+        # Separator before buttons
+        ttk.Separator(self._main_container, orient="horizontal").pack(fill="x", pady=6)
         
         # Launch Selected button
-        launch_frame = ttk.Frame(self.root)
-        launch_frame.pack(pady=(5, 10))
+        launch_frame = ttk.Frame(self._main_container)
+        launch_frame.pack(pady=(3, 6))
         
         self._launch_selected_btn = ttk.Button(
             launch_frame,
             text="Launch Selected Rigs",
             command=self._on_launch_selected_click,
-            width=25,
+            style="Primary.TButton",
             state="disabled",  # Disabled until rigs are selected
         )
-        self._launch_selected_btn.pack(pady=5)
+        self._launch_selected_btn.pack(pady=3)
 
         # Utility buttons frame
-        utility_frame = ttk.Frame(self.root)
-        utility_frame.pack(pady=(5, 10))
+        utility_frame = ttk.Frame(self._main_container)
+        utility_frame.pack(pady=(3, 6))
 
         # Zero Scales button
         zero_btn = ttk.Button(
             utility_frame,
             text="Zero All Scales",
             command=self._on_zero_scales_click,
-            width=20,
+            style="Secondary.TButton",
         )
         zero_btn.pack(side="left", padx=5)
         self._zero_btn = zero_btn
@@ -270,18 +291,22 @@ class RigLauncher:
             utility_frame,
             text="Post Processing",
             command=self._on_post_processing_click,
-            width=20,
+            style="Secondary.TButton",
         )
         post_process_btn.pack(side="left", padx=5)
+        self._post_process_btn = post_process_btn
         
-        # Status label at bottom
+        # Status bar at bottom
+        status_frame = ttk.Frame(self._main_container)
+        status_frame.pack(fill="x", pady=(8, 0))
+        
         self.status_var = tk.StringVar(value="Ready")
         status_label = ttk.Label(
-            self.root,
+            status_frame,
             textvariable=self.status_var,
-            font=("Helvetica", 9)
+            style="Muted.TLabel"
         )
-        status_label.pack(pady=15)
+        status_label.pack()
     
     def _on_zero_scales_click(self) -> None:
         """Handle zero scales button click."""
@@ -340,36 +365,17 @@ class RigLauncher:
         if not btn:
             return
         
-        if rig_name in self.open_windows:
-            # Rig is open - gray out
-            btn.configure(
-                state="disabled",
-                bg="#a0a0a0",
-                relief="sunken",
-            )
-        elif self.rig_selected.get(rig_name, False):
-            # Rig is selected - highlight
-            btn.configure(
-                state="normal",
-                bg="#90EE90",  # Light green
-                relief="sunken",
-                activebackground="#7DD87D",
-            )
-        else:
-            # Rig is not selected - default
-            btn.configure(
-                state="normal",
-                bg="#f0f0f0",
-                relief="raised",
-                activebackground="#e0e0e0",
-            )
+        is_open = rig_name in self.open_windows
+        is_selected = self.rig_selected.get(rig_name, False)
+        
+        style_rig_button(btn, is_selected=is_selected, is_open=is_open)
 
     def _update_launch_button(self) -> None:
         """Update launch button state based on selections."""
         selected_count = sum(1 for selected in self.rig_selected.values() if selected)
         
         if selected_count > 0:
-            self._launch_selected_btn.configure(state="normal")
+            self._launch_selected_btn.configure(state="normal", style="Primary.TButton")
             self._launch_selected_btn.configure(text=f"Launch {selected_count} Rig{'s' if selected_count > 1 else ''}")
         else:
             self._launch_selected_btn.configure(state="disabled")
@@ -490,12 +496,14 @@ class RigLauncher:
 
     def _disable_launcher(self) -> None:
         """Disable launcher controls while post-processing is open."""
-        # Disable all rig buttons
+        # Disable all rig buttons (these are tk.Button, use style_rig_button)
         for btn in self.rig_buttons.values():
-            btn.configure(state="disabled", bg="#d0d0d0")
+            style_rig_button(btn, is_open=True)
+            btn.configure(state="disabled")
 
-        # Disable utility buttons
+        # Disable utility buttons (these are ttk.Button, just disable them)
         self._zero_btn.configure(state="disabled")
+        self._post_process_btn.configure(state="disabled")
         
         # Disable launch button
         self._launch_selected_btn.configure(state="disabled")
@@ -512,6 +520,7 @@ class RigLauncher:
 
         # Re-enable utility buttons
         self._zero_btn.configure(state="normal")
+        self._post_process_btn.configure(state="normal")
         
         # Update launch button state
         self._update_launch_button()

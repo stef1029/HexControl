@@ -24,6 +24,7 @@ from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 
 from .modes import SetupMode, RunningMode, PostSessionMode
+from .theme import apply_theme, Theme, style_scrolled_text
 
 
 class WindowMode(Enum):
@@ -89,10 +90,13 @@ class RigWindow:
         else:
             self.root = tk.Tk()
         
+        # Apply modern theme
+        apply_theme(self.root)
+        
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("700x750")
-        self.root.minsize(600, 500)
+        self.root.geometry("680x680")
+        self.root.minsize(580, 480)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
     def _create_modes(self) -> None:
@@ -115,41 +119,46 @@ class RigWindow:
     
     def _create_startup_overlay(self) -> None:
         """Create the overlay shown during startup sequence."""
+        palette = Theme.palette
+        
         self.startup_frame = ttk.Frame(self.root)
         
-        inner_frame = ttk.Frame(self.startup_frame)
-        inner_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        inner_frame = ttk.Frame(self.startup_frame, padding=(18, 12))
+        inner_frame.pack(fill="both", expand=True)
         
         self.startup_title = ttk.Label(
             inner_frame, text="Starting Session...",
-            font=("Helvetica", 16, "bold")
+            style="Heading.TLabel"
         )
-        self.startup_title.pack(pady=(10, 5))
+        self.startup_title.pack(pady=(6, 3))
         
         self.startup_status_var = tk.StringVar(value="Initializing...")
         self.startup_status = ttk.Label(
             inner_frame, textvariable=self.startup_status_var,
-            font=("Helvetica", 11)
+            foreground=palette.accent_primary,
+            font=Theme.font(size=10)
         )
-        self.startup_status.pack(pady=5)
+        self.startup_status.pack(pady=3)
         
         self.startup_progress = ttk.Progressbar(
             inner_frame, mode="indeterminate", length=400
         )
         self.startup_progress.pack(pady=10)
         
-        log_label = ttk.Label(inner_frame, text="Startup Log:", font=("Helvetica", 10, "bold"))
-        log_label.pack(anchor="w", pady=(10, 2))
+        log_label = ttk.Label(inner_frame, text="Startup Log:", style="Subheading.TLabel")
+        log_label.pack(anchor="w", pady=(6, 3))
         
         self.startup_log = scrolledtext.ScrolledText(
-            inner_frame, height=15, width=70,
-            font=("Consolas", 9), state="disabled", wrap="word"
+            inner_frame, height=14, width=70,
+            state="disabled", wrap="word"
         )
-        self.startup_log.pack(fill="both", expand=True, pady=5)
+        style_scrolled_text(self.startup_log, log_style=True)
+        self.startup_log.pack(fill="both", expand=True, pady=3)
         
         self.startup_cancel_btn = ttk.Button(
             inner_frame, text="Cancel",
-            command=self._cancel_startup
+            command=self._cancel_startup,
+            style="Danger.TButton"
         )
         self.startup_cancel_btn.pack(pady=10)
     

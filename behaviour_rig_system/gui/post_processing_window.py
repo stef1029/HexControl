@@ -20,6 +20,8 @@ from enum import Enum, auto
 import multiprocessing as mp
 import yaml
 
+from .theme import apply_theme, Theme, style_scrolled_text
+
 
 class WindowMode(Enum):
     """The two modes of the post-processing window."""
@@ -37,21 +39,23 @@ class TextRedirector:
 
     def _setup_tags(self):
         """Configure text tags for color coding."""
-        # Cohort header (===) - blue
-        self.widget.tag_configure("header", foreground="#2196F3", font=("Courier", 9, "bold"))
-        # Step headers (-----) - cyan
-        self.widget.tag_configure("step", foreground="#00BCD4", font=("Courier", 9, "bold"))
-        # Labels (COHORT:, DIRECTORY:, etc.) - green
-        self.widget.tag_configure("label", foreground="#4CAF50")
-        # Errors - red
-        self.widget.tag_configure("error", foreground="#F44336")
-        # Success messages - green bold
-        self.widget.tag_configure("success", foreground="#4CAF50", font=("Courier", 9, "bold"))
-        # Warnings - orange
-        self.widget.tag_configure("warning", foreground="#FF9800")
+        palette = Theme.palette
+        
+        # Cohort header (===) - accent blue
+        self.widget.tag_configure("header", foreground=palette.accent_primary, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        # Step headers (-----) - info color
+        self.widget.tag_configure("step", foreground=palette.info, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        # Labels (COHORT:, DIRECTORY:, etc.) - success green
+        self.widget.tag_configure("label", foreground=palette.success)
+        # Errors - error red
+        self.widget.tag_configure("error", foreground=palette.error)
+        # Success messages - success green bold
+        self.widget.tag_configure("success", foreground=palette.success, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        # Warnings - warning orange
+        self.widget.tag_configure("warning", foreground=palette.warning)
         # Normal text
-        self.widget.tag_configure("stdout", foreground="#E0E0E0")
-        self.widget.tag_configure("stderr", foreground="#F44336")
+        self.widget.tag_configure("stdout", foreground="#e8eaed")
+        self.widget.tag_configure("stderr", foreground=palette.error)
 
     def _get_tag_for_line(self, line):
         """Determine the appropriate tag for a line of text."""
@@ -121,8 +125,11 @@ class PostProcessingWindow:
         # Create modal window
         self.window = tk.Toplevel(parent)
         self.window.title("Post-Processing")
-        self.window.geometry("800x700")
-        self.window.minsize(700, 600)
+        self.window.geometry("800x650")
+        self.window.minsize(680, 550)
+        
+        # Apply modern theme
+        apply_theme(self.window)
 
         # Make it modal
         self.window.transient(parent)
@@ -185,26 +192,26 @@ class PostProcessingWindow:
         title_label = ttk.Label(
             self.config_frame,
             text="Post-Processing",
-            font=("Helvetica", 14, "bold")
+            style="Heading.TLabel"
         )
         title_label.pack(pady=(0, 10))
 
         # Content frame for cohorts and options
         content_frame = ttk.Frame(self.config_frame)
-        content_frame.pack(fill="both", expand=True, pady=(0, 10))
+        content_frame.pack(fill="both", expand=True, pady=(0, 8))
 
         # --- Configuration Content ---
         self._create_config_content(content_frame)
 
         # --- Control Buttons ---
         button_frame = ttk.Frame(self.config_frame)
-        button_frame.pack(fill="x", pady=(10, 0))
+        button_frame.pack(fill="x", pady=(8, 0))
 
         self.start_button = ttk.Button(
             button_frame,
             text="Start Processing",
             command=self._on_start_click,
-            width=20
+            style="Primary.TButton"
         )
         self.start_button.pack(side="left", padx=5)
 
@@ -212,7 +219,7 @@ class PostProcessingWindow:
             button_frame,
             text="Close",
             command=self._on_close,
-            width=20
+            style="Secondary.TButton"
         )
         close_button.pack(side="right", padx=5)
 
@@ -224,7 +231,7 @@ class PostProcessingWindow:
         title_label = ttk.Label(
             self.progress_frame,
             text="Processing in Progress",
-            font=("Helvetica", 14, "bold")
+            style="Heading.TLabel"
         )
         title_label.pack(pady=(0, 10))
 
@@ -239,7 +246,7 @@ class PostProcessingWindow:
             button_frame,
             text="Cancel",
             command=self._on_cancel_click,
-            width=20
+            style="Danger.TButton"
         )
         self.cancel_button.pack(side="left", padx=5)
 
@@ -248,7 +255,7 @@ class PostProcessingWindow:
             text="Back to Configuration",
             command=self._on_back_click,
             state="disabled",
-            width=20
+            style="Secondary.TButton"
         )
         self.back_button.pack(side="right", padx=5)
 
@@ -270,25 +277,31 @@ class PostProcessingWindow:
 
     def _create_config_content(self, parent: ttk.Frame) -> None:
         """Create the configuration content."""
+        palette = Theme.palette
+        
         # Cohort selection section
         cohort_label = ttk.Label(
             parent,
             text="Select Cohorts to Process:",
-            font=("Helvetica", 10, "bold")
+            style="Subheading.TLabel"
         )
         cohort_label.pack(anchor="w", pady=(0, 5))
 
         # Frame with scrollbar for cohorts
         cohort_canvas_frame = ttk.Frame(parent)
-        cohort_canvas_frame.pack(fill="both", expand=True, pady=(0, 15))
+        cohort_canvas_frame.pack(fill="both", expand=True, pady=(0, 12))
 
-        cohort_canvas = tk.Canvas(cohort_canvas_frame, height=150)
+        cohort_canvas = tk.Canvas(
+            cohort_canvas_frame, height=140,
+            background=palette.bg_secondary,
+            highlightthickness=0
+        )
         cohort_scrollbar = ttk.Scrollbar(
             cohort_canvas_frame,
             orient="vertical",
             command=cohort_canvas.yview
         )
-        cohort_inner_frame = ttk.Frame(cohort_canvas)
+        cohort_inner_frame = ttk.Frame(cohort_canvas, style="Card.TFrame")
 
         cohort_inner_frame.bind(
             "<Configure>",
@@ -303,21 +316,21 @@ class PostProcessingWindow:
 
         # Header row
         header_frame = ttk.Frame(cohort_inner_frame)
-        header_frame.pack(anchor="w", padx=10, pady=(5, 2), fill="x")
-        ttk.Label(header_frame, text="Process", font=("Helvetica", 8, "bold")).pack(side="left", padx=(0, 10))
-        ttk.Label(header_frame, text="Ephys", font=("Helvetica", 8, "bold")).pack(side="left", padx=(0, 10))
-        ttk.Label(header_frame, text="Cohort", font=("Helvetica", 8, "bold")).pack(side="left")
+        header_frame.pack(anchor="w", padx=10, pady=(5, 3), fill="x")
+        ttk.Label(header_frame, text="Process", style="Subheading.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Label(header_frame, text="Ephys", style="Subheading.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Label(header_frame, text="Cohort", style="Subheading.TLabel").pack(side="left")
 
-        ttk.Separator(cohort_inner_frame, orient="horizontal").pack(fill="x", padx=10, pady=2)
+        ttk.Separator(cohort_inner_frame, orient="horizontal").pack(fill="x", padx=10, pady=3)
 
         # Create checkbox for each cohort
         if not self.cohort_folders:
             no_cohorts_label = ttk.Label(
                 cohort_inner_frame,
                 text="No cohort folders configured in rigs.yaml",
-                foreground="red"
+                foreground=palette.error
             )
-            no_cohorts_label.pack(anchor="w", padx=10, pady=10)
+            no_cohorts_label.pack(anchor="w", padx=10, pady=8)
         else:
             for cohort in self.cohort_folders:
                 name = cohort.get("name", "Unknown")
@@ -332,13 +345,13 @@ class PostProcessingWindow:
                 var = tk.BooleanVar(value=True)
                 self.cohort_vars[name] = var
                 process_cb = ttk.Checkbutton(row_frame, variable=var)
-                process_cb.pack(side="left", padx=(12, 20))
+                process_cb.pack(side="left", padx=(12, 18))
 
                 # Ephys checkbox
                 ephys_var = tk.BooleanVar(value=False)
                 self.cohort_ephys_vars[name] = ephys_var
                 ephys_cb = ttk.Checkbutton(row_frame, variable=ephys_var)
-                ephys_cb.pack(side="left", padx=(5, 15))
+                ephys_cb.pack(side="left", padx=(6, 14))
 
                 # Cohort name label
                 name_label = ttk.Label(row_frame, text=f"{name} ({directory})")
@@ -348,23 +361,22 @@ class PostProcessingWindow:
                     desc_label = ttk.Label(
                         cohort_inner_frame,
                         text=f"    {description}",
-                        font=("Helvetica", 8),
-                        foreground="gray"
+                        style="Muted.TLabel"
                     )
-                    desc_label.pack(anchor="w", padx=60, pady=(0, 5))
+                    desc_label.pack(anchor="w", padx=60, pady=(0, 4))
 
         # Processing options section
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
 
         options_label = ttk.Label(
             parent,
             text="Processing Steps:",
-            font=("Helvetica", 10, "bold")
+            style="Subheading.TLabel"
         )
         options_label.pack(anchor="w", pady=(0, 5))
 
         options_frame = ttk.Frame(parent)
-        options_frame.pack(fill="x", pady=(0, 10))
+        options_frame.pack(fill="x", pady=(0, 8))
 
         # Recover crashed sessions
         ttk.Checkbutton(
@@ -395,35 +407,34 @@ class PostProcessingWindow:
         ).pack(anchor="w", padx=10, pady=2)
 
         # Ephys options section (applies to cohorts marked as ephys above)
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
 
         ephys_label = ttk.Label(
             parent,
             text="Ephys Processing Options:",
-            font=("Helvetica", 10, "bold")
+            style="Subheading.TLabel"
         )
-        ephys_label.pack(anchor="w", pady=(0, 5))
+        ephys_label.pack(anchor="w", pady=(0, 3))
 
         ephys_note = ttk.Label(
             parent,
             text="(Applied to cohorts marked as 'Ephys' above)",
-            font=("Helvetica", 8),
-            foreground="gray"
+            style="Muted.TLabel"
         )
         ephys_note.pack(anchor="w", padx=10, pady=(0, 5))
 
         ephys_options_frame = ttk.Frame(parent)
-        ephys_options_frame.pack(fill="x", pady=(0, 10))
+        ephys_options_frame.pack(fill="x", pady=(0, 8))
 
         pin_frame = ttk.Frame(ephys_options_frame)
         pin_frame.pack(anchor="w", padx=10, pady=2)
-        ttk.Label(pin_frame, text="Target pin:").pack(side="left", padx=(0, 5))
+        ttk.Label(pin_frame, text="Target pin:").pack(side="left", padx=(0, 6))
         pin_spinbox = ttk.Spinbox(
             pin_frame,
             from_=0,
             to=15,
             textvariable=self.ephys_pin_var,
-            width=5
+            width=6
         )
         pin_spinbox.pack(side="left")
 
@@ -435,11 +446,14 @@ class PostProcessingWindow:
 
     def _create_progress_content(self, parent: ttk.Frame) -> None:
         """Create the progress mode content."""
+        palette = Theme.palette
+        
         # Progress label
         self.progress_label = ttk.Label(
             parent,
             text="Ready to start processing",
-            font=("Helvetica", 10)
+            foreground=palette.accent_primary,
+            font=Theme.font(size=10)
         )
         self.progress_label.pack(anchor="w", pady=(0, 5))
 
@@ -447,7 +461,7 @@ class PostProcessingWindow:
         self.progress_bar = ttk.Progressbar(
             parent,
             mode="indeterminate",
-            length=300
+            length=320
         )
         self.progress_bar.pack(fill="x", pady=(0, 10))
 
@@ -455,20 +469,17 @@ class PostProcessingWindow:
         log_label = ttk.Label(
             parent,
             text="Processing Log:",
-            font=("Helvetica", 10, "bold")
+            style="Subheading.TLabel"
         )
         log_label.pack(anchor="w", pady=(0, 5))
 
         self.log_text = scrolledtext.ScrolledText(
             parent,
             wrap="word",
-            height=20,
+            height=18,
             state="disabled",
-            font=("Courier", 9),
-            background="#1E1E1E",
-            foreground="#E0E0E0",
-            insertbackground="#E0E0E0"
         )
+        style_scrolled_text(self.log_text, log_style=True)
         self.log_text.pack(fill="both", expand=True)
 
     def _on_start_click(self) -> None:
