@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Union, List, Optional
 
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
-from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
+from hex_behav_analysis.utils.analysis_manager_v2 import Process_Raw_Behaviour_Data_V2  # Import V2 analysis manager for behaviour_rig_system
 from hex_behav_analysis.utils.recover_crashed_sessions import recover_crashed_sessions
 from hex_behav_analysis.ephys.post_processing import get_axona_events
 
@@ -366,7 +366,8 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
     logger.addHandler(console_handler)
     # --------------------------
 
-    Cohort = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions)
+    # Use system_type="v2" for behaviour_rig_system sessions
+    Cohort = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2")
     directory_info = Cohort.cohort
 
     sessions_to_process = []
@@ -381,9 +382,9 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
 
     for session in sessions_to_process:
         print(f"\n\nProcessing {session.get('directory')}...")
-        Process_Raw_Behaviour_Data(session, logger=logger, sync_with_ephys=ephys_data)
+        Process_Raw_Behaviour_Data_V2(session, logger=logger, sync_with_ephys=ephys_data)
 
-    directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
+    directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2").cohort
 
     total_time_taken = time.perf_counter() - total_start_time
     hours, remainder = divmod(total_time_taken, 3600)

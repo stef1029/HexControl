@@ -12,6 +12,10 @@ The run() function receives:
     - scales: ScalesClient instance for reading weight (always available)
     - perf_tracker: PerformanceTracker for recording trial outcomes
 
+Session-level parameters (automatically injected):
+    params["mouse_weight"]     # Mouse weight in grams (set in GUI)
+    params["num_trials"]       # Number of trials (set in GUI)
+
 Scales functions:
     scales.get_weight()  # Returns current weight in grams, or None
 
@@ -26,9 +30,8 @@ import time
 NAME = "Scales Test"
 DESCRIPTION = "Mouse stands on platform to start trial, then goes to correct port for reward."
 
+# Protocol-specific parameters only (mouse_weight, num_trials, weight_threshold are injected automatically)
 PARAMETERS = {
-    "weight_threshold": {"default": 15.0, "label": "Weight Threshold (g)"},
-    "num_trials": {"default": 50, "label": "Number of Trials"},
     "target_port": {"default": 0, "label": "Target Port (0-5)"},
     "response_timeout": {"default": 5.0, "label": "Response Timeout (s)"},
     "iti": {"default": 1.0, "label": "Inter-Trial Interval (s)"},
@@ -45,8 +48,14 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         log("ERROR: Scales not available!")
         return
     
-    threshold = params["weight_threshold"]
+    # Session-level parameters (automatically injected)
+    mouse_weight = params["mouse_weight"]
     num_trials = params["num_trials"]
+    
+    # Calculate weight threshold (mouse must be heavier than this to start trial)
+    threshold = mouse_weight - 3.0
+    
+    # Protocol-specific parameters
     target_port = params["target_port"]  # Already 0-indexed
     response_timeout = params["response_timeout"]
     iti = params["iti"]
@@ -54,8 +63,17 @@ def run(link, params, log, check_abort, scales, perf_tracker):
     punishment_s = params["punishment_duration"]
     led_brightness = params["led_brightness"]
     
+    log(f"Starting with mouse_weight={mouse_weight}g, threshold={threshold}g, {'unlimited' if num_trials == 0 else num_trials} trials")
     
-    for trial in range(1, num_trials + 1):
+    # If num_trials is 0, run unlimited trials
+    trial = 0
+    while True:
+        trial += 1
+        
+        # Check if we've reached the trial limit (unless unlimited)
+        if num_trials > 0 and trial > num_trials:
+            break
+            
         if check_abort():
             log("Aborted by user")
             break
@@ -103,6 +121,6 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             link.spotlight_set(255, 0)    # All spotlights off
         
         # === ITI ===
-        if trial < num_trials and not check_abort():
+        if not check_abort():
             time.sleep(iti)
     

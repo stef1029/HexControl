@@ -6,6 +6,8 @@ Provides a GUI for batch processing cohort data including:
 - Processing videos (binary/BMP to AVI)
 - Running behavioral analysis
 - Processing electrophysiology data (optional)
+
+Uses a mode-based UI that switches between Configuration and Progress views.
 """
 
 import sys
@@ -14,23 +16,82 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from pathlib import Path
 from typing import Optional, Callable
+from enum import Enum, auto
 import multiprocessing as mp
 import yaml
 
 
+class WindowMode(Enum):
+    """The two modes of the post-processing window."""
+    CONFIG = auto()
+    PROGRESS = auto()
+
+
 class TextRedirector:
-    """Redirect stdout/stderr to a text widget."""
+    """Redirect stdout/stderr to a text widget with color coding."""
 
     def __init__(self, widget, tag="stdout"):
         self.widget = widget
         self.tag = tag
+        self._setup_tags()
+
+    def _setup_tags(self):
+        """Configure text tags for color coding."""
+        # Cohort header (===) - blue
+        self.widget.tag_configure("header", foreground="#2196F3", font=("Courier", 9, "bold"))
+        # Step headers (-----) - cyan
+        self.widget.tag_configure("step", foreground="#00BCD4", font=("Courier", 9, "bold"))
+        # Labels (COHORT:, DIRECTORY:, etc.) - green
+        self.widget.tag_configure("label", foreground="#4CAF50")
+        # Errors - red
+        self.widget.tag_configure("error", foreground="#F44336")
+        # Success messages - green bold
+        self.widget.tag_configure("success", foreground="#4CAF50", font=("Courier", 9, "bold"))
+        # Warnings - orange
+        self.widget.tag_configure("warning", foreground="#FF9800")
+        # Normal text
+        self.widget.tag_configure("stdout", foreground="#E0E0E0")
+        self.widget.tag_configure("stderr", foreground="#F44336")
+
+    def _get_tag_for_line(self, line):
+        """Determine the appropriate tag for a line of text."""
+        line_stripped = line.strip()
+        
+        # Check for patterns
+        if line_stripped.startswith("=" * 10) or line_stripped.endswith("=" * 10):
+            return "header"
+        if line_stripped.startswith("----- STEP"):
+            return "step"
+        if line_stripped.startswith(("COHORT:", "DIRECTORY:", "HAS EPHYS:")):
+            return "label"
+        if "Error" in line or "ERROR" in line or "error" in line:
+            return "error"
+        if "FATAL" in line:
+            return "error"
+        if "Warning" in line or "WARNING" in line:
+            return "warning"
+        if "ALL PROCESSING COMPLETE" in line or "COMPLETE" in line_stripped:
+            return "success"
+        if "cancelled" in line.lower():
+            return "warning"
+        
+        return self.tag
 
     def write(self, string):
         self.widget.after(0, self._append_text, string)
 
     def _append_text(self, string):
         self.widget.configure(state="normal")
-        self.widget.insert("end", string, self.tag)
+        
+        # Process line by line for color coding
+        lines = string.split('\n')
+        for i, line in enumerate(lines):
+            if i > 0:
+                self.widget.insert("end", "\n")
+            if line:
+                tag = self._get_tag_for_line(line)
+                self.widget.insert("end", line, tag)
+        
         self.widget.see("end")
         self.widget.configure(state="disabled")
 
@@ -75,20 +136,23 @@ class PostProcessingWindow:
         self.cancel_requested = False
         self.processing_thread: Optional[threading.Thread] = None
 
-        # Cohort checkboxes
+        # Cohort checkboxes (select for processing)
         self.cohort_vars: dict[str, tk.BooleanVar] = {}
+        # Cohort ephys checkboxes (whether cohort has ephys data)
+        self.cohort_ephys_vars: dict[str, tk.BooleanVar] = {}
 
         # Processing option checkboxes
         self.recover_sessions_var = tk.BooleanVar(value=True)
         self.process_videos_var = tk.BooleanVar(value=True)
         self.run_analysis_var = tk.BooleanVar(value=True)
-        self.process_ephys_var = tk.BooleanVar(value=False)
+        self.refresh_analysis_var = tk.BooleanVar(value=False)
 
-        # Ephys options
+        # Ephys options (applied to cohorts marked as ephys)
         self.ephys_pin_var = tk.IntVar(value=0)
         self.ephys_force_var = tk.BooleanVar(value=False)
 
         self._create_widgets()
+        self._show_mode(WindowMode.CONFIG)
 
         # Handle window close
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -106,37 +170,34 @@ class PostProcessingWindow:
     def _create_widgets(self) -> None:
         """Create the window widgets."""
         # Main container
-        main_frame = ttk.Frame(self.window, padding="10")
-        main_frame.pack(fill="both", expand=True)
+        self.main_frame = ttk.Frame(self.window, padding="10")
+        self.main_frame.pack(fill="both", expand=True)
+
+        # Create the two mode frames
+        self._create_config_mode()
+        self._create_progress_mode()
+
+    def _create_config_mode(self) -> None:
+        """Create the configuration mode frame."""
+        self.config_frame = ttk.Frame(self.main_frame)
 
         # Title
         title_label = ttk.Label(
-            main_frame,
+            self.config_frame,
             text="Post-Processing",
             font=("Helvetica", 14, "bold")
         )
         title_label.pack(pady=(0, 10))
 
-        # Create notebook for organization
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill="both", expand=True, pady=(0, 10))
+        # Content frame for cohorts and options
+        content_frame = ttk.Frame(self.config_frame)
+        content_frame.pack(fill="both", expand=True, pady=(0, 10))
 
-        # Configuration tab
-        config_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(config_frame, text="Configuration")
-
-        # Progress tab
-        progress_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(progress_frame, text="Progress")
-
-        # --- Configuration Tab ---
-        self._create_config_tab(config_frame)
-
-        # --- Progress Tab ---
-        self._create_progress_tab(progress_frame)
+        # --- Configuration Content ---
+        self._create_config_content(content_frame)
 
         # --- Control Buttons ---
-        button_frame = ttk.Frame(main_frame)
+        button_frame = ttk.Frame(self.config_frame)
         button_frame.pack(fill="x", pady=(10, 0))
 
         self.start_button = ttk.Button(
@@ -147,15 +208,6 @@ class PostProcessingWindow:
         )
         self.start_button.pack(side="left", padx=5)
 
-        self.cancel_button = ttk.Button(
-            button_frame,
-            text="Cancel",
-            command=self._on_cancel_click,
-            state="disabled",
-            width=20
-        )
-        self.cancel_button.pack(side="left", padx=5)
-
         close_button = ttk.Button(
             button_frame,
             text="Close",
@@ -164,8 +216,60 @@ class PostProcessingWindow:
         )
         close_button.pack(side="right", padx=5)
 
-    def _create_config_tab(self, parent: ttk.Frame) -> None:
-        """Create the configuration tab content."""
+    def _create_progress_mode(self) -> None:
+        """Create the progress mode frame."""
+        self.progress_frame = ttk.Frame(self.main_frame)
+
+        # Title
+        title_label = ttk.Label(
+            self.progress_frame,
+            text="Processing in Progress",
+            font=("Helvetica", 14, "bold")
+        )
+        title_label.pack(pady=(0, 10))
+
+        # Progress content
+        self._create_progress_content(self.progress_frame)
+
+        # --- Control Buttons ---
+        button_frame = ttk.Frame(self.progress_frame)
+        button_frame.pack(fill="x", pady=(10, 0))
+
+        self.cancel_button = ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._on_cancel_click,
+            width=20
+        )
+        self.cancel_button.pack(side="left", padx=5)
+
+        self.back_button = ttk.Button(
+            button_frame,
+            text="Back to Configuration",
+            command=self._on_back_click,
+            state="disabled",
+            width=20
+        )
+        self.back_button.pack(side="right", padx=5)
+
+    def _show_mode(self, mode: WindowMode) -> None:
+        """Switch to the specified mode."""
+        # Hide all frames
+        self.config_frame.pack_forget()
+        self.progress_frame.pack_forget()
+
+        # Show the requested frame
+        if mode == WindowMode.CONFIG:
+            self.config_frame.pack(fill="both", expand=True)
+        elif mode == WindowMode.PROGRESS:
+            self.progress_frame.pack(fill="both", expand=True)
+
+    def _on_back_click(self) -> None:
+        """Handle back button click to return to configuration."""
+        self._show_mode(WindowMode.CONFIG)
+
+    def _create_config_content(self, parent: ttk.Frame) -> None:
+        """Create the configuration content."""
         # Cohort selection section
         cohort_label = ttk.Label(
             parent,
@@ -197,6 +301,15 @@ class PostProcessingWindow:
         cohort_canvas.pack(side="left", fill="both", expand=True)
         cohort_scrollbar.pack(side="right", fill="y")
 
+        # Header row
+        header_frame = ttk.Frame(cohort_inner_frame)
+        header_frame.pack(anchor="w", padx=10, pady=(5, 2), fill="x")
+        ttk.Label(header_frame, text="Process", font=("Helvetica", 8, "bold")).pack(side="left", padx=(0, 10))
+        ttk.Label(header_frame, text="Ephys", font=("Helvetica", 8, "bold")).pack(side="left", padx=(0, 10))
+        ttk.Label(header_frame, text="Cohort", font=("Helvetica", 8, "bold")).pack(side="left")
+
+        ttk.Separator(cohort_inner_frame, orient="horizontal").pack(fill="x", padx=10, pady=2)
+
         # Create checkbox for each cohort
         if not self.cohort_folders:
             no_cohorts_label = ttk.Label(
@@ -211,15 +324,25 @@ class PostProcessingWindow:
                 directory = cohort.get("directory", "")
                 description = cohort.get("description", "")
 
-                var = tk.BooleanVar(value=False)
-                self.cohort_vars[name] = var
+                # Row frame for this cohort
+                row_frame = ttk.Frame(cohort_inner_frame)
+                row_frame.pack(anchor="w", padx=10, pady=2, fill="x")
 
-                cb = ttk.Checkbutton(
-                    cohort_inner_frame,
-                    text=f"{name} ({directory})",
-                    variable=var
-                )
-                cb.pack(anchor="w", padx=10, pady=2)
+                # Process checkbox (default to checked)
+                var = tk.BooleanVar(value=True)
+                self.cohort_vars[name] = var
+                process_cb = ttk.Checkbutton(row_frame, variable=var)
+                process_cb.pack(side="left", padx=(12, 20))
+
+                # Ephys checkbox
+                ephys_var = tk.BooleanVar(value=False)
+                self.cohort_ephys_vars[name] = ephys_var
+                ephys_cb = ttk.Checkbutton(row_frame, variable=ephys_var)
+                ephys_cb.pack(side="left", padx=(5, 15))
+
+                # Cohort name label
+                name_label = ttk.Label(row_frame, text=f"{name} ({directory})")
+                name_label.pack(side="left")
 
                 if description:
                     desc_label = ttk.Label(
@@ -228,7 +351,7 @@ class PostProcessingWindow:
                         font=("Helvetica", 8),
                         foreground="gray"
                     )
-                    desc_label.pack(anchor="w", padx=25, pady=(0, 5))
+                    desc_label.pack(anchor="w", padx=60, pady=(0, 5))
 
         # Processing options section
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
@@ -264,23 +387,36 @@ class PostProcessingWindow:
             variable=self.run_analysis_var
         ).pack(anchor="w", padx=10, pady=2)
 
-        # Process ephys (with sub-options)
-        ephys_frame = ttk.Frame(options_frame)
-        ephys_frame.pack(anchor="w", padx=10, pady=2)
-
+        # Refresh (reprocess already completed sessions)
         ttk.Checkbutton(
-            ephys_frame,
-            text="Process electrophysiology data",
-            variable=self.process_ephys_var,
-            command=self._on_ephys_toggle
-        ).pack(side="left")
+            options_frame,
+            text="Refresh (reprocess already completed sessions)",
+            variable=self.refresh_analysis_var
+        ).pack(anchor="w", padx=10, pady=2)
 
-        # Ephys sub-options frame
-        self.ephys_options_frame = ttk.Frame(options_frame)
-        self.ephys_options_frame.pack(anchor="w", padx=30, pady=(2, 5))
+        # Ephys options section (applies to cohorts marked as ephys above)
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
-        pin_frame = ttk.Frame(self.ephys_options_frame)
-        pin_frame.pack(anchor="w", pady=2)
+        ephys_label = ttk.Label(
+            parent,
+            text="Ephys Processing Options:",
+            font=("Helvetica", 10, "bold")
+        )
+        ephys_label.pack(anchor="w", pady=(0, 5))
+
+        ephys_note = ttk.Label(
+            parent,
+            text="(Applied to cohorts marked as 'Ephys' above)",
+            font=("Helvetica", 8),
+            foreground="gray"
+        )
+        ephys_note.pack(anchor="w", padx=10, pady=(0, 5))
+
+        ephys_options_frame = ttk.Frame(parent)
+        ephys_options_frame.pack(fill="x", pady=(0, 10))
+
+        pin_frame = ttk.Frame(ephys_options_frame)
+        pin_frame.pack(anchor="w", padx=10, pady=2)
         ttk.Label(pin_frame, text="Target pin:").pack(side="left", padx=(0, 5))
         pin_spinbox = ttk.Spinbox(
             pin_frame,
@@ -292,16 +428,13 @@ class PostProcessingWindow:
         pin_spinbox.pack(side="left")
 
         ttk.Checkbutton(
-            self.ephys_options_frame,
-            text="Force reprocess existing files",
+            ephys_options_frame,
+            text="Force reprocess existing ephys files",
             variable=self.ephys_force_var
-        ).pack(anchor="w", pady=2)
+        ).pack(anchor="w", padx=10, pady=2)
 
-        # Initially disable ephys options
-        self._set_ephys_options_state("disabled")
-
-    def _create_progress_tab(self, parent: ttk.Frame) -> None:
-        """Create the progress tab content."""
+    def _create_progress_content(self, parent: ttk.Frame) -> None:
+        """Create the progress mode content."""
         # Progress label
         self.progress_label = ttk.Label(
             parent,
@@ -331,31 +464,12 @@ class PostProcessingWindow:
             wrap="word",
             height=20,
             state="disabled",
-            font=("Courier", 9)
+            font=("Courier", 9),
+            background="#1E1E1E",
+            foreground="#E0E0E0",
+            insertbackground="#E0E0E0"
         )
         self.log_text.pack(fill="both", expand=True)
-
-    def _on_ephys_toggle(self) -> None:
-        """Handle ephys checkbox toggle."""
-        if self.process_ephys_var.get():
-            self._set_ephys_options_state("normal")
-        else:
-            self._set_ephys_options_state("disabled")
-
-    def _set_ephys_options_state(self, state: str) -> None:
-        """Enable or disable ephys sub-options."""
-        for child in self.ephys_options_frame.winfo_children():
-            if isinstance(child, ttk.Frame):
-                for subchild in child.winfo_children():
-                    try:
-                        subchild.configure(state=state)
-                    except:
-                        pass
-            else:
-                try:
-                    child.configure(state=state)
-                except:
-                    pass
 
     def _on_start_click(self) -> None:
         """Handle start button click."""
@@ -371,11 +485,17 @@ class PostProcessingWindow:
             )
             return
 
+        # Check if any cohort has ephys enabled
+        any_ephys = any(
+            self.cohort_ephys_vars.get(name, tk.BooleanVar(value=False)).get()
+            for name in selected_cohorts
+        )
+
         # Check if any processing step is selected
         if not (self.recover_sessions_var.get() or
                 self.process_videos_var.get() or
                 self.run_analysis_var.get() or
-                self.process_ephys_var.get()):
+                any_ephys):
             messagebox.showwarning(
                 "No Steps Selected",
                 "Please select at least one processing step."
@@ -390,9 +510,12 @@ class PostProcessingWindow:
         # Update UI state
         self.is_processing = True
         self.cancel_requested = False
-        self.start_button.configure(state="disabled")
         self.cancel_button.configure(state="normal")
+        self.back_button.configure(state="disabled")
         self.progress_bar.start()
+
+        # Switch to Progress mode
+        self._show_mode(WindowMode.PROGRESS)
 
         # Clear log
         self.log_text.configure(state="normal")
@@ -422,19 +545,25 @@ class PostProcessingWindow:
                 run_analysis_on_local
             )
 
-            # Get cohort directories
+            # Get cohort directories with ephys flag
             cohort_dirs = {
-                c.get("name"): Path(c.get("directory"))
+                c.get("name"): {
+                    "directory": Path(c.get("directory")),
+                    "has_ephys": self.cohort_ephys_vars.get(c.get("name"), tk.BooleanVar(value=False)).get()
+                }
                 for c in self.cohort_folders
                 if c.get("name") in selected_cohorts
             }
 
             total_cohorts = len(cohort_dirs)
 
-            for idx, (name, directory) in enumerate(cohort_dirs.items(), 1):
+            for idx, (name, cohort_info) in enumerate(cohort_dirs.items(), 1):
                 if self.cancel_requested:
                     print("\n\nProcessing cancelled by user.")
                     break
+
+                directory = cohort_info["directory"]
+                has_ephys = cohort_info["has_ephys"]
 
                 self._update_progress(
                     f"Processing cohort {idx}/{total_cohorts}: {name}"
@@ -443,6 +572,7 @@ class PostProcessingWindow:
                 print(f"\n{'='*80}")
                 print(f"COHORT: {name}")
                 print(f"DIRECTORY: {directory}")
+                print(f"HAS EPHYS: {has_ephys}")
                 print(f"{'='*80}\n")
 
                 # Step 1: Recover crashed sessions
@@ -453,8 +583,8 @@ class PostProcessingWindow:
                     except Exception as e:
                         print(f"Error recovering crashed sessions: {e}")
 
-                # Step 2: Process ephys data
-                if self.process_ephys_var.get() and not self.cancel_requested:
+                # Step 2: Process ephys data (only if cohort is marked as ephys)
+                if has_ephys and not self.cancel_requested:
                     print("\n----- STEP 2: PROCESSING EPHYS DATA -----")
                     try:
                         target_pin = self.ephys_pin_var.get()
@@ -476,8 +606,8 @@ class PostProcessingWindow:
                 if self.run_analysis_var.get() and not self.cancel_requested:
                     print("\n----- STEP 4: RUNNING ANALYSIS -----")
                     try:
-                        has_ephys = self.process_ephys_var.get()
-                        run_analysis_on_local(directory, refresh=False, ephys_data=has_ephys)
+                        refresh = self.refresh_analysis_var.get()
+                        run_analysis_on_local(directory, refresh=refresh, ephys_data=has_ephys)
                     except Exception as e:
                         print(f"Error running analysis: {e}")
 
@@ -509,14 +639,14 @@ class PostProcessingWindow:
         """Called when processing finishes (runs in main thread)."""
         self.is_processing = False
         self.progress_bar.stop()
-        self.start_button.configure(state="normal")
         self.cancel_button.configure(state="disabled")
+        self.back_button.configure(state="normal")
 
         if not self.cancel_requested:
             messagebox.showinfo(
                 "Processing Complete",
                 "All selected cohorts have been processed.\n\n"
-                "Check the Progress tab for detailed results."
+                "See the log above for detailed results."
             )
 
     def _on_cancel_click(self) -> None:

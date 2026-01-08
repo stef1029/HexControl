@@ -27,7 +27,8 @@ For zeroing scales before sessions:
     success, message = zero_scales("COM10")
 """
 
-from .scales import Scales, ScalesConfig, run_calibration
+from .scales import Scales, ScalesConfig
+from .calibrate import run_calibration
 from .client import ScalesClient, quick_get_weight
 from .zero import zero_scales, zero_all_scales, ZeroResult, get_summary
 

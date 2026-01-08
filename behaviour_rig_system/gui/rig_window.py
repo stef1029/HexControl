@@ -615,11 +615,22 @@ class RigWindow:
 
             metadata_path = session_folder / f"{session_id}-metadata.json"
 
+            # Ensure protocol_parameters has required values
+            protocol_params = session_config.get("parameters", {})
+            if "phase" not in protocol_params:
+                protocol_params["phase"] = "0"
+            
+            # Extract session-level values for top-level metadata
+            mouse_weight = protocol_params.get("mouse_weight")
+            num_trials = protocol_params.get("num_trials")
+
             metadata = {
                 "session_id": session_id,
                 "mouse_id": session_config.get("mouse_id", ""),
+                "mouse_weight": mouse_weight,
+                "num_trials": num_trials,
                 "protocol_name": session_config.get("protocol_name", ""),
-                "protocol_parameters": session_config.get("parameters", {}),
+                "protocol_parameters": protocol_params,
                 "save_directory": session_config.get("save_directory", ""),
                 "multi_session_folder": str(multi_session_folder),
                 "session_folder": str(session_folder),

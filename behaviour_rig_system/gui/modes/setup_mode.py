@@ -204,6 +204,26 @@ class SetupMode(ttk.Frame):
                 )
                 desc_label.pack(side="left", padx=(2, 0))
         
+        # Session-level parameters (apply to all protocols)
+        session_params_frame = ttk.LabelFrame(session_frame, text="Session Parameters", padding=(5, 5))
+        session_params_frame.pack(fill="x", padx=5, pady=(0, 5))
+        
+        # Mouse weight
+        weight_frame = ttk.Frame(session_params_frame)
+        weight_frame.pack(fill="x", pady=2)
+        ttk.Label(weight_frame, text="Mouse Weight (g):").pack(side="left")
+        self.mouse_weight_var = tk.StringVar(value="25.0")
+        self.mouse_weight_entry = ttk.Entry(weight_frame, textvariable=self.mouse_weight_var, width=10)
+        self.mouse_weight_entry.pack(side="left", padx=5)
+        
+        # Number of trials
+        trials_frame = ttk.Frame(session_params_frame)
+        trials_frame.pack(fill="x", pady=2)
+        ttk.Label(trials_frame, text="Number of Trials:").pack(side="left")
+        self.num_trials_var = tk.StringVar(value="100")
+        self.num_trials_entry = ttk.Entry(trials_frame, textvariable=self.num_trials_var, width=10)
+        self.num_trials_entry.pack(side="left", padx=5)
+        
         # Session path preview
         path_frame = ttk.Frame(session_frame)
         path_frame.pack(fill="x", padx=5, pady=(5, 0))
@@ -265,7 +285,26 @@ class SetupMode(ttk.Frame):
         """Handle start button click."""
         tab = self.get_current_tab()
         
-        # Validate parameters
+        # Validate session-level parameters
+        try:
+            mouse_weight = float(self.mouse_weight_var.get())
+            if mouse_weight <= 0:
+                raise ValueError("Mouse weight must be positive")
+        except ValueError as e:
+            from tkinter import messagebox
+            messagebox.showerror("Validation Error", f"Invalid mouse weight: {e}")
+            return
+        
+        try:
+            num_trials = int(self.num_trials_var.get())
+            if num_trials <= 0:
+                raise ValueError("Number of trials must be positive")
+        except ValueError as e:
+            from tkinter import messagebox
+            messagebox.showerror("Validation Error", f"Invalid number of trials: {e}")
+            return
+        
+        # Validate protocol parameters
         is_valid, errors = tab.validate()
         if not is_valid:
             from tkinter import messagebox
@@ -273,13 +312,18 @@ class SetupMode(ttk.Frame):
             messagebox.showerror("Validation Error", f"Please correct the following errors:\n{error_msg}")
             return
         
+        # Get protocol parameters and inject session-level values
+        protocol_params = tab.get_parameters()
+        protocol_params["mouse_weight"] = mouse_weight
+        protocol_params["num_trials"] = num_trials
+        
         # Build session config and call callback
         session_config = {
             "mouse_id": self.mouse_id_var.get(),
             "save_directory": self._get_selected_cohort_directory(),
             "protocol_name": tab.protocol_class.get_name(),
             "protocol_class": tab.protocol_class,
-            "parameters": tab.get_parameters(),
+            "parameters": protocol_params,
         }
         
         self._on_start(session_config)
