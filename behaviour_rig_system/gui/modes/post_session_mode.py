@@ -3,12 +3,20 @@ Post-Session Mode - Review completed session.
 
 Shows:
     - Session summary (status, protocol, mouse, duration, save path)
+    - Performance plot over time
     - New Session button to return to setup
 """
 
+import csv
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import Callable
+
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 
 class PostSessionMode(ttk.Frame):
@@ -145,6 +153,9 @@ class PostSessionMode(ttk.Frame):
             foreground="gray"
         )
         
+        # Performance Plot Section
+        self._create_performance_plot()
+        
         # Spacer
         ttk.Frame(self).pack(fill="both", expand=True)
         
@@ -192,6 +203,11 @@ class PostSessionMode(ttk.Frame):
         
         # Update performance report
         self._update_performance_report(session_result.get("performance_report"))
+        
+        # Update performance plot from trials.csv
+        save_path = session_result.get("save_path", "")
+        if save_path:
+            self._update_performance_plot(Path(save_path))
     
     def _update_performance_report(self, report: dict | None) -> None:
         """
@@ -267,6 +283,119 @@ class PostSessionMode(ttk.Frame):
             return "darkorange"
         else:
             return "darkred"
+    
+    def _create_performance_plot(self) -> None:
+        """Create the performance plot section (initially empty)."""
+        # Plot frame
+        self._plot_frame = ttk.LabelFrame(self, text="Performance Over Time", padding=(15, 10))
+        self._plot_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Create matplotlib figure
+        self._figure = Figure(figsize=(6, 3), dpi=100)
+        self._ax = self._figure.add_subplot(111)
+        
+        # Initial empty plot setup
+        self._ax.set_xlabel('Time (minutes)')
+        self._ax.set_ylabel('Accuracy (%)')
+        self._ax.set_title('Performance Over Session')
+        self._ax.set_ylim(0, 100)
+        self._ax.grid(True, alpha=0.3)
+        self._ax.text(0.5, 0.5, 'No data available', 
+                     transform=self._ax.transAxes, ha='center', va='center',
+                     fontsize=12, color='gray')
+        
+        self._figure.tight_layout()
+        
+        # Create canvas and embed in tkinter
+        self._canvas = FigureCanvasTkAgg(self._figure, master=self._plot_frame)
+        self._canvas.draw()
+        self._canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def _update_performance_plot(self, save_path: Path) -> None:
+        """
+        Update the performance plot with data from the trials.csv file.
+        
+        Calculates average accuracy in 2-minute time bins across the session.
+        
+        Args:
+            save_path: Path to the session data folder containing trials.csv
+        """
+        # Find the trials.csv file
+        trials_files = list(save_path.glob("*-trials.csv"))
+        if not trials_files:
+            # Try without prefix
+            trials_file = save_path / "trials.csv"
+            if not trials_file.exists():
+                return
+        else:
+            trials_file = trials_files[0]
+        
+        # Load trial data
+        trials = []
+        try:
+            with open(trials_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    trials.append({
+                        'time': float(row['time_since_start_s']),
+                        'outcome': row['outcome']
+                    })
+        except (FileNotFoundError, KeyError, ValueError) as e:
+            print(f"Error loading trials data: {e}")
+            return
+        
+        if not trials:
+            return
+        
+        # Calculate accuracy in 2-minute (120 second) bins
+        bin_size_seconds = 120
+        max_time = max(t['time'] for t in trials)
+        
+        time_bins = []  # Center of each bin in minutes
+        accuracy_bins = []  # Accuracy for each bin
+        
+        bin_start = 0
+        while bin_start < max_time:
+            bin_end = bin_start + bin_size_seconds
+            
+            # Get trials in this bin
+            bin_trials = [t for t in trials if bin_start <= t['time'] < bin_end]
+            
+            if bin_trials:
+                # Count successes and responses (exclude timeouts for accuracy calc)
+                successes = sum(1 for t in bin_trials if t['outcome'] == 'success')
+                responses = sum(1 for t in bin_trials if t['outcome'] in ('success', 'failure'))
+                
+                if responses > 0:
+                    accuracy = (successes / responses) * 100
+                    # Use center of bin for x-axis (convert to minutes)
+                    bin_center_minutes = (bin_start + bin_size_seconds / 2) / 60
+                    time_bins.append(bin_center_minutes)
+                    accuracy_bins.append(accuracy)
+            
+            bin_start = bin_end
+        
+        if not time_bins:
+            return
+        
+        # Clear and update plot
+        self._ax.clear()
+        
+        # Plot the data
+        self._ax.plot(time_bins, accuracy_bins, 'b-o', linewidth=2, markersize=6, 
+                     label='Accuracy (2-min bins)')
+        
+        # Configure axes
+        self._ax.set_xlabel('Time (minutes)')
+        self._ax.set_ylabel('Accuracy (%)')
+        self._ax.set_title('Performance Over Session')
+        self._ax.set_ylim(0, 100)
+        self._ax.set_xlim(0, max(time_bins) + 1)
+        self._ax.grid(True, alpha=0.3)
+        self._ax.legend(loc='lower right')
+        
+        self._figure.tight_layout()
+        self._canvas.draw()
     
     def _on_new_session_clicked(self) -> None:
         """Handle new session button click."""
