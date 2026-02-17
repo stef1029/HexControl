@@ -39,7 +39,6 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                - Numbers of files processed, skipped, errors encountered, and list of failed sessions
     """
     from pathlib import Path
-    from hex_behav_analysis.ephys import get_axona_events
     import logging
     import time
     
@@ -552,40 +551,23 @@ def main():
     #                 }
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"D:/Pitx2_Inhib_DTx"),
-                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Pitx2_Inhib_DTx"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx/Data",
-                       'rsync_local': r"/cygdrive/d/Pitx2_Inhib_DTx/",
-                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Pitx2_Inhib_DTx"}
-    cohort_directories.append(cohort_directory)
-
-    cohort_directory = {'local': Path(r"E:/Pitx2_Inhib_DTx"),
-                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Pitx2_Inhib_DTx"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx/Data",
-                       'rsync_local': r"/cygdrive/d/Pitx2_Inhib_DTx/",
-                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Pitx2_Inhib_DTx"}
-    cohort_directories.append(cohort_directory)
-
-    cohort_directory = {'local': Path(r"E:\Anindita_Yuanxin_Fun_Day"),
-                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Anindita_Yuanxin_Fun_Day"),
-                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Anindita_Yuanxin_Fun_Day/Data",
-                       'rsync_local': r"/cygdrive/d/E:/Anindita_Yuanxin_Fun_Day/",
-                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Anindita_Yuanxin_Fun_Day"}
+    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx"),
+                    }
     cohort_directories.append(cohort_directory)
 
 
     # Step 1: Recover crashed sessions
-    # print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
-    # for cohort_directory in cohort_directories:
-    #     recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
+    print("\n===== STEP 1: RECOVERING CRASHED SESSIONS =====")
+    for cohort_directory in cohort_directories:
+        recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
     # Step 2: Process ephys data
-    # print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    # for cohort_directory in cohort_directories:
-    #     if cohort_directory.get('ephys_data', False):
-    #         process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
+    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
+    for cohort_directory in cohort_directories:
+        if cohort_directory.get('ephys_data', False):
+            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
 
-    # Step 3: Process uncompressed videos
+    # # Step 3: Process uncompressed videos
     print("\n===== STEP 3: PROCESSING VIDEOS =====")
     for cohort_directory in cohort_directories:
         processes = mp.cpu_count()
