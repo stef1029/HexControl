@@ -16,17 +16,17 @@ class Scales():
         if rig == None:
             self.port = "COM1"
             self.scale = float(0.22375971500351627)       # these values are found by running Calibrate() and copying the output
-            self.intercept = -5617.39 
+            self.intercept = 6497.609999999999
         else:
             if rig == 1:
                 self.port = "COM7"
-                self.scale = float(0.22375971500351627)       # these values are found by running Calibrate() and copying the output
-                self.intercept = -5617.39 
+                self.scale = float(0.24866958662784275)       # these values are found by running Calibrate() and copying the output          ## Calibrated 29th September '25 (DW)
+                self.intercept = 250.44
                 baudrate = 115200
             elif rig == 2:
                 self.port = "COM5"     ## These port numbers need checking
-                self.scale = float(0.27978473586250524)       # these values are found by running Calibrate() and copying the output            ## Calibrated 16th July '24
-                self.intercept = 475.86
+                self.scale = float(0.21654951518353163)       # these values are found by running Calibrate() and copying the output            ## Calibrated 29th September '25 (DW)
+                self.intercept = -983.6799999999988
                 baudrate = 115200
             elif rig == 3:
                 self.port = "COM10"
@@ -323,9 +323,9 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
-    scales = Scales(rig=3)
+    scales = Scales(rig=1)
 
-    # scales.calibrate()
+    scales.calibrate()
         
     while True:
         # id, data = scales.weight()

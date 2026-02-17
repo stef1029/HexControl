@@ -15,7 +15,7 @@ from typing import Dict, Union, List, Optional
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
 from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
 from hex_behav_analysis.utils.recover_crashed_sessions import recover_crashed_sessions
-from hex_behav_analysis.ephys import get_axona_events
+from hex_behav_analysis.ephys.post_processing import get_axona_events
 
 # Import the video processing functions
 from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_files
@@ -543,13 +543,34 @@ def main():
     #                 'ephys_data': True}
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/2504_pitx_ephys_cohort"),
-                    #    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
-                    #    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
-                    #    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
-                    #    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"
-                    'ephys_data': True,
-                    }
+    # cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/2504_pitx_ephys_cohort"),
+    #                 #    'cephfs_mapped': Path(r"Y:\Behaviour\Pitx2_Chemogenetics"),
+    #                 #    'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Chemogenetics",
+    #                 #    'rsync_local': r"/cygdrive/e/Pitx2_Chemogenetics/",
+    #                 #    'rsync_cephfs_mapped': r"/cygdrive/y/Behaviour/Pitx2_Chemogenetics"
+    #                 'ephys_data': True,
+    #                 }
+    # cohort_directories.append(cohort_directory)
+
+    cohort_directory = {'local': Path(r"D:/Pitx2_Inhib_DTx"),
+                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Pitx2_Inhib_DTx"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx/Data",
+                       'rsync_local': r"/cygdrive/d/Pitx2_Inhib_DTx/",
+                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Pitx2_Inhib_DTx"}
+    cohort_directories.append(cohort_directory)
+
+    cohort_directory = {'local': Path(r"E:/Pitx2_Inhib_DTx"),
+                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Pitx2_Inhib_DTx"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx/Data",
+                       'rsync_local': r"/cygdrive/d/Pitx2_Inhib_DTx/",
+                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Pitx2_Inhib_DTx"}
+    cohort_directories.append(cohort_directory)
+
+    cohort_directory = {'local': Path(r"E:\Anindita_Yuanxin_Fun_Day"),
+                       'cephfs_mapped': Path(r"Z:/srogers/Behaviour/Anindita_Yuanxin_Fun_Day"),
+                       'cephfs_hal': r"/cephfs2/srogers/Behaviour/Anindita_Yuanxin_Fun_Day/Data",
+                       'rsync_local': r"/cygdrive/d/E:/Anindita_Yuanxin_Fun_Day/",
+                       'rsync_cephfs_mapped': r"/cygdrive/z/srogers/Behaviour/Anindita_Yuanxin_Fun_Day"}
     cohort_directories.append(cohort_directory)
 
 
@@ -559,29 +580,29 @@ def main():
     #     recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
     # Step 2: Process ephys data
-    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    for cohort_directory in cohort_directories:
-        if cohort_directory.get('ephys_data', False):
-            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
-
-    # # Step 3: Process uncompressed videos
-    # print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    # print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
     # for cohort_directory in cohort_directories:
-    #     processes = mp.cpu_count()
-    #     process_cohort_directory(cohort_directory['local'], processes)
+    #     if cohort_directory.get('ephys_data', False):
+    #         process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
+
+    # Step 3: Process uncompressed videos
+    print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    for cohort_directory in cohort_directories:
+        processes = mp.cpu_count()
+        process_cohort_directory(cohort_directory['local'], processes)
 
     # # Wait until after 10 PM before running the main part
     # # wait_until_time(22)  # 22:00 is 10 PM
 
     # # Step 4: Run analysis on the local files
-    print("\n===== STEP 4: RUNNING ANALYSIS =====")
-    for cohort_directory in cohort_directories:
-        if cohort_directory.get('ephys_data', False):
-            run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
-        else:
-            run_analysis_on_local(cohort_directory['local'], refresh=False)
+    # print("\n===== STEP 4: RUNNING ANALYSIS =====")
+    # for cohort_directory in cohort_directories:
+    #     if cohort_directory.get('ephys_data', False):
+    #         run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
+    #     else:
+    #         run_analysis_on_local(cohort_directory['local'], refresh=False)
 
-    # # Step 5: Sync files to cephfs 
+    # Step 5: Sync files to cephfs 
     # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
     # for cohort_directory in cohort_directories:
     #     print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
