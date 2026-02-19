@@ -31,6 +31,7 @@ from .scales import Scales, ScalesConfig
 from .calibrate import run_calibration
 from .client import ScalesClient, quick_get_weight
 from .zero import zero_scales, zero_all_scales, ZeroResult, get_summary
+from .manager import ScalesManager
 
 __all__ = [
     # Direct hardware access
@@ -40,6 +41,8 @@ __all__ = [
     # Client for subprocess architecture
     "ScalesClient",
     "quick_get_weight",
+    # Manager for subprocess lifecycle
+    "ScalesManager",
     # Zeroing utilities
     "zero_scales",
     "zero_all_scales",

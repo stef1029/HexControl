@@ -285,14 +285,14 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
-            if not self.peripheral_manager._start_daq():
+            if not self.peripheral_manager.start_daq():
                 error_msg = self.peripheral_manager.last_error or "Failed to start DAQ"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
             
             # Wait for connection
             self._update_startup_status("Waiting for DAQ connection...")
-            if not self.peripheral_manager._wait_for_connection():
+            if not self.peripheral_manager.wait_for_connection():
                 if self._startup_cancelled:
                     self._on_startup_cancelled()
                 else:
@@ -306,7 +306,7 @@ class RigWindow:
             
             # Start camera
             self._update_startup_status("Starting camera...")
-            if not self.peripheral_manager._start_camera():
+            if not self.peripheral_manager.start_camera():
                 error_msg = self.peripheral_manager.last_error or "Failed to start camera"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -317,7 +317,7 @@ class RigWindow:
             
             # Start scales (always)
             self._update_startup_status("Starting scales...")
-            if not self.peripheral_manager._start_scales():
+            if not self.peripheral_manager.start_scales():
                 error_msg = self.peripheral_manager.last_error or "Failed to start scales"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return

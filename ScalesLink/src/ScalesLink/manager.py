@@ -1,0 +1,216 @@
+"""
+Scales Manager - Manages the lifecycle of the ScalesLink server subprocess.
+
+Encapsulates the subprocess launch, client connection, and cleanup
+that was previously inline in PeripheralManager.
+
+Usage:
+    manager = ScalesManager(
+        com_port="COM10",
+        baud_rate=9600,
+        tcp_port=5101,
+        is_wired=True,
+        calibration_scale=0.22375,
+        calibration_intercept=-5617.39,
+        session_folder="/path/to/session",
+        date_time="250219_120000",
+        mouse_id="mouse1",
+        log_callback=print,
+    )
+    
+    if manager.start():
+        # Use the client to get weights
+        weight = manager.client.get_weight()
+    
+    manager.stop()
+"""
+
+import os
+import subprocess
+import sys
+import time
+from typing import Callable, Optional
+
+from .client import ScalesClient
+
+
+class ScalesManager:
+    """
+    Manages the lifecycle of the ScalesLink server subprocess and its client.
+    
+    Handles launching the TCP server subprocess, connecting the client,
+    and graceful shutdown.
+    """
+    
+    def __init__(
+        self,
+        com_port: str,
+        baud_rate: int,
+        tcp_port: int,
+        is_wired: bool = False,
+        calibration_scale: float = 1.0,
+        calibration_intercept: float = 0.0,
+        session_folder: str = "",
+        date_time: str = "",
+        mouse_id: str = "",
+        log_callback: Optional[Callable[[str], None]] = None,
+    ):
+        """
+        Initialise the scales manager.
+        
+        Args:
+            com_port: Serial port for the scales hardware.
+            baud_rate: Serial baud rate.
+            tcp_port: TCP port for the server to listen on.
+            is_wired: Whether the scales use wired (vs wireless) protocol.
+            calibration_scale: Linear calibration scale factor.
+            calibration_intercept: Linear calibration intercept.
+            session_folder: Path to the session output folder (for log file).
+            date_time: Date/time string for this session (for log filename).
+            mouse_id: Mouse identifier for this session (for log filename).
+            log_callback: Optional callback for log messages.
+        """
+        self.com_port = com_port
+        self.baud_rate = baud_rate
+        self.tcp_port = tcp_port
+        self.is_wired = is_wired
+        self.calibration_scale = calibration_scale
+        self.calibration_intercept = calibration_intercept
+        self.session_folder = session_folder
+        self.date_time = date_time
+        self.mouse_id = mouse_id
+        self._log = log_callback or print
+        
+        self._process: Optional[subprocess.Popen] = None
+        self.client: Optional[ScalesClient] = None
+        self.last_error: Optional[str] = None
+    
+    @property
+    def is_running(self) -> bool:
+        """Check if the scales server process is alive."""
+        return self._process is not None and self._process.poll() is None
+    
+    def start(self) -> bool:
+        """
+        Start the scales server subprocess and connect the client.
+        
+        Returns:
+            True if the server started and the client connected successfully.
+        """
+        self._log(f"Starting scales on {self.com_port} (TCP port {self.tcp_port})...")
+        
+        # Build log path in session folder
+        log_path = ""
+        if self.session_folder and self.date_time and self.mouse_id:
+            log_filename = f"{self.date_time}_{self.mouse_id}_scales_data.csv"
+            log_path = os.path.join(self.session_folder, log_filename)
+        
+        # Build command to run scales server
+        command = [
+            sys.executable,  # Use same Python interpreter
+            "-m", "ScalesLink.server",
+            "--port", self.com_port,
+            "--baud", str(self.baud_rate),
+            "--tcp", str(self.tcp_port),
+            "--scale", str(self.calibration_scale),
+            "--intercept", str(self.calibration_intercept),
+        ]
+        
+        if log_path:
+            command.extend(["--log", log_path])
+        
+        if self.is_wired:
+            command.append("--wired")
+        
+        try:
+            # CREATE_NEW_CONSOLE is Windows-only; use default on other platforms
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            
+            self._process = subprocess.Popen(command, **kwargs)
+            self._log(f"Scales server started (PID: {self._process.pid})")
+        except Exception as e:
+            self.last_error = f"Failed to start scales server: {e}"
+            self._log(self.last_error)
+            return False
+        
+        # Wait for server to start up
+        time.sleep(3)
+        
+        # Check if process is still running
+        if self._process.poll() is not None:
+            self.last_error = f"Scales server terminated (exit code: {self._process.returncode})"
+            self._log(self.last_error)
+            self._process = None
+            return False
+        
+        # Create client and verify connection
+        return self._connect_client()
+    
+    def _connect_client(self) -> bool:
+        """Create the TCP client and verify the server is responsive."""
+        try:
+            self.client = ScalesClient(tcp_port=self.tcp_port)
+            
+            # Retry ping a few times while server starts up
+            for attempt in range(5):
+                if self.client.ping(timeout=2.0):
+                    self._log("Scales server connected")
+                    
+                    # Get initial weight
+                    weight = self.client.get_weight()
+                    if weight is not None:
+                        self._log(f"Initial weight: {weight:.2f}g")
+                    else:
+                        self._log("Scales ready (no initial reading)")
+                    
+                    return True
+                
+                time.sleep(1)
+            
+            self.last_error = "Failed to connect to scales server (timeout)"
+            self._log(self.last_error)
+            self._cleanup_process()
+            return False
+            
+        except Exception as e:
+            self.last_error = f"Failed to connect scales client: {e}"
+            self._log(self.last_error)
+            self._cleanup_process()
+            return False
+    
+    def stop(self) -> None:
+        """Stop the scales server gracefully."""
+        # Send shutdown via client
+        if self.client is not None:
+            try:
+                self._log("Sending shutdown to scales server...")
+                self.client.shutdown()
+            except Exception as e:
+                self._log(f"Error sending shutdown to scales: {e}")
+            finally:
+                self.client = None
+        
+        self._cleanup_process()
+    
+    def _cleanup_process(self) -> None:
+        """Clean up the scales server process if still running."""
+        if self._process is None:
+            return
+        
+        try:
+            self._process.wait(timeout=5)
+            self._log(f"Scales server stopped (exit code: {self._process.returncode})")
+        except subprocess.TimeoutExpired:
+            self._log("Scales server timeout, terminating...")
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+        except Exception as e:
+            self._log(f"Error stopping scales server: {e}")
+        finally:
+            self._process = None
+            self.client = None
