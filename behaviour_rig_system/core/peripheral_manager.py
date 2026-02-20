@@ -97,7 +97,7 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> ScalesProcessConfi
     # Resolve baud rate from board registry (fallback to YAML value)
     try:
         registry = BoardRegistry()
-        baud_rate = registry.get_baudrate(board_name)
+        baud_rate = registry.resolve_baudrate(board_name, scales_yaml.get("baud_rate", 115200))
     except (FileNotFoundError, KeyError):
         baud_rate = scales_yaml.get("baud_rate", 115200)
     
@@ -266,14 +266,18 @@ class PeripheralManager:
         """Start the scales server subprocess via ScalesManager (or mock)."""
         scales_cfg = self.config.scales
         
-        # Resolve board name to COM port via board registry
-        try:
-            registry = BoardRegistry()
-            com_port = registry.find_board_port(scales_cfg.board_name)
-        except (FileNotFoundError, KeyError, RuntimeError) as e:
-            self.last_error = f"Failed to resolve scales board '{scales_cfg.board_name}': {e}"
-            self._log(self.last_error)
-            return False
+        # In simulate mode, skip real hardware resolution
+        if self._simulate:
+            com_port = "MOCK"
+        else:
+            # Resolve board name (or raw COM port) via board registry
+            try:
+                registry = BoardRegistry()
+                com_port = registry.resolve_port(scales_cfg.board_name)
+            except (FileNotFoundError, KeyError, RuntimeError) as e:
+                self.last_error = f"Failed to resolve scales board '{scales_cfg.board_name}': {e}"
+                self._log(self.last_error)
+                return False
         
         ManagerClass = MockScalesManager if self._simulate else ScalesManager
         self._scales_manager = ManagerClass(

@@ -79,10 +79,10 @@ def test_rig_connection(
     link = None
     
     try:
-        # Resolve board name to COM port
+        # Resolve board name (or raw COM port) to a port string
         reg = registry or BoardRegistry()
-        serial_port = reg.find_board_port(board_name)
-        baud_rate = reg.get_baudrate(board_name)
+        serial_port = reg.resolve_port(board_name)
+        baud_rate = reg.resolve_baudrate(board_name)
         
         # Try to open serial port
         ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
@@ -607,10 +607,10 @@ class RigLauncher:
             "shared_multi_session": shared_multi_session,
         }
         
-        # Resolve board name to COM port via registry
+        # Resolve board name (or raw COM port) via registry
         try:
-            serial_port = self.board_registry.find_board_port(board_name) if board_name else ""
-            baud_rate = self.board_registry.get_baudrate(board_name) if board_name else self.baud_rate
+            serial_port = self.board_registry.resolve_port(board_name) if board_name else ""
+            baud_rate = self.board_registry.resolve_baudrate(board_name, self.baud_rate) if board_name else self.baud_rate
         except (KeyError, RuntimeError):
             serial_port = ""
             baud_rate = self.baud_rate

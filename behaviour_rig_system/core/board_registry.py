@@ -74,6 +74,37 @@ class BoardRegistry:
         """All registered boards keyed by human-readable name."""
         return dict(self._boards)
 
+    @staticmethod
+    def is_direct_port(name: str) -> bool:
+        """Return ``True`` if *name* is a raw COM port (e.g. ``"COM9"``) rather than a board registry key."""
+        if not name:
+            return False
+        upper = name.upper()
+        return upper.startswith("COM") or name.startswith("/dev/")
+
+    def resolve_port(self, name: str) -> str:
+        """
+        Resolve a board name **or** raw COM port to a port string.
+
+        If *name* looks like a direct COM port (e.g. ``"COM9"``),
+        it is returned as-is without consulting the registry.
+        Otherwise it is looked up via :meth:`find_board_port`.
+        """
+        if self.is_direct_port(name):
+            return name
+        return self.find_board_port(name)
+
+    def resolve_baudrate(self, name: str, default: int = 115200) -> int:
+        """
+        Return the baud rate for *name*.
+
+        If *name* is a raw COM port, *default* is returned.
+        Otherwise the value from the registry is used.
+        """
+        if self.is_direct_port(name):
+            return default
+        return self.get_baudrate(name)
+
     def find_board_port(self, board_name: str) -> str:
         """
         Resolve a board name to its current COM port.
@@ -169,47 +200,56 @@ class BoardRegistry:
 # ======================================================================
 
 def discover_boards() -> None:
-    """Print every USB serial device currently connected."""
+    """Print every connected USB serial device as a copy-paste-ready JSON snippet."""
+    from colorama import Fore, Style, init
+    init()
+
     ports = serial.tools.list_ports.comports()
     if not ports:
         print("No USB serial devices detected.")
         return
 
-    print(f"{'Port':<10} {'VID:PID':<14} {'Serial Number':<30} {'Description'}")
-    print("-" * 85)
+    print(f"\n  {len(ports)} device(s) found. Copy any entry below into board_registry.json:\n")
+
     for p in sorted(ports, key=lambda x: x.device):
-        vid = f"0x{p.vid:04X}" if p.vid is not None else "N/A"
-        pid = f"0x{p.pid:04X}" if p.pid is not None else "N/A"
-        sn = p.serial_number or "N/A"
-        desc = p.description or ""
-        print(f"{p.device:<10} {vid}:{pid:<8} {sn:<30} {desc}")
+        vid_str = f'"0x{p.vid:04x}"' if p.vid is not None else "null"
+        pid_str = f'"0x{p.pid:04x}"' if p.pid is not None else "null"
+        sn_str = f'"{p.serial_number}"' if p.serial_number else "null"
+
+        print(Fore.CYAN + f'        "{p.device}_RENAME_ME"' + Style.RESET_ALL + ": {")
+        print(f'            "description": "{p.description}",')
+        print(f'            "vid": {vid_str},')
+        print(f'            "pid": {pid_str},')
+        print(f'            "serial_number": {sn_str},')
+        print(f'            "baudrate": 115200')
+        print("        },\n")
 
 
 def main() -> None:
     """Entry-point when run as ``python -m core.board_registry``."""
-    print("=" * 85)
+    print("=" * 70)
     print("  Board Registry — USB Serial Device Discovery")
-    print("=" * 85)
-    print()
+    print("=" * 70)
+
     discover_boards()
-    print()
-    print("Copy the VID, PID, and Serial Number values into board_registry.json")
-    print(f"Registry file: {_DEFAULT_REGISTRY_PATH}")
-    print()
+
+    print(f"  Registry file: {_DEFAULT_REGISTRY_PATH}\n")
 
     # If a registry already exists, show which boards are currently found
     try:
+        from colorama import Fore, Style
         registry = BoardRegistry()
-        print("Current registry status:")
-        print("-" * 60)
+        print("  Current registry status:")
+        print("  " + "-" * 50)
         for name, info in sorted(registry.boards.items()):
             try:
                 port = registry.find_board_port(name)
-                print(f"  ✓ {name:<25} -> {port}")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} {name:<25} -> {port}")
             except RuntimeError:
-                print(f"  ✗ {name:<25} -> NOT FOUND")
+                print(f"  {Fore.RED}✗{Style.RESET_ALL} {name:<25} -> NOT FOUND")
+        print()
     except FileNotFoundError:
-        print("No board_registry.json found yet — create one with the values above.")
+        print("  No board_registry.json found yet — create one with the values above.\n")
 
 
 if __name__ == "__main__":

@@ -108,7 +108,7 @@ class DAQManager:
             "--rig", str(self.rig_number),
         ]
         
-        # Resolve DAQ board name to COM port via board registry
+        # Resolve DAQ board name (or raw COM port) via board registry
         if self.daq_board_name:
             try:
                 # Lazy import to avoid hard dependency
@@ -118,7 +118,7 @@ class DAQManager:
                     _sys.path.insert(0, str(_brs_root))
                 from core.board_registry import BoardRegistry
                 registry = BoardRegistry()
-                daq_port = registry.find_board_port(self.daq_board_name)
+                daq_port = registry.resolve_port(self.daq_board_name)
                 command.extend(["--port", daq_port])
                 self._log(f"Resolved DAQ board '{self.daq_board_name}' -> {daq_port}")
             except Exception as e:
