@@ -75,6 +75,7 @@ class DAQManager:
         self._log = log_callback or print
         
         self._process: Optional[subprocess.Popen] = None
+        self._log_file_handle = None  # File handle for subprocess output
         self.last_error: Optional[str] = None
     
     @property
@@ -127,17 +128,28 @@ class DAQManager:
                 return False
         
         try:
-            # CREATE_NEW_CONSOLE is Windows-only; use default on other platforms
-            kwargs = {}
-            if sys.platform == "win32":
-                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            # Redirect stdout/stderr to a log file so we can diagnose failures.
+            # The session folder may not exist yet — create it.
+            os.makedirs(self.session_folder, exist_ok=True)
+            self._log_file_path = os.path.join(
+                self.session_folder, f"daq_rig{self.rig_number}.log"
+            )
+            self._log_file_handle = open(self._log_file_path, "w")
             
-            self._process = subprocess.Popen(command, **kwargs)
+            self._process = subprocess.Popen(
+                command,
+                stdout=self._log_file_handle,
+                stderr=subprocess.STDOUT,
+            )
             self._log(f"DAQ started (PID: {self._process.pid})")
+            self._log(f"DAQ output -> {self._log_file_path}")
             return True
         except Exception as e:
             self.last_error = f"Failed to start Arduino DAQ: {e}"
             self._log(self.last_error)
+            if self._log_file_handle:
+                self._log_file_handle.close()
+                self._log_file_handle = None
             return False
     
     def wait_for_connection(self) -> bool:
@@ -172,6 +184,8 @@ class DAQManager:
             if self._process.poll() is not None:
                 self.last_error = f"DAQ process terminated (exit code: {self._process.returncode})"
                 self._log(self.last_error)
+                # Read the log file to show what went wrong
+                self._report_subprocess_log()
                 return False
             
             time.sleep(0.5)
@@ -180,6 +194,34 @@ class DAQManager:
         self._log(self.last_error)
         return False
     
+    def _report_subprocess_log(self) -> None:
+        """Read and report the DAQ subprocess log file contents."""
+        log_path = getattr(self, '_log_file_path', None)
+        if not log_path or not os.path.exists(log_path):
+            self._log("No DAQ log file available")
+            return
+        
+        # Close the file handle so all output is flushed
+        if self._log_file_handle:
+            try:
+                self._log_file_handle.close()
+            except Exception:
+                pass
+            self._log_file_handle = None
+        
+        try:
+            with open(log_path, 'r') as f:
+                contents = f.read().strip()
+            if contents:
+                self._log("--- DAQ subprocess output ---")
+                for line in contents.splitlines():
+                    self._log(f"  {line}")
+                self._log("--- end DAQ output ---")
+            else:
+                self._log("DAQ log file is empty (process produced no output)")
+        except Exception as e:
+            self._log(f"Failed to read DAQ log: {e}")
+
     def stop(self) -> None:
         """
         Stop the DAQ process gracefully.
@@ -190,6 +232,7 @@ class DAQManager:
         self._create_stop_signal()
         self._cleanup_process()
         self._cleanup_signal_files()
+        self._close_log_file()
     
     def _create_stop_signal(self) -> None:
         """Create the signal file that tells the DAQ to stop gracefully."""
@@ -204,6 +247,15 @@ class DAQManager:
         except Exception as e:
             self._log(f"Error creating DAQ stop signal: {e}")
     
+    def _close_log_file(self) -> None:
+        """Close the subprocess log file handle."""
+        if self._log_file_handle:
+            try:
+                self._log_file_handle.close()
+            except Exception:
+                pass
+            self._log_file_handle = None
+
     def _cleanup_process(self) -> None:
         """Wait for the DAQ process to exit, terminating if necessary."""
         if self._process is None:

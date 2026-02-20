@@ -426,9 +426,8 @@ class RigWindow:
         self.protocol_thread.start()
     
     def _on_startup_error(self, error_msg: str) -> None:
-        """Called when startup fails."""
-        self._hide_startup_overlay()
-        
+        """Called when startup fails. Keeps the overlay visible so the user can read the log."""
+        # Clean up peripherals in the background
         if self.peripheral_manager:
             self.peripheral_manager.stop()
             self.peripheral_manager = None
@@ -441,8 +440,28 @@ class RigWindow:
             self._serial = None
         
         self.link = None
+
+        # Stop the progress bar and update the overlay to show the error
+        self.startup_progress.stop()
+        self.startup_title.config(text="Startup Failed", foreground="red")
+        self.startup_status_var.set(error_msg[:80])
+
+        # Log the error into the overlay's scrolled text
+        self._do_update_startup_status(f"ERROR: {error_msg}")
+
+        # Change the Cancel button to a Close button that returns to setup
+        self.startup_cancel_btn.config(
+            text="Close",
+            command=self._close_startup_error,
+        )
+    
+    def _close_startup_error(self) -> None:
+        """Close the startup error overlay and return to setup mode."""
+        # Reset overlay state for next attempt
+        self.startup_title.config(text="Starting Session...", foreground="")
+        self.startup_cancel_btn.config(text="Cancel", command=self._cancel_startup)
+        self._hide_startup_overlay()
         self._show_mode(WindowMode.SETUP)
-        messagebox.showerror("Startup Failed", f"Failed to start session:\n\n{error_msg}")
     
     def _on_startup_cancelled(self) -> None:
         """Called when startup is cancelled."""

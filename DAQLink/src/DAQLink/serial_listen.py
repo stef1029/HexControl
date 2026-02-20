@@ -275,21 +275,26 @@ async def listen(
         try:
             serial_connection = serial.Serial(com_port, 115200, timeout=1)
             time.sleep(3)
-        except serial.SerialException:
-            print("Failed to connect to Arduino Mega after retry.")
-            return
+        except serial.SerialException as exc:
+            print(f"Failed to connect to Arduino Mega after retry: {exc}")
+            sys.exit(1)
+
+    # Wait for the Arduino bootloader to finish after the DTR-triggered reset.
+    # Mega boards need ~1-2s; Giga boards don't reset on DTR so this is harmless.
+    print("Waiting for bootloader to finish...")
+    time.sleep(2)
 
     try:
-        serial_connection.write(b"s")
         serial_connection.reset_input_buffer()
+        serial_connection.write(b"s")
         if b"s" not in serial_connection.read_until(b"s", 5):
             print("Handshake failed — aborting.")
-            return
+            sys.exit(1)
         print("Arduino Mega connection established.")
         connection_signal_file.write_text(f"Connected at {datetime.now()}")
     except Exception as exc:  # noqa: BLE001
         print(f"Handshake error: {exc}")
-        return
+        sys.exit(1)
 
     start_time = time.perf_counter()
     message_counter = 0
@@ -404,9 +409,11 @@ def main() -> None:
 
     try:
         asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=resolved_port))
+    except SystemExit:
+        raise  # Let sys.exit() propagate with its exit code
     except Exception:
         traceback.print_exc()
-        input("ArduinoDAQ error — see traceback above.  Press Enter to exit…")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
