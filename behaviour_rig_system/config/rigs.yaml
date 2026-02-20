@@ -113,12 +113,6 @@ mice:
 # ------------------
 
 processes:
-  # Python executable path
-  python_path: "C:\\Users\\Stefan R Coltman\\.conda\\envs\\behaviour_analysis\\python.exe"
-  
-  # Arduino DAQ / serial listen script (now in DAQLink library)
-  serial_listen_script: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\DAQLink\\src\\DAQLink\\serial_listen.py"
-  
   # Camera executable
   camera_executable: "C:\\Dev\\projects\\Camera\\x64\\Release\\Camera_to_binary.exe"
   
@@ -130,12 +124,3 @@ processes:
   camera_window_width: 640
   camera_window_height: 512
 
-
-# Protocol defaults
-# -----------------
-# Default parameter values that apply to all protocols
-# Individual protocols can override these
-
-protocol_defaults:
-  component_delay: 0.3
-  section_delay: 1.0

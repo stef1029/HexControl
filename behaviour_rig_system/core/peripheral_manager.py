@@ -56,8 +56,6 @@ class PeripheralConfig:
     date_time: str
     
     # Process paths
-    python_path: str
-    serial_listen_script: str
     camera_executable: str
     
     # Settings
@@ -161,8 +159,6 @@ def load_peripheral_config(
         session_folder=session_folder,
         multi_session_folder=multi_session_folder,
         date_time=date_time,
-        python_path=process_settings.get("python_path", "python"),
-        serial_listen_script=process_settings.get("serial_listen_script", ""),
         camera_executable=process_settings.get("camera_executable", ""),
         connection_timeout=process_settings.get("connection_timeout", 30),
         camera_fps=process_settings.get("camera_fps", 30),
@@ -209,8 +205,6 @@ class PeripheralManager:
         """Start the Arduino DAQ process via DAQManager (or mock)."""
         ManagerClass = MockDAQManager if self._simulate else DAQManager
         self._daq_manager = ManagerClass(
-            python_path=self.config.python_path,
-            serial_listen_script=self.config.serial_listen_script,
             mouse_id=self.config.mouse_id,
             date_time=self.config.date_time,
             session_folder=self.config.session_folder,

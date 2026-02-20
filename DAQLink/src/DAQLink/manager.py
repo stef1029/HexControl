@@ -6,8 +6,6 @@ that was previously inline in PeripheralManager.
 
 Usage:
     manager = DAQManager(
-        python_path="python",
-        serial_listen_script="/path/to/serial_listen.py",
         mouse_id="mouse1",
         date_time="250219_120000",
         session_folder="/path/to/session",
@@ -27,7 +25,11 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Callable, Optional
+
+# Resolve the path to serial_listen.py within this package
+_SERIAL_LISTEN_SCRIPT = str(Path(__file__).parent / "serial_listen.py")
 
 
 class DAQManager:
@@ -40,8 +42,6 @@ class DAQManager:
     
     def __init__(
         self,
-        python_path: str,
-        serial_listen_script: str,
         mouse_id: str,
         date_time: str,
         session_folder: str,
@@ -53,8 +53,6 @@ class DAQManager:
         Initialise the DAQ manager.
         
         Args:
-            python_path: Path to the Python executable.
-            serial_listen_script: Path to the serial listener script.
             mouse_id: Mouse identifier for this session.
             date_time: Date/time string for this session.
             session_folder: Path to the session output folder.
@@ -62,13 +60,8 @@ class DAQManager:
             connection_timeout: Seconds to wait for Arduino connection.
             log_callback: Optional callback for log messages.
         """
-        if not python_path:
-            raise ValueError("python_path must be provided for DAQ")
-        if not serial_listen_script:
-            raise ValueError("serial_listen_script must be provided for DAQ")
-        
-        self.python_path = python_path
-        self.serial_listen_script = serial_listen_script
+        self.python_path = sys.executable
+        self.serial_listen_script = _SERIAL_LISTEN_SCRIPT
         self.mouse_id = mouse_id
         self.date_time = date_time
         self.session_folder = session_folder

@@ -30,8 +30,6 @@ class MockDAQManager:
 
     def __init__(
         self,
-        python_path: str = "",
-        serial_listen_script: str = "",
         mouse_id: str = "",
         date_time: str = "",
         session_folder: str = "",
