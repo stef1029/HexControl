@@ -7,6 +7,7 @@
 # Each rig entry should include:
 #   - name: Display name for the rig
 #   - serial_port: Serial port the rig is connected to
+#   - board_type: Arduino board type - "giga" or "mega"
 #   - enabled: Whether the rig is available for use
 #   - description: Optional description of the rig
 #   - camera_serial: Serial number for the rig's camera
@@ -14,6 +15,7 @@
 rigs:
   - name: "Rig 1"
     serial_port: "COM7"
+    board_type: "giga"
     enabled: true
     description: "Main behaviour rig"
     camera_serial: "24243513"
@@ -26,6 +28,7 @@ rigs:
 
   - name: "Rig 2"
     serial_port: "COM8"
+    board_type: "giga"
     enabled: true
     description: "Secondary rig"
     camera_serial: "20530175"
@@ -38,6 +41,7 @@ rigs:
 
   - name: "Rig 3"
     serial_port: "COM9"
+    board_type: "giga"
     enabled: true
     description: "Third rig"
     camera_serial: "24174008"
@@ -50,6 +54,7 @@ rigs:
 
   - name: "Rig 4"
     serial_port: "COM10"
+    board_type: "giga"
     enabled: true
     description: "Fourth rig"
     camera_serial: "24243513"

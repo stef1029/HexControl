@@ -58,13 +58,14 @@ def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict]:
     return DEFAULT_RIGS, 115200, {}
 
 
-def test_rig_connection(serial_port: str, baud_rate: int) -> tuple[bool, str]:
+def test_rig_connection(serial_port: str, baud_rate: int, board_type: str = "giga") -> tuple[bool, str]:
     """
     Test connection to a rig.
     
     Args:
         serial_port: Serial port to test
         baud_rate: Baud rate for connection
+        board_type: Board type string ("mega" or "giga")
         
     Returns:
         Tuple of (success, message)
@@ -80,7 +81,7 @@ def test_rig_connection(serial_port: str, baud_rate: int) -> tuple[bool, str]:
         reset_arduino_via_dtr(ser)
         
         # Create link and test handshake
-        link = BehaviourRigLink(ser)
+        link = BehaviourRigLink(ser, board_type=board_type)
         link.start()
         
         link.send_hello()
@@ -445,10 +446,11 @@ class RigLauncher:
             for rig in selected_rigs:
                 rig_name = rig.get("name", "Unknown")
                 serial_port = rig.get("serial_port", "")
+                board_type = rig.get("board_type", "giga")
                 
                 self.root.after(0, lambda n=rig_name: self.status_var.set(f"Testing {n}..."))
                 
-                success, message = test_rig_connection(serial_port, self.baud_rate)
+                success, message = test_rig_connection(serial_port, self.baud_rate, board_type)
                 
                 if success:
                     successful_rigs.append(rig)

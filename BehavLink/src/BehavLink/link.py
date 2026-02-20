@@ -239,9 +239,13 @@ class BehaviourRigLink:
     automatic retry on timeout, asynchronous event reception with deduplication,
     and thread-safe event buffering.
 
+    Supports both Arduino Mega and Giga boards. The communication protocol is
+    identical; the board_type is stored for logging and diagnostics.
+
     Args:
         serial_port: An open serial.Serial instance.
         receive_timeout: Timeout in seconds for individual read operations.
+        board_type: Board type string (e.g. "mega", "giga"). Defaults to "giga".
     """
 
     DEFAULT_RETRIES = 10
@@ -251,16 +255,30 @@ class BehaviourRigLink:
     NUM_GPIO_PINS = 6
     ALL_PORTS = 255
 
-    def __init__(self, serial_port: serial.Serial, *, receive_timeout: float = 0.1):
+    # Recognised board types
+    BOARD_MEGA = "mega"
+    BOARD_GIGA = "giga"
+    VALID_BOARD_TYPES = {BOARD_MEGA, BOARD_GIGA}
+
+    def __init__(
+        self,
+        serial_port: serial.Serial,
+        *,
+        receive_timeout: float = 0.1,
+        board_type: str = "giga",
+    ):
         """
         Initialises the communication link.
 
         Args:
             serial_port: An open serial.Serial instance configured for the rig.
             receive_timeout: Read timeout in seconds for the receive loop.
+            board_type: Board type string ("mega" or "giga"). Stored for
+                        logging and diagnostics. Defaults to "giga".
         """
         self._serial = serial_port
         self._serial.timeout = receive_timeout
+        self._board_type = board_type.lower().strip() if board_type else "giga"
 
         # Thread control
         self._stop_flag = threading.Event()
@@ -296,6 +314,11 @@ class BehaviourRigLink:
 
         # Sequence number generator (starts at 1, wraps at 0xFFFF)
         self._next_sequence = 1
+
+    @property
+    def board_type(self) -> str:
+        """Returns the board type string (e.g. 'mega' or 'giga')."""
+        return self._board_type
 
     # -------------------------------------------------------------------------
     # Lifecycle Management

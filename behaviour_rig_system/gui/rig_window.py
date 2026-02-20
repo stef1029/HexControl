@@ -344,10 +344,11 @@ class RigWindow:
                 reset_arduino_via_dtr(self._serial)
             
             self._update_startup_status("Creating BehaviourRigLink...")
+            board_type = self.rig_config.get("board_type", "giga")
             if self._simulate:
                 self.link = MockBehaviourRigLink(self._serial)
             else:
-                self.link = BehaviourRigLink(self._serial)
+                self.link = BehaviourRigLink(self._serial, board_type=board_type)
             self.link.start()
             
             self._update_startup_status("Handshaking...")
