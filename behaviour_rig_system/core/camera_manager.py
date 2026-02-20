@@ -68,6 +68,11 @@ class CameraManager:
             window_height: Preview window height.
             log_callback: Optional callback for log messages.
         """
+        if not camera_executable:
+            raise ValueError("camera_executable must be provided")
+        if not camera_serial:
+            raise ValueError("camera_serial must be provided")
+        
         self.camera_executable = camera_executable
         self.camera_serial = camera_serial
         self.mouse_id = mouse_id
@@ -94,18 +99,10 @@ class CameraManager:
         Returns:
             True if the camera process launched successfully.
         """
-        if not self.camera_executable:
-            self._log("No camera executable configured, skipping camera")
-            return True
-        
         if not os.path.exists(self.camera_executable):
             self.last_error = f"Camera executable not found: {self.camera_executable}"
             self._log(self.last_error)
             return False
-        
-        if not self.camera_serial:
-            self._log("No camera serial number configured, skipping camera")
-            return True
         
         command = [
             self.camera_executable,

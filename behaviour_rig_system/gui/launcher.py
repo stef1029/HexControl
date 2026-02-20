@@ -295,6 +295,16 @@ class RigLauncher:
         )
         post_process_btn.pack(side="left", padx=5)
         self._post_process_btn = post_process_btn
+
+        # Mock Rig button
+        mock_btn = ttk.Button(
+            utility_frame,
+            text="Mock Rig",
+            command=self._on_mock_rig_click,
+            style="Secondary.TButton",
+        )
+        mock_btn.pack(side="left", padx=5)
+        self._mock_btn = mock_btn
         
         # Status bar at bottom
         status_frame = ttk.Frame(self._main_container)
@@ -358,6 +368,26 @@ class RigLauncher:
         
         # Update launch button state
         self._update_launch_button()
+
+    def _on_mock_rig_click(self) -> None:
+        """Open a mock rig window using the first rig's config (no hardware required)."""
+        mock_name = "Mock Rig"
+
+        # Don't open twice
+        if mock_name in self.open_windows:
+            self.status_var.set("Mock Rig already open")
+            return
+
+        # Use the first rig's config as a template
+        if not self.rigs:
+            messagebox.showwarning("No Rigs", "No rigs configured in rigs.yaml")
+            return
+
+        rig = dict(self.rigs[0])  # shallow copy
+        rig["name"] = mock_name
+
+        self._open_rig_window(rig, simulate=True)
+        self.status_var.set("Mock Rig opened (simulated hardware)")
 
     def _update_button_appearance(self, rig_name: str) -> None:
         """Update button appearance based on selection and open state."""
@@ -525,7 +555,7 @@ class RigLauncher:
         # Update launch button state
         self._update_launch_button()
     
-    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None) -> None:
+    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None, simulate: bool = False) -> None:
         """
         Open a control window for the specified rig.
         
@@ -534,6 +564,7 @@ class RigLauncher:
             shared_multi_session: Optional shared multi-session folder timestamp.
                                   If provided, all rigs with the same value will
                                   save to the same parent folder.
+            simulate: If True, use mock peripherals instead of real hardware.
         """
         from .rig_window import RigWindow
         
@@ -558,6 +589,7 @@ class RigLauncher:
             parent=window,
             rig_name=rig_name,
             rig_config=rig_config,
+            simulate=simulate,
         )
         
         # Track this window (including rig_window for session checking)

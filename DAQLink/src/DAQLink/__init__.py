@@ -7,9 +7,11 @@ for recording rig state during behavioural experiments.
 
 from .serial_listen import listen, main
 from .manager import DAQManager
+from .mock import MockDAQManager
 
 __all__ = [
     "listen",
     "main",
     "DAQManager",
+    "MockDAQManager",
 ]

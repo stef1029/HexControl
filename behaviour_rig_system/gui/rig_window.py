@@ -18,6 +18,7 @@ from typing import Optional
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
 from core.performance_tracker import PerformanceTracker
@@ -48,12 +49,14 @@ class RigWindow:
         parent: Optional[tk.Tk] = None,
         rig_name: str = "",
         rig_config: Optional[dict] = None,
+        simulate: bool = False,
     ):
         self.serial_port = serial_port
         self.baud_rate = baud_rate
         self.parent = parent
         self.rig_name = rig_name
         self.rig_config = rig_config or {"name": rig_name, "serial_port": serial_port}
+        self._simulate = simulate
         
         # Hardware/protocol state
         self._serial: Optional[serial.Serial] = None
@@ -276,7 +279,8 @@ class RigWindow:
             
             self.peripheral_manager = PeripheralManager(
                 peripheral_config,
-                log_callback=self._update_startup_status
+                log_callback=self._update_startup_status,
+                simulate=self._simulate,
             )
             
             # Start DAQ
@@ -292,7 +296,7 @@ class RigWindow:
             
             # Wait for connection
             self._update_startup_status("Waiting for DAQ connection...")
-            if not self.peripheral_manager.wait_for_connection():
+            if not self.peripheral_manager.wait_for_daq_connection():
                 if self._startup_cancelled:
                     self._on_startup_cancelled()
                 else:
@@ -328,13 +332,22 @@ class RigWindow:
             
             # Connect to rig
             self._update_startup_status("Connecting to behaviour rig...")
-            self._serial = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
+            if self._simulate:
+                self._serial = MockSerial()
+            else:
+                self._serial = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
             
             self._update_startup_status("Resetting Arduino...")
-            reset_arduino_via_dtr(self._serial)
+            if self._simulate:
+                mock_reset_arduino_via_dtr(self._serial)
+            else:
+                reset_arduino_via_dtr(self._serial)
             
             self._update_startup_status("Creating BehaviourRigLink...")
-            self.link = BehaviourRigLink(self._serial)
+            if self._simulate:
+                self.link = MockBehaviourRigLink(self._serial)
+            else:
+                self.link = BehaviourRigLink(self._serial)
             self.link.start()
             
             self._update_startup_status("Handshaking...")

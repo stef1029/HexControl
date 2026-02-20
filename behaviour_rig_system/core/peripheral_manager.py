@@ -21,11 +21,18 @@ from typing import Callable, Optional
 
 import yaml
 
+from DAQLink.manager import DAQManager
+from DAQLink.mock import MockDAQManager
+from ScalesLink.manager import ScalesManager
+from ScalesLink.mock import MockScalesManager
+
+from .camera_manager import CameraManager
+from .mock_camera_manager import MockCameraManager
+
 
 @dataclass
 class ScalesProcessConfig:
     """Configuration for scales subprocess."""
-    enabled: bool = False
     com_port: str = ""
     baud_rate: int = 115200
     is_wired: bool = False
@@ -60,10 +67,10 @@ class PeripheralConfig:
     camera_window_height: int = 512
     
     # Scales subprocess config
-    scales: Optional[ScalesProcessConfig] = None
+    scales: ScalesProcessConfig = None
 
 
-def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesProcessConfig]:
+def _load_scales_config(rig_config: dict, rig_number: int) -> ScalesProcessConfig:
     """
     Load scales configuration from rig config.
     
@@ -72,21 +79,23 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesPro
         rig_number: Rig number for TCP port assignment
         
     Returns:
-        ScalesProcessConfig if scales are configured, None otherwise
+        ScalesProcessConfig with all settings populated.
+        
+    Raises:
+        ValueError: If scales section or com_port is missing from rig config.
     """
     scales_yaml = rig_config.get("scales")
     if not scales_yaml:
-        return None
+        raise ValueError("Scales configuration missing from rig config")
     
     com_port = scales_yaml.get("com_port", "")
     if not com_port:
-        return None
+        raise ValueError("Scales com_port missing from rig config")
     
     # Assign unique TCP port per rig (5100 + rig_number)
     tcp_port = 5100 + rig_number
     
     return ScalesProcessConfig(
-        enabled=True,
         com_port=com_port,
         baud_rate=scales_yaml.get("baud_rate", 115200),
         is_wired=scales_yaml.get("is_wired", False),
@@ -177,9 +186,11 @@ class PeripheralManager:
         self,
         config: PeripheralConfig,
         log_callback: Optional[Callable[[str], None]] = None,
+        simulate: bool = False,
     ):
         self.config = config
         self._log = log_callback or print
+        self._simulate = simulate
         
         # Sub-managers (created during startup)
         self._daq_manager = None
@@ -195,10 +206,9 @@ class PeripheralManager:
         self.last_error: Optional[str] = None
     
     def start_daq(self) -> bool:
-        """Start the Arduino DAQ process via DAQManager."""
-        from DAQLink.manager import DAQManager
-        
-        self._daq_manager = DAQManager(
+        """Start the Arduino DAQ process via DAQManager (or mock)."""
+        ManagerClass = MockDAQManager if self._simulate else DAQManager
+        self._daq_manager = ManagerClass(
             python_path=self.config.python_path,
             serial_listen_script=self.config.serial_listen_script,
             mouse_id=self.config.mouse_id,
@@ -214,10 +224,10 @@ class PeripheralManager:
             self.last_error = self._daq_manager.last_error
         return result
     
-    def wait_for_connection(self) -> bool:
+    def wait_for_daq_connection(self) -> bool:
         """Wait for the Arduino DAQ connection signal."""
         if self._daq_manager is None:
-            return True
+            raise RuntimeError("DAQ manager not initialised — call start_daq() first")
         
         result = self._daq_manager.wait_for_connection()
         if not result:
@@ -225,10 +235,9 @@ class PeripheralManager:
         return result
     
     def start_camera(self) -> bool:
-        """Start the camera process via CameraManager."""
-        from .camera_manager import CameraManager
-        
-        self._camera_manager = CameraManager(
+        """Start the camera process via CameraManager (or mock)."""
+        ManagerClass = MockCameraManager if self._simulate else CameraManager
+        self._camera_manager = ManagerClass(
             camera_executable=self.config.camera_executable,
             camera_serial=self.config.camera_serial,
             mouse_id=self.config.mouse_id,
@@ -247,15 +256,11 @@ class PeripheralManager:
         return result
     
     def start_scales(self) -> bool:
-        """Start the scales server subprocess via ScalesManager."""
+        """Start the scales server subprocess via ScalesManager (or mock)."""
         scales_cfg = self.config.scales
-        if scales_cfg is None or not scales_cfg.enabled:
-            self._log("No scales configured for this rig")
-            return True  # Not an error, just no scales
         
-        from ScalesLink.manager import ScalesManager
-        
-        self._scales_manager = ScalesManager(
+        ManagerClass = MockScalesManager if self._simulate else ScalesManager
+        self._scales_manager = ManagerClass(
             com_port=scales_cfg.com_port,
             baud_rate=scales_cfg.baud_rate,
             tcp_port=scales_cfg.tcp_port,

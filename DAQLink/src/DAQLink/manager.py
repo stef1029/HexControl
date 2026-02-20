@@ -62,6 +62,11 @@ class DAQManager:
             connection_timeout: Seconds to wait for Arduino connection.
             log_callback: Optional callback for log messages.
         """
+        if not python_path:
+            raise ValueError("python_path must be provided for DAQ")
+        if not serial_listen_script:
+            raise ValueError("serial_listen_script must be provided for DAQ")
+        
         self.python_path = python_path
         self.serial_listen_script = serial_listen_script
         self.mouse_id = mouse_id
@@ -86,10 +91,6 @@ class DAQManager:
         Returns:
             True if the DAQ process launched successfully.
         """
-        if not self.serial_listen_script:
-            self._log("No serial listen script configured, skipping DAQ")
-            return True
-        
         if not os.path.exists(self.serial_listen_script):
             self.last_error = f"Serial listen script not found: {self.serial_listen_script}"
             self._log(self.last_error)
@@ -132,9 +133,12 @@ class DAQManager:
         
         Returns:
             True if the connection signal was received within the timeout.
+            
+        Raises:
+            RuntimeError: If start() has not been called.
         """
         if self._process is None:
-            return True
+            raise RuntimeError("DAQ process not started — call start() first")
         
         signal_file = os.path.join(
             self.session_folder,

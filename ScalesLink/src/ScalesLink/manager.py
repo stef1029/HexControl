@@ -70,6 +70,11 @@ class ScalesManager:
             mouse_id: Mouse identifier for this session (for log filename).
             log_callback: Optional callback for log messages.
         """
+        if not com_port:
+            raise ValueError("com_port must be provided for scales")
+        if not tcp_port:
+            raise ValueError("tcp_port must be provided for scales")
+        
         self.com_port = com_port
         self.baud_rate = baud_rate
         self.tcp_port = tcp_port
