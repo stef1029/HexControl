@@ -44,7 +44,7 @@ class RigWindow:
     
     def __init__(
         self,
-        serial_port: str = "COM7",
+        serial_port: str = "",
         baud_rate: int = 115200,
         parent: Optional[tk.Tk] = None,
         rig_name: str = "",
@@ -55,7 +55,7 @@ class RigWindow:
         self.baud_rate = baud_rate
         self.parent = parent
         self.rig_name = rig_name
-        self.rig_config = rig_config or {"name": rig_name, "serial_port": serial_port}
+        self.rig_config = rig_config or {"name": rig_name}
         self._simulate = simulate
         
         # Hardware/protocol state
@@ -681,7 +681,7 @@ class RigWindow:
             self._update_startup_status(f"Failed to write metadata: {e}")
 
 
-def launch_rig_window(serial_port: str = "COM7", baud_rate: int = 115200) -> None:
+def launch_rig_window(serial_port: str = "", baud_rate: int = 115200) -> None:
     """Launch the Behaviour Rig System GUI for a single rig."""
     app = RigWindow(serial_port=serial_port, baud_rate=baud_rate)
     app.run()

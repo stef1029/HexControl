@@ -21,6 +21,7 @@ from typing import Callable, Optional
 
 import yaml
 
+from core.board_registry import BoardRegistry
 from DAQLink.manager import DAQManager
 from DAQLink.mock import MockDAQManager
 from ScalesLink.manager import ScalesManager
@@ -33,7 +34,7 @@ from .mock_camera_manager import MockCameraManager
 @dataclass
 class ScalesProcessConfig:
     """Configuration for scales subprocess."""
-    com_port: str = ""
+    board_name: str = ""
     baud_rate: int = 115200
     is_wired: bool = False
     calibration_scale: float = 1.0
@@ -58,6 +59,9 @@ class PeripheralConfig:
     # Process paths
     camera_executable: str
     
+    # Board registry names
+    daq_board_name: str = ""
+    
     # Settings
     connection_timeout: int = 30
     camera_fps: int = 30
@@ -80,22 +84,29 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> ScalesProcessConfi
         ScalesProcessConfig with all settings populated.
         
     Raises:
-        ValueError: If scales section or com_port is missing from rig config.
+        ValueError: If scales section or board_name is missing from rig config.
     """
     scales_yaml = rig_config.get("scales")
     if not scales_yaml:
         raise ValueError("Scales configuration missing from rig config")
     
-    com_port = scales_yaml.get("com_port", "")
-    if not com_port:
-        raise ValueError("Scales com_port missing from rig config")
+    board_name = scales_yaml.get("board_name", "")
+    if not board_name:
+        raise ValueError("Scales board_name missing from rig config")
+    
+    # Resolve baud rate from board registry (fallback to YAML value)
+    try:
+        registry = BoardRegistry()
+        baud_rate = registry.get_baudrate(board_name)
+    except (FileNotFoundError, KeyError):
+        baud_rate = scales_yaml.get("baud_rate", 115200)
     
     # Assign unique TCP port per rig (5100 + rig_number)
     tcp_port = 5100 + rig_number
     
     return ScalesProcessConfig(
-        com_port=com_port,
-        baud_rate=scales_yaml.get("baud_rate", 115200),
+        board_name=board_name,
+        baud_rate=baud_rate,
         is_wired=scales_yaml.get("is_wired", False),
         calibration_scale=scales_yaml.get("calibration_scale", 1.0),
         calibration_intercept=scales_yaml.get("calibration_intercept", 0.0),
@@ -160,6 +171,7 @@ def load_peripheral_config(
         multi_session_folder=multi_session_folder,
         date_time=date_time,
         camera_executable=process_settings.get("camera_executable", ""),
+        daq_board_name=rig_config.get("daq_board_name", ""),
         connection_timeout=process_settings.get("connection_timeout", 30),
         camera_fps=process_settings.get("camera_fps", 30),
         camera_window_width=process_settings.get("camera_window_width", 640),
@@ -209,6 +221,7 @@ class PeripheralManager:
             date_time=self.config.date_time,
             session_folder=self.config.session_folder,
             rig_number=self.config.rig_number,
+            daq_board_name=self.config.daq_board_name,
             connection_timeout=self.config.connection_timeout,
             log_callback=self._log,
         )
@@ -253,9 +266,18 @@ class PeripheralManager:
         """Start the scales server subprocess via ScalesManager (or mock)."""
         scales_cfg = self.config.scales
         
+        # Resolve board name to COM port via board registry
+        try:
+            registry = BoardRegistry()
+            com_port = registry.find_board_port(scales_cfg.board_name)
+        except (FileNotFoundError, KeyError, RuntimeError) as e:
+            self.last_error = f"Failed to resolve scales board '{scales_cfg.board_name}': {e}"
+            self._log(self.last_error)
+            return False
+        
         ManagerClass = MockScalesManager if self._simulate else ScalesManager
         self._scales_manager = ManagerClass(
-            com_port=scales_cfg.com_port,
+            com_port=com_port,
             baud_rate=scales_cfg.baud_rate,
             tcp_port=scales_cfg.tcp_port,
             is_wired=scales_cfg.is_wired,

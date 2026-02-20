@@ -20,6 +20,7 @@ import csv
 import glob
 import json
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -241,17 +242,29 @@ async def listen(
 
     connection_signal_file = output_path / (f"rig_{rig}_arduino_connected.signal" if rig else "arduino_connected.signal")
 
-    # COM‑port determination: use provided port, or fall back to rig-based lookup
+    # COM‑port determination: use provided port, or resolve via board registry, or fall back to rig-based lookup
     if com_port is None:
         if rig is None:
             com_port = "COM2"
         else:
-            com_port = {"1": "COM10", 
-                        "2": "COM18", 
-                        "3": "COM30", 
-                        "4": "COM17"}.get(rig)
-            if com_port is None:
-                raise ValueError(f"Rig number '{rig}' not recognised and no --port provided")
+            # Try board registry first
+            try:
+                _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+                if str(_brs_root) not in sys.path:
+                    sys.path.insert(0, str(_brs_root))
+                from core.board_registry import BoardRegistry
+                registry = BoardRegistry()
+                board_name = f"rig_{rig}_daq"
+                com_port = registry.find_board_port(board_name)
+                print(f"Resolved DAQ board '{board_name}' -> {com_port}")
+            except Exception:
+                # Legacy fallback
+                com_port = {"1": "COM10", 
+                            "2": "COM18", 
+                            "3": "COM30", 
+                            "4": "COM17"}.get(rig)
+                if com_port is None:
+                    raise ValueError(f"Rig number '{rig}' not recognised and no --port provided")
 
     print(f"Connecting to Arduino Mega on {com_port}…")
     try:
@@ -367,14 +380,30 @@ def main() -> None:
     parser.add_argument("--path", type=str, help="output directory")
     parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
     parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
+    parser.add_argument("--board", type=str, help="Board registry name (e.g., rig_1_daq). Resolves port via board_registry.json.", default=None)
     args = parser.parse_args()
 
     mouse_id = args.id
     date_time = args.date or f"{datetime.now():%y%m%d_%H%M%S}"
     output_path = args.path or str(Path.cwd() / f"{date_time}_{mouse_id}")
 
+    # Resolve port: --board takes precedence over --port
+    resolved_port = args.port
+    if args.board:
+        try:
+            _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+            if str(_brs_root) not in sys.path:
+                sys.path.insert(0, str(_brs_root))
+            from core.board_registry import BoardRegistry
+            registry = BoardRegistry()
+            resolved_port = registry.find_board_port(args.board)
+            print(f"Resolved board '{args.board}' -> {resolved_port}")
+        except Exception as e:
+            print(f"Failed to resolve board '{args.board}': {e}")
+            resolved_port = args.port
+
     try:
-        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=args.port))
+        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=resolved_port))
     except Exception:
         traceback.print_exc()
         input("ArduinoDAQ error — see traceback above.  Press Enter to exit…")

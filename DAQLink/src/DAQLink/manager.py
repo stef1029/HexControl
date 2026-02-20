@@ -46,6 +46,7 @@ class DAQManager:
         date_time: str,
         session_folder: str,
         rig_number: int,
+        daq_board_name: str = "",
         connection_timeout: int = 30,
         log_callback: Optional[Callable[[str], None]] = None,
     ):
@@ -57,6 +58,9 @@ class DAQManager:
             date_time: Date/time string for this session.
             session_folder: Path to the session output folder.
             rig_number: Rig number (used for signal file naming).
+            daq_board_name: Board registry name for the DAQ Arduino. When set,
+                            the COM port is resolved via the board registry and
+                            passed to the serial_listen subprocess with ``--port``.
             connection_timeout: Seconds to wait for Arduino connection.
             log_callback: Optional callback for log messages.
         """
@@ -66,6 +70,7 @@ class DAQManager:
         self.date_time = date_time
         self.session_folder = session_folder
         self.rig_number = rig_number
+        self.daq_board_name = daq_board_name
         self.connection_timeout = connection_timeout
         self._log = log_callback or print
         
@@ -102,6 +107,24 @@ class DAQManager:
             "--path", self.session_folder,
             "--rig", str(self.rig_number),
         ]
+        
+        # Resolve DAQ board name to COM port via board registry
+        if self.daq_board_name:
+            try:
+                # Lazy import to avoid hard dependency
+                import sys as _sys
+                _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+                if str(_brs_root) not in _sys.path:
+                    _sys.path.insert(0, str(_brs_root))
+                from core.board_registry import BoardRegistry
+                registry = BoardRegistry()
+                daq_port = registry.find_board_port(self.daq_board_name)
+                command.extend(["--port", daq_port])
+                self._log(f"Resolved DAQ board '{self.daq_board_name}' -> {daq_port}")
+            except Exception as e:
+                self.last_error = f"Failed to resolve DAQ board '{self.daq_board_name}': {e}"
+                self._log(self.last_error)
+                return False
         
         try:
             # CREATE_NEW_CONSOLE is Windows-only; use default on other platforms

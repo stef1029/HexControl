@@ -80,8 +80,18 @@ def main():
     print("Loading scales config from rigs.yaml...")
     scales_yaml = load_scales_config(RIG)
     
-    com_port = scales_yaml["com_port"]
-    baud_rate = scales_yaml.get("baud_rate", 115200)
+    # Resolve COM port via board registry (new style) or legacy com_port
+    board_name = scales_yaml.get("board_name", "")
+    if board_name:
+        from core.board_registry import BoardRegistry
+        registry = BoardRegistry()
+        com_port = registry.find_board_port(board_name)
+        baud_rate = registry.get_baudrate(board_name)
+        print(f"  Board: {board_name} -> {com_port}")
+    else:
+        com_port = scales_yaml["com_port"]
+        baud_rate = scales_yaml.get("baud_rate", 115200)
+    
     tcp_port = scales_yaml.get("tcp_port", 5100)
     is_wired = scales_yaml.get("is_wired", False)
     calibration_scale = scales_yaml.get("calibration_scale", 1.0)

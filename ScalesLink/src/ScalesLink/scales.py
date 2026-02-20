@@ -51,16 +51,49 @@ class ScalesConfig:
         """
         Create a ScalesConfig from a YAML configuration dictionary.
         
-        Expected keys:
+        Supports both new board-registry style (board_name resolved to port)
+        and legacy style (com_port directly).
+        
+        Expected keys (new style):
+            - board_name: Human-readable key resolved via board registry
+            - is_wired: (optional) Whether scales are wired type
+            - calibration_scale: (optional) Scale factor for calibration
+            - calibration_intercept: (optional) Intercept for calibration
+            
+        Expected keys (legacy style):
             - com_port: Serial port name
             - baud_rate: Serial baud rate
             - is_wired: (optional) Whether scales are wired type
             - calibration_scale: (optional) Scale factor for calibration
             - calibration_intercept: (optional) Intercept for calibration
         """
+        board_name = config_dict.get("board_name", "")
+        port = ""
+        baud_rate = config_dict.get("baud_rate", 115200)
+        
+        if board_name:
+            # Resolve via board registry
+            try:
+                import sys
+                from pathlib import Path
+                _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+                if str(_brs_root) not in sys.path:
+                    sys.path.insert(0, str(_brs_root))
+                from core.board_registry import BoardRegistry
+                registry = BoardRegistry()
+                port = registry.find_board_port(board_name)
+                baud_rate = registry.get_baudrate(board_name)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to resolve scales board '{board_name}': {e}"
+                ) from e
+        else:
+            # Legacy: use com_port directly
+            port = config_dict["com_port"]
+        
         return cls(
-            port=config_dict["com_port"],
-            baud_rate=config_dict["baud_rate"],
+            port=port,
+            baud_rate=baud_rate,
             scale=config_dict.get("calibration_scale", 1.0),
             intercept=config_dict.get("calibration_intercept", 0.0),
             is_wired=config_dict.get("is_wired", False),

@@ -10,12 +10,14 @@ Usage:
     # Zero a single scales unit
     success, message = zero_scales("COM10", baud_rate=9600)
     
-    # Zero multiple scales from config
+    # Zero multiple scales from config (resolves board names via registry)
     results = zero_all_scales(rig_configs)
 """
 
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import serial
@@ -83,15 +85,29 @@ def zero_all_scales(
     """
     Zero scales on all configured rigs.
     
+    Board names are resolved to COM ports via the board registry.
+    Falls back to com_port if board_name is not set (legacy support).
+    
     Args:
         rig_configs: List of rig configuration dicts from rigs.yaml.
-                     Each should have a "scales" sub-dict with "com_port".
+                     Each should have a "scales" sub-dict with "board_name".
         callback: Optional function called with (rig_name, status_message)
                   after each rig is processed.
     
     Returns:
         List of ZeroResult objects with success/failure for each rig.
     """
+    # Lazy import to avoid hard dependency when using zero_scales() directly
+    try:
+        # Add the behaviour_rig_system path so we can import core.board_registry
+        _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+        if str(_brs_root) not in sys.path:
+            sys.path.insert(0, str(_brs_root))
+        from core.board_registry import BoardRegistry
+        registry = BoardRegistry()
+    except Exception:
+        registry = None
+    
     results = []
     
     for rig in rig_configs:
@@ -126,7 +142,7 @@ def zero_all_scales(
         if not scales_config.get("is_wired", False):
             results.append(ZeroResult(
                 rig_name=rig_name,
-                com_port=scales_config.get("com_port", "N/A"),
+                com_port="N/A",
                 success=False,
                 message="Wireless scales (tare not supported)"
             ))
@@ -134,8 +150,39 @@ def zero_all_scales(
                 callback(rig_name, "Wireless scales (tare not supported)")
             continue
         
-        com_port = scales_config.get("com_port", "")
+        # Resolve COM port: prefer board registry, fall back to legacy com_port
+        board_name = scales_config.get("board_name", "")
+        com_port = ""
         baud_rate = scales_config.get("baud_rate", 9600)
+        
+        if board_name and registry is not None:
+            try:
+                com_port = registry.find_board_port(board_name)
+                baud_rate = registry.get_baudrate(board_name)
+            except (KeyError, RuntimeError) as e:
+                results.append(ZeroResult(
+                    rig_name=rig_name,
+                    com_port=board_name,
+                    success=False,
+                    message=f"Board not found: {e}"
+                ))
+                if callback:
+                    callback(rig_name, f"Board not found: {e}")
+                continue
+        else:
+            # Legacy fallback
+            com_port = scales_config.get("com_port", "")
+        
+        if not com_port:
+            results.append(ZeroResult(
+                rig_name=rig_name,
+                com_port="N/A",
+                success=False,
+                message="No board_name or com_port configured"
+            ))
+            if callback:
+                callback(rig_name, "No board_name or com_port configured")
+            continue
         
         if callback:
             callback(rig_name, f"Zeroing {com_port}...")

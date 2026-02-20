@@ -34,6 +34,7 @@ class MockDAQManager:
         date_time: str = "",
         session_folder: str = "",
         rig_number: int = 1,
+        daq_board_name: str = "",
         connection_timeout: int = 30,
         log_callback: Optional[Callable[[str], None]] = None,
     ):

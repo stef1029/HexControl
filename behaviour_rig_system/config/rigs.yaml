@@ -6,61 +6,66 @@
 #
 # Each rig entry should include:
 #   - name: Display name for the rig
-#   - serial_port: Serial port the rig is connected to
+#   - board_name: Human-readable key for the behaviour Arduino (resolved via board_registry.json)
 #   - board_type: Arduino board type - "giga" or "mega"
 #   - enabled: Whether the rig is available for use
 #   - description: Optional description of the rig
 #   - camera_serial: Serial number for the rig's camera
+#   - daq_board_name: Human-readable key for the DAQ Arduino (resolved via board_registry.json)
+#
+# COM ports are NO LONGER hardcoded here. Instead, use human-readable board
+# names that are resolved to COM ports at runtime via the board registry
+# (see config/board_registry.json and core/board_registry.py).
 
 rigs:
   - name: "Rig 1"
-    serial_port: "COM7"
+    board_name: "rig_1_behaviour"
     board_type: "giga"
     enabled: true
     description: "Main behaviour rig"
     camera_serial: "24243513"
+    daq_board_name: "rig_1_daq"
     scales:
-      com_port: "COM12"
-      baud_rate: 9600
+      board_name: "rig_1_scales"
       is_wired: True
       calibration_scale: 0.22375971500351627
       calibration_intercept: -5617.39
 
   - name: "Rig 2"
-    serial_port: "COM8"
+    board_name: "rig_2_behaviour"
     board_type: "giga"
     enabled: true
     description: "Secondary rig"
     camera_serial: "20530175"
+    daq_board_name: "rig_2_daq"
     scales:
-      com_port: "COM5"
-      baud_rate: 9600
+      board_name: "rig_2_scales"
       is_wired: true
       calibration_scale: 0.27978473586250524
       calibration_intercept: 475.86
 
   - name: "Rig 3"
-    serial_port: "COM9"
+    board_name: "rig_3_behaviour"
     board_type: "giga"
     enabled: true
     description: "Third rig"
     camera_serial: "24174008"
+    daq_board_name: "rig_3_daq"
     scales:
-      com_port: "COM10"
-      baud_rate: 9600
+      board_name: "rig_3_scales"
       is_wired: true
       calibration_scale: 0.1725046376146776
       calibration_intercept: -1327.66
 
   - name: "Rig 4"
-    serial_port: "COM10"
+    board_name: "rig_4_behaviour"
     board_type: "giga"
     enabled: true
     description: "Fourth rig"
     camera_serial: "24243513"
+    daq_board_name: "rig_4_daq"
     scales:
-      com_port: "COM12"
-      baud_rate: 9600
+      board_name: "rig_4_scales"
       is_wired: true
       calibration_scale: 0.16461420192565693
       calibration_intercept: -616.28
