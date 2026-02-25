@@ -89,7 +89,8 @@ class VirtualRigState:
         self._gpio_output_states: list[bool] = [False] * self.NUM_GPIO_PINS
 
         # Dirty flag — set by every mutation, cleared by take_snapshot_if_dirty()
-        self._dirty: bool = False
+        # Starts True so the GUI renders the initial state on its first poll tick.
+        self._dirty: bool = True
 
         # Sensor event injection
         self._sensor_event_buffer: deque[SensorEvent] = deque(maxlen=self.EVENT_BUFFER_SIZE)
