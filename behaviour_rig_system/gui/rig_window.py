@@ -98,8 +98,8 @@ class RigWindow:
         
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("680x680")
-        self.root.minsize(580, 480)
+        self.root.geometry("680x820")
+        self.root.minsize(580, 580)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
     def _create_modes(self) -> None:
@@ -406,6 +406,10 @@ class RigWindow:
         """Called when startup completes successfully."""
         self._hide_startup_overlay()
         
+        # Pass scales client to running mode for live plot
+        if self.peripheral_manager and self.peripheral_manager.scales_client is not None:
+            self.running_mode.set_scales_client(self.peripheral_manager.scales_client)
+        
         # Activate running mode
         self.running_mode.activate({
             "protocol_name": self._session_protocol_name,
@@ -495,7 +499,7 @@ class RigWindow:
             if self.current_protocol:
                 self.current_protocol.run()
         except Exception as e:
-            self.root.after(0, lambda: self._on_protocol_error(e))
+            self.root.after(0, lambda err=e: self._on_protocol_error(err))
         finally:
             self.root.after(0, self._on_protocol_complete)
     

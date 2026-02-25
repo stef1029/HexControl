@@ -6,7 +6,9 @@ Shows:
     - Performance stats (accuracy, rolling accuracy)
     - Elapsed timer
     - Status indicator
-    - Event log
+    - Trial log (resizable pane)
+    - Live scales plot (resizable pane)
+    - Session event log (resizable pane)
     - Stop button
 """
 
@@ -17,6 +19,7 @@ from typing import Callable, TYPE_CHECKING
 
 from core.protocol_base import ProtocolEvent, ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
+from gui.scales_plot_widget import ScalesPlotWidget
 
 if TYPE_CHECKING:
     from core.performance_tracker import PerformanceTracker
@@ -58,9 +61,9 @@ class RunningMode(ttk.Frame):
             value_label.pack(side="left", padx=6)
             self._summary_labels[key] = value_label
         
-        # Performance stats frame
+        # Performance stats (non-resizable)
         perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
-        perf_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        perf_frame.pack(fill="x", padx=10, pady=5)
         
         # Main stats row
         stats_row = ttk.Frame(perf_frame)
@@ -131,25 +134,20 @@ class RunningMode(ttk.Frame):
         )
         self._timeout_label.pack(side="left", padx=(4, 0))
         
-        # Trial log - shows each trial as it happens
-        trial_log_label = ttk.Label(perf_frame, text="Trial Log:", style="Subheading.TLabel")
-        trial_log_label.pack(anchor="w", pady=(8, 3))
+        # Stop button (packed first so it's always visible at the bottom)
+        button_frame = ttk.Frame(self)
+        button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
         
-        self._trial_log = scrolledtext.ScrolledText(
-            perf_frame, height=10, state="disabled"
+        self._stop_button = ttk.Button(
+            button_frame, text="Stop Session",
+            command=self._on_stop_clicked,
+            style="Danger.TButton"
         )
-        style_scrolled_text(self._trial_log, log_style=True)
-        self._trial_log.pack(fill="both", expand=True)
-        
-        # Configure tags for trial log coloring
-        self._trial_log.tag_config("success", foreground=palette.success)
-        self._trial_log.tag_config("failure", foreground=palette.error)
-        self._trial_log.tag_config("timeout", foreground=palette.warning)
-        self._trial_log.tag_config("stimulus", foreground=palette.info)
+        self._stop_button.pack(side="right", padx=3)
         
         # Timer and status row
         timer_frame = ttk.Frame(self)
-        timer_frame.pack(fill="x", padx=10, pady=6)
+        timer_frame.pack(side="bottom", fill="x", padx=10, pady=6)
         
         ttk.Label(timer_frame, text="Elapsed:", style="Subheading.TLabel").pack(side="left")
         self._timer_label = ttk.Label(
@@ -166,26 +164,53 @@ class RunningMode(ttk.Frame):
         )
         self._status_label.pack(side="right", padx=10)
         
-        # Event log (smaller)
-        log_frame = ttk.LabelFrame(self, text="Session Log", padding=(8, 5))
-        log_frame.pack(fill="x", padx=10, pady=5)
+        # =====================================================================
+        # Resizable paned area: Trial Log | Scales Plot | Session Log
+        # =====================================================================
+        self._paned = ttk.PanedWindow(self, orient="vertical")
+        self._paned.pack(fill="both", expand=True, padx=10, pady=5)
         
+        # --- Pane 1: Trial Log ---
+        trial_pane = ttk.LabelFrame(self._paned, text="Trial Log", padding=(8, 4))
+        self._trial_log = scrolledtext.ScrolledText(
+            trial_pane, height=8, state="disabled"
+        )
+        style_scrolled_text(self._trial_log, log_style=True)
+        self._trial_log.pack(fill="both", expand=True)
+        
+        # Configure tags for trial log coloring
+        self._trial_log.tag_config("success", foreground=palette.success)
+        self._trial_log.tag_config("failure", foreground=palette.error)
+        self._trial_log.tag_config("timeout", foreground=palette.warning)
+        self._trial_log.tag_config("stimulus", foreground=palette.info)
+        
+        self._paned.add(trial_pane, weight=3)
+        
+        # --- Pane 2: Live Scales Plot ---
+        scales_pane = ttk.LabelFrame(self._paned, text="Scales", padding=(8, 4))
+        self._scales_plot = ScalesPlotWidget(scales_pane)
+        self._scales_plot.pack(fill="both", expand=True)
+        
+        self._paned.add(scales_pane, weight=2)
+        
+        # --- Pane 3: Session Log ---
+        log_pane = ttk.LabelFrame(self._paned, text="Session Log", padding=(8, 4))
         self._log_text = scrolledtext.ScrolledText(
-            log_frame, height=4, state="disabled"
+            log_pane, height=3, state="disabled"
         )
         style_scrolled_text(self._log_text, log_style=True)
-        self._log_text.pack(fill="x")
+        self._log_text.pack(fill="both", expand=True)
         
-        # Stop button
-        button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=10, pady=8)
+        self._paned.add(log_pane, weight=1)
+    
+    def set_scales_client(self, client) -> None:
+        """
+        Provide a scales client for live weight plotting.
         
-        self._stop_button = ttk.Button(
-            button_frame, text="Stop Session",
-            command=self._on_stop_clicked,
-            style="Danger.TButton"
-        )
-        self._stop_button.pack(side="right", padx=3)
+        Args:
+            client: Object with get_weight() -> Optional[float]
+        """
+        self._scales_plot.set_scales_client(client)
     
     def activate(self, session_config: dict) -> None:
         """
@@ -209,6 +234,9 @@ class RunningMode(ttk.Frame):
         # Reset timer state
         self._start_time = None
         self._timer_label.config(text="00:00:00")
+        
+        # Start the live scales plot
+        self._scales_plot.start()
     
     def _reset_performance_display(self) -> None:
         """Reset all performance stats to initial state."""
@@ -331,6 +359,7 @@ class RunningMode(ttk.Frame):
             Context dict with elapsed_time and final log
         """
         self._stop_timer()
+        self._scales_plot.stop()
         
         return {
             "elapsed_time": self.get_elapsed_time(),
