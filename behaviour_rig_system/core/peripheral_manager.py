@@ -26,6 +26,7 @@ from DAQLink.manager import DAQManager
 from DAQLink.mock import MockDAQManager
 from ScalesLink.manager import ScalesManager
 from ScalesLink.mock import MockScalesManager
+from ScalesLink.simulated import SimulatedScalesManager
 
 from .camera_manager import CameraManager
 from .mock_camera_manager import MockCameraManager
@@ -195,10 +196,12 @@ class PeripheralManager:
         config: PeripheralConfig,
         log_callback: Optional[Callable[[str], None]] = None,
         simulate: bool = False,
+        virtual_rig_state=None,
     ):
         self.config = config
         self._log = log_callback or print
         self._simulate = simulate
+        self._virtual_rig_state = virtual_rig_state
         
         # Sub-managers (created during startup)
         self._daq_manager = None
@@ -280,18 +283,35 @@ class PeripheralManager:
                 return False
         
         ManagerClass = MockScalesManager if self._simulate else ScalesManager
-        self._scales_manager = ManagerClass(
-            com_port=com_port,
-            baud_rate=scales_cfg.baud_rate,
-            tcp_port=scales_cfg.tcp_port,
-            is_wired=scales_cfg.is_wired,
-            calibration_scale=scales_cfg.calibration_scale,
-            calibration_intercept=scales_cfg.calibration_intercept,
-            session_folder=self.config.session_folder,
-            date_time=self.config.date_time,
-            mouse_id=self.config.mouse_id,
-            log_callback=self._log,
-        )
+        
+        # Use simulated scales if virtual rig state is available
+        if self._simulate and self._virtual_rig_state is not None:
+            self._scales_manager = SimulatedScalesManager(
+                virtual_rig_state=self._virtual_rig_state,
+                com_port=com_port,
+                baud_rate=scales_cfg.baud_rate,
+                tcp_port=scales_cfg.tcp_port,
+                is_wired=scales_cfg.is_wired,
+                calibration_scale=scales_cfg.calibration_scale,
+                calibration_intercept=scales_cfg.calibration_intercept,
+                session_folder=self.config.session_folder,
+                date_time=self.config.date_time,
+                mouse_id=self.config.mouse_id,
+                log_callback=self._log,
+            )
+        else:
+            self._scales_manager = ManagerClass(
+                com_port=com_port,
+                baud_rate=scales_cfg.baud_rate,
+                tcp_port=scales_cfg.tcp_port,
+                is_wired=scales_cfg.is_wired,
+                calibration_scale=scales_cfg.calibration_scale,
+                calibration_intercept=scales_cfg.calibration_intercept,
+                session_folder=self.config.session_folder,
+                date_time=self.config.date_time,
+                mouse_id=self.config.mouse_id,
+                log_callback=self._log,
+            )
         
         result = self._scales_manager.start()
         if result:

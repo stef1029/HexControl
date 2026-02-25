@@ -19,13 +19,16 @@ from typing import Optional
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
+from BehavLink.simulated import SimulatedBehaviourRigLink
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
 from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
+from core.virtual_rig_state import VirtualRigState
 
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .theme import apply_theme, Theme, style_scrolled_text
+from .virtual_rig_window import VirtualRigWindow
 
 
 class WindowMode(Enum):
@@ -65,6 +68,10 @@ class RigWindow:
         self.protocol_thread: Optional[threading.Thread] = None
         self.peripheral_manager: Optional[PeripheralManager] = None
         self.startup_thread: Optional[threading.Thread] = None
+        
+        # Virtual rig (simulate mode only)
+        self._virtual_rig_state: Optional[VirtualRigState] = None
+        self._virtual_rig_window: Optional[VirtualRigWindow] = None
         
         # Session info for summary
         self._session_protocol_name: str = ""
@@ -277,10 +284,15 @@ class RigWindow:
             self._session_save_path = peripheral_config.session_folder
             self._update_startup_status(f"Session folder: {peripheral_config.session_folder}")
             
+            # Create VirtualRigState for interactive simulation
+            if self._simulate:
+                self._virtual_rig_state = VirtualRigState()
+            
             self.peripheral_manager = PeripheralManager(
                 peripheral_config,
                 log_callback=self._update_startup_status,
                 simulate=self._simulate,
+                virtual_rig_state=self._virtual_rig_state,
             )
             
             # Start DAQ
@@ -345,7 +357,9 @@ class RigWindow:
             
             self._update_startup_status("Creating BehaviourRigLink...")
             board_type = self.rig_config.get("board_type", "giga")
-            if self._simulate:
+            if self._simulate and self._virtual_rig_state is not None:
+                self.link = SimulatedBehaviourRigLink(self._virtual_rig_state, self._serial)
+            elif self._simulate:
                 self.link = MockBehaviourRigLink(self._serial)
             else:
                 self.link = BehaviourRigLink(self._serial, board_type=board_type)
@@ -405,6 +419,10 @@ class RigWindow:
     def _on_startup_complete(self) -> None:
         """Called when startup completes successfully."""
         self._hide_startup_overlay()
+        
+        # Open virtual rig window in simulate mode
+        if self._simulate and self._virtual_rig_state is not None:
+            self._virtual_rig_window = VirtualRigWindow(self.root, self._virtual_rig_state)
         
         # Pass scales client to running mode for live plot
         if self.peripheral_manager and self.peripheral_manager.scales_client is not None:
@@ -584,6 +602,12 @@ class RigWindow:
         """Clean up all session resources."""
         self.current_protocol = None
         self.protocol_thread = None
+        
+        # Close virtual rig window
+        if self._virtual_rig_window is not None:
+            self._virtual_rig_window.close()
+            self._virtual_rig_window = None
+        self._virtual_rig_state = None
         
         # Shutdown BehavLink
         if self.link is not None:
