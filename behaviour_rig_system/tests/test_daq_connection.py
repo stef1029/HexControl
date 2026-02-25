@@ -2,199 +2,174 @@
 Test script for DAQ connection.
 
 This script tests the DAQ serial listener independently of the GUI.
-It starts the DAQ subprocess, waits for connection, and shuts down cleanly.
+It uses the DAQLink library to start the DAQ subprocess, wait for the
+Arduino connection, run briefly, and shut down cleanly.
+
+All configuration (DAQ board name, COM port resolution) is loaded
+automatically from rigs.yaml and the board registry.
 
 Usage:
-    python -m tests.test_daq_connection
-    
-Or run directly:
-    python tests/test_daq_connection.py
+    Edit the configuration section below, then run:
+        python tests/test_daq_connection.py
 """
 
 import os
-import subprocess
 import sys
 import time
-import threading
-import queue
 from datetime import datetime
 from pathlib import Path
 
-# Configuration - adjust these for your setup
-RIG_NUMBER = "1"  # Which rig to test (1-4)
-MOUSE_ID = "test_daq"
-CONNECTION_TIMEOUT = 30  # seconds
-RUN_DURATION = 10  # seconds to run after connection before stopping
+# ===========================================================================
+# CONFIGURATION — edit these values for your setup
+# ===========================================================================
+RIG_NUMBER = 1                                        # Which rig to test (1-based)
+CONFIG_PATH = Path(r"C:\dev\projects\rigs.yaml")      # Path to rigs.yaml
+MOUSE_ID = "test_daq"                                 # Mouse ID for the test session
+CONNECTION_TIMEOUT = 30                               # Seconds to wait for connection
+RUN_DURATION = 10                                     # Seconds to run after connection
+# ===========================================================================
 
-# Paths
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_DIR = SCRIPT_DIR.parent
-DAQ_SCRIPT = PROJECT_DIR / "daq" / "serial_listen_mega_fast.py"
+# ---------------------------------------------------------------------------
+# Ensure the behaviour_rig_system root is on sys.path so we can import
+# core.board_registry and the DAQLink package.
+# ---------------------------------------------------------------------------
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_DIR = _SCRIPT_DIR.parent                     # behaviour_rig_system/
+_HEX_BEHAV_CONTROL = _PROJECT_DIR.parent              # hex_behav_control/
+_DAQLINK_SRC = _HEX_BEHAV_CONTROL / "DAQLink" / "src" # DAQLink/src/
 
-# Use the same Python as running this script, or specify your conda env
-PYTHON_PATH = sys.executable
+for _p in (_PROJECT_DIR, _DAQLINK_SRC):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+import yaml  # type: ignore
+from DAQLink import DAQManager
+from core.board_registry import BoardRegistry
 
 
-def output_reader(pipe, output_queue):
-    """Read lines from pipe and put them in queue (runs in thread)."""
-    try:
-        for line in iter(pipe.readline, ''):
-            output_queue.put(line.rstrip())
-        pipe.close()
-    except:
-        pass
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def load_rig_entry(config_path: Path, rig_number: int) -> dict:
+    """
+    Load the rig entry for *rig_number* from *config_path* (rigs.yaml).
+
+    Returns the rig dict (with keys like ``daq_board_name``, ``board_name``, etc.)
+    Raises SystemExit if the file or rig entry is not found.
+    """
+    if not config_path.exists():
+        print(f"ERROR: Config file not found: {config_path}")
+        sys.exit(1)
+
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    rigs = config.get("rigs", [])
+    if not rigs:
+        print("ERROR: No rigs defined in config file")
+        sys.exit(1)
+
+    if rig_number < 1 or rig_number > len(rigs):
+        print(f"ERROR: Rig {rig_number} not found (config has {len(rigs)} rig(s))")
+        sys.exit(1)
+
+    return rigs[rig_number - 1]
 
 
-def main():
+def main() -> int:
+    # ------------------------------------------------------------------
+    # Load rig config
+    # ------------------------------------------------------------------
+    rig_entry = load_rig_entry(CONFIG_PATH, RIG_NUMBER)
+    daq_board_name = rig_entry.get("daq_board_name", "")
+
     print("=" * 60)
     print("DAQ CONNECTION TEST")
     print("=" * 60)
-    print(f"Rig number: {RIG_NUMBER}")
-    print(f"DAQ script: {DAQ_SCRIPT}")
-    print(f"Python: {PYTHON_PATH}")
+    print(f"  Rig number      : {RIG_NUMBER}")
+    print(f"  Config file      : {CONFIG_PATH}")
+    print(f"  DAQ board name   : {daq_board_name or '(none)'}")
+
+    # Resolve the COM port via the board registry so we can display it
+    if daq_board_name:
+        try:
+            registry = BoardRegistry()
+            com_port = registry.resolve_port(daq_board_name)
+            print(f"  Resolved COM port: {com_port}")
+        except Exception as exc:
+            print(f"  WARNING: Could not resolve board name: {exc}")
     print("-" * 60)
-    
-    # Check paths exist
-    if not DAQ_SCRIPT.exists():
-        print(f"ERROR: DAQ script not found: {DAQ_SCRIPT}")
-        return 1
-    
-    # Create temp output folder
+
+    # ------------------------------------------------------------------
+    # Create a temporary session folder
+    # ------------------------------------------------------------------
     date_time = datetime.now().strftime("%y%m%d_%H%M%S")
     output_folder = Path(f"D:/behaviour_data/test_{date_time}_{MOUSE_ID}")
     output_folder.mkdir(parents=True, exist_ok=True)
     print(f"Output folder: {output_folder}")
-    
-    # Signal file path
-    signal_file = output_folder / f"rig_{RIG_NUMBER}_arduino_connected.signal"
-    stop_signal_file = output_folder / f"rig_{RIG_NUMBER}_camera_finished.signal"
-    print(f"Connection signal: {signal_file}")
-    print(f"Stop signal: {stop_signal_file}")
+
+    # ------------------------------------------------------------------
+    # Use DAQManager to run the DAQ subprocess
+    # ------------------------------------------------------------------
+    manager = DAQManager(
+        mouse_id=MOUSE_ID,
+        date_time=date_time,
+        session_folder=str(output_folder),
+        rig_number=RIG_NUMBER,
+        daq_board_name=daq_board_name,
+        connection_timeout=CONNECTION_TIMEOUT,
+        log_callback=lambda msg: print(f"  [DAQManager] {msg}"),
+    )
+
     print("-" * 60)
-    
-    # Build command
-    command = [
-        PYTHON_PATH,
-        str(DAQ_SCRIPT),
-        "--id", MOUSE_ID,
-        "--date", date_time,
-        "--path", str(output_folder),
-        "--rig", RIG_NUMBER,
-    ]
-    
     print("Starting DAQ process...")
-    print(f"Command: {' '.join(command)}")
-    print("-" * 60)
-    
-    # Start subprocess
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    
-    # Start thread to read output without blocking
-    output_queue = queue.Queue()
-    reader_thread = threading.Thread(
-        target=output_reader, 
-        args=(process.stdout, output_queue),
-        daemon=True
-    )
-    reader_thread.start()
-    
-    print(f"DAQ process started (PID: {process.pid})")
-    print("-" * 60)
-    print("DAQ OUTPUT:")
-    print("-" * 60)
-    
-    def print_queued_output():
-        """Print any output that's been queued up."""
-        while True:
-            try:
-                line = output_queue.get_nowait()
-                print(f"  [DAQ] {line}")
-            except queue.Empty:
-                break
-    
-    # Wait for connection signal
-    start_time = time.time()
-    connected = False
-    
-    while time.time() - start_time < CONNECTION_TIMEOUT:
-        print_queued_output()
-        
-        # Check if signal file exists
-        if signal_file.exists():
-            elapsed = time.time() - start_time
-            print("-" * 60)
-            print(f"CONNECTION SUCCESSFUL! ({elapsed:.1f}s)")
-            connected = True
-            break
-        
-        # Check if process died
-        if process.poll() is not None:
-            print_queued_output()
-            print("-" * 60)
-            print(f"ERROR: DAQ process terminated (exit code: {process.returncode})")
-            return 1
-        
-        time.sleep(0.2)
-    
-    if not connected:
-        print("-" * 60)
-        print(f"TIMEOUT: No connection after {CONNECTION_TIMEOUT}s")
-        print("Killing process...")
-        process.kill()
+
+    if not manager.start():
+        print(f"ERROR: Failed to start DAQ — {manager.last_error}")
         return 1
-    
-    # Let it run for a bit
-    print(f"Running for {RUN_DURATION} seconds...")
+
     print("-" * 60)
-    
+    print(f"Waiting for Arduino connection (timeout {CONNECTION_TIMEOUT}s)...")
+
+    if not manager.wait_for_connection():
+        print(f"ERROR: {manager.last_error}")
+        manager.stop()
+        return 1
+
+    print("-" * 60)
+    print(f"CONNECTION SUCCESSFUL — running for {RUN_DURATION}s...")
+
     run_start = time.time()
     while time.time() - run_start < RUN_DURATION:
-        print_queued_output()
-        
-        # Check if process died
-        if process.poll() is not None:
-            print(f"DAQ process ended early (exit code: {process.returncode})")
+        if not manager.is_running:
+            print("DAQ process ended early")
             break
-        
         time.sleep(0.5)
-    
-    print_queued_output()
-    
-    # Stop by creating the stop signal file (simulating camera finish)
+
+    # ------------------------------------------------------------------
+    # Stop gracefully
+    # ------------------------------------------------------------------
     print("-" * 60)
-    print("Creating stop signal file...")
-    stop_signal_file.write_text(f"Test stop at {datetime.now()}")
-    
-    # Wait for graceful shutdown
-    print("Waiting for DAQ to finish (max 15s)...")
-    try:
-        process.wait(timeout=15)
-        print(f"DAQ process exited gracefully (code: {process.returncode})")
-    except subprocess.TimeoutExpired:
-        print("DAQ didn't stop gracefully, killing...")
-        process.kill()
-        process.wait()
-    
-    # Print any remaining output
-    time.sleep(0.5)
-    print_queued_output()
-    
+    print("Stopping DAQ...")
+    manager.stop()
+
+    # ------------------------------------------------------------------
+    # Report results
+    # ------------------------------------------------------------------
     print("-" * 60)
     print("TEST COMPLETE")
     print(f"Check output folder: {output_folder}")
-    
+
     # List output files
-    print("\nOutput files:")
-    for f in output_folder.iterdir():
-        size = f.stat().st_size if f.is_file() else "-"
-        print(f"  {f.name} ({size} bytes)" if f.is_file() else f"  {f.name}/")
-    
+    if output_folder.exists():
+        print("\nOutput files:")
+        for f in sorted(output_folder.iterdir()):
+            if f.is_file():
+                print(f"  {f.name} ({f.stat().st_size} bytes)")
+            else:
+                print(f"  {f.name}/")
+
     return 0
 
 

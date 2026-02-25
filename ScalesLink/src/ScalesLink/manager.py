@@ -87,6 +87,8 @@ class ScalesManager:
         self._log = log_callback or print
         
         self._process: Optional[subprocess.Popen] = None
+        self._log_file_handle = None
+        self._log_file_path: Optional[str] = None
         self.client: Optional[ScalesClient] = None
         self.last_error: Optional[str] = None
     
@@ -128,16 +130,26 @@ class ScalesManager:
             command.append("--wired")
         
         try:
-            # CREATE_NEW_CONSOLE is Windows-only; use default on other platforms
-            kwargs = {}
-            if sys.platform == "win32":
-                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            # Redirect stdout/stderr to a log file so we can diagnose failures.
+            os.makedirs(self.session_folder, exist_ok=True)
+            self._log_file_path = os.path.join(
+                self.session_folder, f"scales_server.log"
+            )
+            self._log_file_handle = open(self._log_file_path, "w")
             
-            self._process = subprocess.Popen(command, **kwargs)
+            self._process = subprocess.Popen(
+                command,
+                stdout=self._log_file_handle,
+                stderr=subprocess.STDOUT,
+            )
             self._log(f"Scales server started (PID: {self._process.pid})")
+            self._log(f"Scales output -> {self._log_file_path}")
         except Exception as e:
             self.last_error = f"Failed to start scales server: {e}"
             self._log(self.last_error)
+            if self._log_file_handle:
+                self._log_file_handle.close()
+                self._log_file_handle = None
             return False
         
         # Wait for server to start up
@@ -145,8 +157,14 @@ class ScalesManager:
         
         # Check if process is still running
         if self._process.poll() is not None:
+            error_output = self._read_server_log()
             self.last_error = f"Scales server terminated (exit code: {self._process.returncode})"
-            self._log(self.last_error)
+            self._log(f"ERROR: {self.last_error}")
+            if error_output:
+                self._log(f"Scales server output:\n{error_output}")
+            else:
+                self._log("No output captured from scales server")
+            self._close_log_file()
             self._process = None
             return False
         
@@ -199,6 +217,31 @@ class ScalesManager:
         
         self._cleanup_process()
     
+    def _read_server_log(self, max_lines: int = 50) -> str:
+        """Read the last N lines from the scales server log file."""
+        if not self._log_file_path:
+            return ""
+        try:
+            # Flush before reading so any buffered output is written
+            if self._log_file_handle and not self._log_file_handle.closed:
+                self._log_file_handle.flush()
+            with open(self._log_file_path, "r") as f:
+                lines = f.readlines()
+            # Return the last max_lines, stripped of excess whitespace
+            tail = lines[-max_lines:] if len(lines) > max_lines else lines
+            return "".join(tail).strip()
+        except (OSError, IOError):
+            return ""
+    
+    def _close_log_file(self) -> None:
+        """Close the log file handle if open."""
+        if self._log_file_handle is not None:
+            try:
+                self._log_file_handle.close()
+            except Exception:
+                pass
+            self._log_file_handle = None
+    
     def _cleanup_process(self) -> None:
         """Clean up the scales server process if still running."""
         if self._process is None:
@@ -206,7 +249,12 @@ class ScalesManager:
         
         try:
             self._process.wait(timeout=5)
-            self._log(f"Scales server stopped (exit code: {self._process.returncode})")
+            exit_code = self._process.returncode
+            self._log(f"Scales server stopped (exit code: {exit_code})")
+            if exit_code not in (0, None):
+                error_output = self._read_server_log()
+                if error_output:
+                    self._log(f"Scales server output:\n{error_output}")
         except subprocess.TimeoutExpired:
             self._log("Scales server timeout, terminating...")
             try:
@@ -217,5 +265,6 @@ class ScalesManager:
         except Exception as e:
             self._log(f"Error stopping scales server: {e}")
         finally:
+            self._close_log_file()
             self._process = None
             self.client = None

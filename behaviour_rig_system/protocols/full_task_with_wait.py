@@ -10,7 +10,7 @@ A complete behavioural task where:
 
 Supports:
 - Visual trials (LED at target port)
-- Audio trials (speaker cue, reward at port 1)
+- Audio trials (speaker cue, reward at port 0)
 - Mixed audio/visual sessions with configurable proportions
 - Configurable port selection (any subset of 6 ports)
 - Limited or unlimited trial counts
@@ -51,12 +51,12 @@ PARAMETERS = {
     "cue_duration": {"default": 0.1, "label": "Cue Duration (s, 0=until response)", "min": 0.0, "max": 30.0},
 
     # Port selection (checkboxes for each port)
+    "port_0_enabled": {"default": True, "label": "Port 0 Enabled"},
     "port_1_enabled": {"default": True, "label": "Port 1 Enabled"},
     "port_2_enabled": {"default": True, "label": "Port 2 Enabled"},
     "port_3_enabled": {"default": True, "label": "Port 3 Enabled"},
     "port_4_enabled": {"default": True, "label": "Port 4 Enabled"},
     "port_5_enabled": {"default": True, "label": "Port 5 Enabled"},
-    "port_6_enabled": {"default": True, "label": "Port 6 Enabled"},
 
     # Audio settings
     "audio_enabled": {"default": False, "label": "Enable Audio Trials"},
@@ -116,7 +116,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
     # Parse enabled ports from checkboxes
     enabled_ports = []
     for i in range(6):
-        if params[f"port_{i+1}_enabled"]:
+        if params[f"port_{i}_enabled"]:
             enabled_ports.append(i)  # 0-indexed
     
     if not enabled_ports and not audio_enabled:
@@ -131,7 +131,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         if audio_proportion == 0:
             # All audio trials
             weighted_pool = [6]  # 6 = audio marker
-            log("Mode: All audio trials (reward at port 1)")
+            log("Mode: All audio trials (reward at port 0)")
         else:
             # Mixed audio/visual
             # Build weighted pool: each visual port once, audio marker multiple times
@@ -139,11 +139,11 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             for _ in range(audio_proportion):
                 weighted_pool.append(6)  # 6 = audio marker
             log(f"Mode: Mixed audio/visual (audio proportion: {audio_proportion})")
-            log(f"Visual ports: {[p+1 for p in enabled_ports]}")
+            log(f"Visual ports: {enabled_ports}")
     else:
         # Visual only
         weighted_pool = enabled_ports.copy()
-        log(f"Mode: Visual only, ports: {[p+1 for p in enabled_ports]}")
+        log(f"Mode: Visual only, ports: {enabled_ports}")
     
     # If specific number of trials, create randomised order
     if num_trials > 0:
@@ -225,7 +225,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         
         if is_audio:
             cue_type = "audio"
-            target_port = 0  # Audio trials reward at port 1 (index 0)
+            target_port = 0  # Audio trials reward at port 0
         else:
             cue_type = "visual"
             target_port = port
@@ -323,7 +323,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             # Correct response!
             perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
             link.valve_pulse(target_port, reward_ms)
-            log(f"  SUCCESS - correct port {event.port + 1}, reward delivered")
+            log(f"  SUCCESS - correct port {event.port}, reward delivered")
         
         else:
             # Incorrect response
@@ -332,7 +332,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
                 chosen_port=event.port,
                 trial_duration=trial_duration
             )
-            log(f"  FAILURE - chose port {event.port + 1}, expected port {target_port + 1}")
+            log(f"  FAILURE - chose port {event.port}, expected port {target_port}")
             
             # Punishment (spotlights on)
             if punishment_s > 0:

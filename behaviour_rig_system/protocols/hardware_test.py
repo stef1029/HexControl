@@ -53,8 +53,8 @@ PARAMETERS = {
         "max": 5.0,
     },
     "valve_test_enabled": {
-        "default": False,
-        "label": "Test Valves (requires water)",
+        "default": True,
+        "label": "Test Valves",
     },
     "valve_duration_ms": {
         "default": 100,
@@ -106,7 +106,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         for port in range(num_ports):
             if check_abort():
                 return
-            log(f"  LED port {port + 1} ON  (brightness {led_brightness})")
+            log(f"  LED port {port} ON  (brightness {led_brightness})")
             link.led_set(port, led_brightness)
             time.sleep(step)
             link.led_set(port, 0)
@@ -131,7 +131,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         for port in range(num_ports):
             if check_abort():
                 return
-            log(f"  Spotlight port {port + 1} ON  (brightness {spotlight_brightness})")
+            log(f"  Spotlight port {port} ON  (brightness {spotlight_brightness})")
             link.spotlight_set(port, spotlight_brightness)
             time.sleep(step)
             link.spotlight_set(port, 0)
@@ -179,7 +179,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
         for port in range(num_ports):
             if check_abort():
                 return
-            log(f"  Buzzer port {port + 1} ON")
+            log(f"  Buzzer port {port} ON")
             link.buzzer_set(port, True)
             time.sleep(step / 2)
             link.buzzer_set(port, False)
@@ -223,7 +223,7 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             for port in range(num_ports):
                 if check_abort():
                     return
-                log(f"  Valve port {port + 1} pulse ({valve_ms} ms)")
+                log(f"  Valve port {port} pulse ({valve_ms} ms)")
                 link.valve_pulse(port, valve_ms)
                 time.sleep(step)
         else:
@@ -250,18 +250,18 @@ def run(link, params, log, check_abort, scales, perf_tracker):
             event = link.wait_for_event(timeout=0.2)
             if event is not None:
                 state = "BROKEN" if event.is_activation else "CLEAR"
-                log(f"  Sensor port {event.port + 1}: {state}  (event_id={event.event_id})")
+                log(f"  Sensor port {event.port}: {state}  (event_id={event.event_id})")
                 detected_ports.add(event.port)
 
         if detected_ports:
-            sorted_ports = sorted(p + 1 for p in detected_ports)
+            sorted_ports = sorted(detected_ports)
             log(f"  Detected activity on ports: {sorted_ports}")
         else:
             log("  No sensor events detected during window")
 
         missing = set(range(num_ports)) - detected_ports
         if missing:
-            sorted_missing = sorted(p + 1 for p in missing)
+            sorted_missing = sorted(missing)
             log(f"  WARNING: No events from ports: {sorted_missing}")
 
         # ==================================================================
