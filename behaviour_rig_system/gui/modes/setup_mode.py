@@ -252,7 +252,18 @@ class SetupMode(ttk.Frame):
         self.save_path_label.pack(side="left", padx=6)
         self._update_save_path_preview()
         
-        # Protocol tabs
+        # Start button (packed first so it's always visible at the bottom)
+        button_frame = ttk.Frame(self)
+        button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
+        
+        self.start_button = ttk.Button(
+            button_frame, text="Start Session",
+            command=self._on_start_clicked,
+            style="Success.TButton"
+        )
+        self.start_button.pack(side="right", padx=3)
+        
+        # Protocol tabs (fills remaining space above the start button)
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=6)
         
@@ -262,17 +273,6 @@ class SetupMode(ttk.Frame):
             protocol_name = protocol_class.get_name()
             self.notebook.add(tab, text=protocol_name)
             self.protocol_tabs[protocol_name] = tab
-        
-        # Start button
-        button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=10, pady=8)
-        
-        self.start_button = ttk.Button(
-            button_frame, text="Start Session",
-            command=self._on_start_clicked,
-            style="Success.TButton"
-        )
-        self.start_button.pack(side="right", padx=3)
     
     def _update_save_path_preview(self) -> None:
         """Update the save path preview label."""

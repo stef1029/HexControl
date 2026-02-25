@@ -172,15 +172,9 @@ class PostSessionMode(ttk.Frame):
             style="Muted.TLabel"
         )
         
-        # Performance Plot Section
-        self._create_performance_plot()
-        
-        # Spacer
-        ttk.Frame(self).pack(fill="both", expand=True)
-        
-        # New session button
+        # New session button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
-        button_frame.pack(fill="x", padx=18, pady=14)
+        button_frame.pack(side="bottom", fill="x", padx=18, pady=14)
         
         self._new_session_button = ttk.Button(
             button_frame, text="New Session",
@@ -188,6 +182,9 @@ class PostSessionMode(ttk.Frame):
             style="Primary.TButton"
         )
         self._new_session_button.pack(side="right", padx=5)
+        
+        # Performance Plot Section
+        self._create_performance_plot()
     
     def activate(self, session_result: dict) -> None:
         """
