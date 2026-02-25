@@ -332,6 +332,7 @@ class SetupMode(ttk.Frame):
         protocol_params = tab.get_parameters()
         protocol_params["mouse_weight"] = mouse_weight
         protocol_params["num_trials"] = num_trials
+        protocol_params["mouse_id"] = self.mouse_id_var.get()
         
         # Build session config and call callback
         session_config = {

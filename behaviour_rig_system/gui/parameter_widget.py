@@ -32,6 +32,7 @@ from core.parameter_types import (
     FloatParameter,
     IntParameter,
     Parameter,
+    StringParameter,
 )
 from gui.theme import Theme
 
@@ -322,6 +323,57 @@ class ChoiceParameterWidget(ParameterWidget):
         self.variable.set(value)
 
 
+class StringParameterWidget(ParameterWidget):
+    """Widget for string parameters using a text entry field."""
+
+    def __init__(self, parent: tk.Widget, parameter: StringParameter):
+        """Initialise the string parameter widget."""
+        super().__init__(parent, parameter)
+
+    def _create_widgets(self) -> None:
+        """Create label, entry, and error label."""
+        param: StringParameter = self.parameter
+        palette = Theme.palette
+
+        # Label
+        label = ttk.Label(self.frame, text=param.display_name + ":")
+        label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+
+        # Text entry
+        self.variable = tk.StringVar(value=param.default)
+        self.entry = ttk.Entry(
+            self.frame,
+            textvariable=self.variable,
+            width=40,
+        )
+        self.entry.grid(row=0, column=1, sticky="we")
+
+        # Tooltip (description)
+        if param.description:
+            tooltip_label = ttk.Label(
+                self.frame,
+                text=f"({param.description})",
+                style="Muted.TLabel",
+            )
+            tooltip_label.grid(row=1, column=0, columnspan=2, sticky="w")
+
+        # Error label
+        self.error_label = ttk.Label(
+            self.frame, text="",
+            foreground=palette.error,
+            font=Theme.font_small()
+        )
+        self.error_label.grid(row=2, column=0, columnspan=2, sticky="w")
+
+    def get_value(self) -> str:
+        """Get the current string value."""
+        return self.variable.get()
+
+    def set_value(self, value: str) -> None:
+        """Set the entry text."""
+        self.variable.set(value)
+
+
 class ParameterFormBuilder:
     """
     Builds a complete parameter input form from parameter definitions.
@@ -423,6 +475,8 @@ class ParameterFormBuilder:
             return BoolParameterWidget(parent, parameter)
         elif isinstance(parameter, ChoiceParameter):
             return ChoiceParameterWidget(parent, parameter)
+        elif isinstance(parameter, StringParameter):
+            return StringParameterWidget(parent, parameter)
         else:
             raise ValueError(
                 f"Unknown parameter type: {type(parameter).__name__}"

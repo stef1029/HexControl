@@ -138,8 +138,27 @@ class ChoiceParameter:
         return str(value)
 
 
+@dataclass
+class StringParameter:
+    """String parameter (displayed as text entry)."""
+    name: str
+    display_name: str
+    default: str = ""
+    description: str = ""
+    group: str = "General"
+    order: int = 0
+
+    def validate(self, value: Any) -> tuple[bool, str]:
+        """Strings are always valid."""
+        return True, ""
+
+    def convert(self, value: Any) -> str:
+        """Convert to string."""
+        return str(value)
+
+
 # Type alias for any parameter
-Parameter = IntParameter | FloatParameter | BoolParameter | ChoiceParameter
+Parameter = IntParameter | FloatParameter | BoolParameter | ChoiceParameter | StringParameter
 
 
 # =============================================================================
