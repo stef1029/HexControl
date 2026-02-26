@@ -21,7 +21,7 @@ import yaml
 from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
-from core.board_registry import BoardRegistry, BoardNotFoundError
+from core.board_registry import BoardRegistry
 from .theme import apply_theme, Theme, style_rig_button, create_rig_button
 
 if TYPE_CHECKING:
@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 
 # Default rig configuration if config file not found
 DEFAULT_RIGS = [
-    {"name": "Rig 1", "behaviour_board": "rig_1_behaviour", "daq_board": "rig_1_daq", "enabled": True},
-    {"name": "Rig 2", "behaviour_board": "rig_2_behaviour", "daq_board": "rig_2_daq", "enabled": True},
-    {"name": "Rig 3", "behaviour_board": "rig_3_behaviour", "daq_board": "rig_3_daq", "enabled": True},
-    {"name": "Rig 4", "behaviour_board": "rig_4_behaviour", "daq_board": "rig_4_daq", "enabled": True},
+    {"name": "Rig 1", "board_name": "rig_1_behaviour", "enabled": True},
+    {"name": "Rig 2", "board_name": "rig_2_behaviour", "enabled": True},
+    {"name": "Rig 3", "board_name": "rig_3_behaviour", "enabled": True},
+    {"name": "Rig 4", "board_name": "rig_4_behaviour", "enabled": True},
 ]
 
 
@@ -60,14 +60,18 @@ def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict, str]:
     return DEFAULT_RIGS, 115200, {}, ""
 
 
-def test_rig_connection(behaviour_board_tag: str, board_registry_path: str, baud_rate: int) -> tuple[bool, str]:
+def test_rig_connection(
+    board_name: str,
+    board_type: str = "giga",
+    registry: BoardRegistry | None = None,
+) -> tuple[bool, str]:
     """
-    Test connection to a rig by resolving the board tag to a COM port.
+    Test connection to a rig by resolving its board name via the registry.
     
     Args:
-        behaviour_board_tag: Board tag to look up in the registry
-        board_registry_path: Path to the board_registry.json file
-        baud_rate: Baud rate for connection
+        board_name: Human-readable board key (e.g. "rig_1_behaviour")
+        board_type: Board type string ("mega" or "giga")
+        registry: Optional pre-loaded BoardRegistry instance.
         
     Returns:
         Tuple of (success, message)
@@ -76,9 +80,10 @@ def test_rig_connection(behaviour_board_tag: str, board_registry_path: str, baud
     link = None
     
     try:
-        # Resolve COM port from board registry
-        registry = BoardRegistry(board_registry_path)
-        serial_port = registry.find_board_port(behaviour_board_tag)
+        # Resolve board name (or raw COM port) to a port string
+        reg = registry or BoardRegistry()
+        serial_port = reg.resolve_port(board_name)
+        baud_rate = reg.resolve_baudrate(board_name)
         
         # Try to open serial port
         ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
@@ -87,7 +92,7 @@ def test_rig_connection(behaviour_board_tag: str, board_registry_path: str, baud
         reset_arduino_via_dtr(ser)
         
         # Create link and test handshake
-        link = BehaviourRigLink(ser)
+        link = BehaviourRigLink(ser, board_type=board_type)
         link.start()
         
         link.send_hello()
@@ -97,9 +102,11 @@ def test_rig_connection(behaviour_board_tag: str, board_registry_path: str, baud
         link.stop()
         ser.close()
         
-        return True, "Connection successful!"
+        return True, f"Connection successful on {serial_port}!"
         
-    except BoardNotFoundError as e:
+    except KeyError as e:
+        return False, f"Board not registered: {e}"
+    except RuntimeError as e:
         return False, f"Board not found: {e}"
     except serial.SerialException as e:
         return False, f"Serial port error: {e}"
@@ -143,6 +150,13 @@ class RigLauncher:
         
         # Load configuration
         self.rigs, self.baud_rate, self.processes, self.board_registry_path = load_rig_config(config_path)
+        
+        # Load board registry for resolving board names to COM ports
+        registry_path = config_path.parent / "board_registry.json"
+        try:
+            self.board_registry = BoardRegistry(registry_path)
+        except FileNotFoundError:
+            self.board_registry = BoardRegistry()
         
         # Track open rig windows: {rig_name: (window, button, rig_window)}
         self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button, "RigWindow"]] = {}
@@ -304,6 +318,16 @@ class RigLauncher:
         )
         post_process_btn.pack(side="left", padx=5)
         self._post_process_btn = post_process_btn
+
+        # Mock Rig button
+        mock_btn = ttk.Button(
+            utility_frame,
+            text="Mock Rig",
+            command=self._on_mock_rig_click,
+            style="Secondary.TButton",
+        )
+        mock_btn.pack(side="left", padx=5)
+        self._mock_btn = mock_btn
         
         # Status bar at bottom
         status_frame = ttk.Frame(self._main_container)
@@ -368,6 +392,26 @@ class RigLauncher:
         # Update launch button state
         self._update_launch_button()
 
+    def _on_mock_rig_click(self) -> None:
+        """Open a mock rig window using the first rig's config (no hardware required)."""
+        mock_name = "Mock Rig"
+
+        # Don't open twice
+        if mock_name in self.open_windows:
+            self.status_var.set("Mock Rig already open")
+            return
+
+        # Use the first rig's config as a template
+        if not self.rigs:
+            messagebox.showwarning("No Rigs", "No rigs configured in rigs.yaml")
+            return
+
+        rig = dict(self.rigs[0])  # shallow copy
+        rig["name"] = mock_name
+
+        self._open_rig_window(rig, simulate=True)
+        self.status_var.set("Mock Rig opened (simulated hardware)")
+
     def _update_button_appearance(self, rig_name: str) -> None:
         """Update button appearance based on selection and open state."""
         btn = self.rig_buttons.get(rig_name)
@@ -423,11 +467,14 @@ class RigLauncher:
             
             for rig in selected_rigs:
                 rig_name = rig.get("name", "Unknown")
-                behaviour_board = rig.get("behaviour_board", "")
+                board_name = rig.get("board_name", "")
+                board_type = rig.get("board_type", "giga")
                 
                 self.root.after(0, lambda n=rig_name: self.status_var.set(f"Testing {n}..."))
                 
-                success, message = test_rig_connection(behaviour_board, self.board_registry_path, self.baud_rate)
+                success, message = test_rig_connection(
+                    board_name, board_type, registry=self.board_registry
+                )
                 
                 if success:
                     successful_rigs.append(rig)
@@ -534,7 +581,7 @@ class RigLauncher:
         # Update launch button state
         self._update_launch_button()
     
-    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None) -> None:
+    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None, simulate: bool = False) -> None:
         """
         Open a control window for the specified rig.
         
@@ -543,11 +590,12 @@ class RigLauncher:
             shared_multi_session: Optional shared multi-session folder timestamp.
                                   If provided, all rigs with the same value will
                                   save to the same parent folder.
+            simulate: If True, use mock peripherals instead of real hardware.
         """
         from .rig_window import RigWindow
         
         rig_name = rig.get("name", "Unknown")
-        behaviour_board = rig.get("behaviour_board", "")
+        board_name = rig.get("board_name", "")
         
         # Create new window
         window = tk.Toplevel(self.root)
@@ -560,14 +608,22 @@ class RigLauncher:
             "shared_multi_session": shared_multi_session,
         }
         
+        # Resolve board name (or raw COM port) via registry
+        try:
+            serial_port = self.board_registry.resolve_port(board_name) if board_name else ""
+            baud_rate = self.board_registry.resolve_baudrate(board_name, self.baud_rate) if board_name else self.baud_rate
+        except (KeyError, RuntimeError):
+            serial_port = ""
+            baud_rate = self.baud_rate
+        
         # Create RigWindow content in the toplevel
         rig_window = RigWindow(
-            behaviour_board_tag=behaviour_board,
-            board_registry_path=self.board_registry_path,
-            baud_rate=self.baud_rate,
+            serial_port=serial_port,
+            baud_rate=baud_rate,
             parent=window,
             rig_name=rig_name,
             rig_config=rig_config,
+            simulate=simulate,
         )
         
         # Track this window (including rig_window for session checking)

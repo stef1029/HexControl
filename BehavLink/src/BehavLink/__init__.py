@@ -45,6 +45,7 @@ from BehavLink.link import (
     calculate_crc16,
     reset_arduino_via_dtr,
 )
+from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
 
 __all__ = [
     "BehaviourRigLink",
@@ -57,6 +58,10 @@ __all__ = [
     "build_frame",
     "calculate_crc16",
     "reset_arduino_via_dtr",
+    # Mock classes for virtual rig testing
+    "MockBehaviourRigLink",
+    "MockSerial",
+    "mock_reset_arduino_via_dtr",
 ]
 
 __version__ = "0.1.0"

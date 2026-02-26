@@ -146,20 +146,28 @@ Examples:
     # Calibrate wireless scales on COM10
     python -m ScalesLink.calibrate --port COM10 --baud 9600
     
+    # Calibrate using board registry name
+    python -m ScalesLink.calibrate --board rig_1_scales --wired
+    
     # Use more readings for higher precision
     python -m ScalesLink.calibrate --port COM7 --baud 115200 --wired --readings 100
 """
     )
     parser.add_argument(
         '--port', '-p',
-        required=True,
-        help='Serial port (e.g., COM7, /dev/ttyUSB0)'
+        default=None,
+        help='Serial port (e.g., COM7, /dev/ttyUSB0). Overridden by --board.'
+    )
+    parser.add_argument(
+        '--board',
+        default=None,
+        help='Board registry name (e.g., rig_1_scales). Resolves port and baud via board_registry.json.'
     )
     parser.add_argument(
         '--baud', '-b',
         type=int,
-        default=115200,
-        help='Baud rate (default: 115200)'
+        default=None,
+        help='Baud rate (default: from registry or 115200)'
     )
     parser.add_argument(
         '--wired', '-w',
@@ -175,9 +183,32 @@ Examples:
 
     args = parser.parse_args()
 
+    # Resolve port: --board takes precedence over --port
+    com_port = args.port
+    baud_rate = args.baud or 115200
+
+    if args.board:
+        try:
+            import sys
+            from pathlib import Path
+            _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+            if str(_brs_root) not in sys.path:
+                sys.path.insert(0, str(_brs_root))
+            from core.board_registry import BoardRegistry
+            registry = BoardRegistry()
+            com_port = registry.find_board_port(args.board)
+            if args.baud is None:
+                baud_rate = registry.get_baudrate(args.board)
+            print(f"Resolved board '{args.board}' -> {com_port}")
+        except Exception as e:
+            parser.error(f"Failed to resolve board '{args.board}': {e}")
+
+    if not com_port:
+        parser.error("Either --port or --board must be specified")
+
     run_calibration(
-        com_port=args.port,
-        baud_rate=args.baud,
+        com_port=com_port,
+        baud_rate=baud_rate,
         is_wired=args.wired,
         num_readings=args.readings,
     )

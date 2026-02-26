@@ -33,7 +33,7 @@ Creates protocol classes from simple definitions. A protocol file just needs:
 from typing import Callable, Optional
 
 from core.protocol_base import BaseProtocol, ProtocolEvent
-from core.parameter_types import IntParameter, FloatParameter, BoolParameter
+from core.parameter_types import IntParameter, FloatParameter, BoolParameter, StringParameter
 
 
 def create_protocol_class(name: str, description: str, parameters: dict, run_func) -> type:
@@ -69,6 +69,12 @@ def create_protocol_class(name: str, description: str, parameters: dict, run_fun
                 default=default,
                 min_value=config.get("min"),
                 max_value=config.get("max"),
+            ))
+        elif isinstance(default, str):
+            param_objects.append(StringParameter(
+                name=param_name,
+                display_name=label,
+                default=default,
             ))
         else:
             param_objects.append(IntParameter(

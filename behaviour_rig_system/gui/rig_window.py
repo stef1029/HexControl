@@ -18,14 +18,18 @@ from typing import Optional
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
+from BehavLink.simulated import SimulatedBehaviourRigLink
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
 from core.board_registry import BoardRegistry, BoardNotFoundError
 from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
+from core.virtual_rig_state import VirtualRigState
 
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .theme import apply_theme, Theme, style_scrolled_text
+from .virtual_rig_window import VirtualRigWindow
 
 
 class WindowMode(Enum):
@@ -44,19 +48,20 @@ class RigWindow:
     
     def __init__(
         self,
-        behaviour_board_tag: str = "",
-        board_registry_path: str = "",
+        serial_port: str = "",
         baud_rate: int = 115200,
         parent: Optional[tk.Tk] = None,
         rig_name: str = "",
         rig_config: Optional[dict] = None,
+        simulate: bool = False,
     ):
         self.behaviour_board_tag = behaviour_board_tag
         self.board_registry_path = board_registry_path
         self.baud_rate = baud_rate
         self.parent = parent
         self.rig_name = rig_name
-        self.rig_config = rig_config or {"name": rig_name, "behaviour_board": behaviour_board_tag}
+        self.rig_config = rig_config or {"name": rig_name}
+        self._simulate = simulate
         
         # Hardware/protocol state
         self._serial: Optional[serial.Serial] = None
@@ -65,6 +70,10 @@ class RigWindow:
         self.protocol_thread: Optional[threading.Thread] = None
         self.peripheral_manager: Optional[PeripheralManager] = None
         self.startup_thread: Optional[threading.Thread] = None
+        
+        # Virtual rig (simulate mode only)
+        self._virtual_rig_state: Optional[VirtualRigState] = None
+        self._virtual_rig_window: Optional[VirtualRigWindow] = None
         
         # Session info for summary
         self._session_protocol_name: str = ""
@@ -98,8 +107,8 @@ class RigWindow:
         
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("680x680")
-        self.root.minsize(580, 480)
+        self.root.geometry("680x820")
+        self.root.minsize(580, 580)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
     def _create_modes(self) -> None:
@@ -277,9 +286,15 @@ class RigWindow:
             self._session_save_path = peripheral_config.session_folder
             self._update_startup_status(f"Session folder: {peripheral_config.session_folder}")
             
+            # Create VirtualRigState for interactive simulation
+            if self._simulate:
+                self._virtual_rig_state = VirtualRigState()
+            
             self.peripheral_manager = PeripheralManager(
                 peripheral_config,
-                log_callback=self._update_startup_status
+                log_callback=self._update_startup_status,
+                simulate=self._simulate,
+                virtual_rig_state=self._virtual_rig_state,
             )
             
             # Start DAQ
@@ -288,14 +303,14 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
-            if not self.peripheral_manager._start_daq():
+            if not self.peripheral_manager.start_daq():
                 error_msg = self.peripheral_manager.last_error or "Failed to start DAQ"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
             
             # Wait for connection
             self._update_startup_status("Waiting for DAQ connection...")
-            if not self.peripheral_manager._wait_for_connection():
+            if not self.peripheral_manager.wait_for_daq_connection():
                 if self._startup_cancelled:
                     self._on_startup_cancelled()
                 else:
@@ -309,7 +324,7 @@ class RigWindow:
             
             # Start camera
             self._update_startup_status("Starting camera...")
-            if not self.peripheral_manager._start_camera():
+            if not self.peripheral_manager.start_camera():
                 error_msg = self.peripheral_manager.last_error or "Failed to start camera"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -320,7 +335,7 @@ class RigWindow:
             
             # Start scales (always)
             self._update_startup_status("Starting scales...")
-            if not self.peripheral_manager._start_scales():
+            if not self.peripheral_manager.start_scales():
                 error_msg = self.peripheral_manager.last_error or "Failed to start scales"
                 self.root.after(0, lambda msg=error_msg: self._on_startup_error(msg))
                 return
@@ -329,24 +344,27 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
-            # Connect to rig via board registry
-            self._update_startup_status("Resolving behaviour board...")
-            try:
-                registry = BoardRegistry(self.board_registry_path)
-                behaviour_port = registry.find_board_port(self.behaviour_board_tag)
-                self._update_startup_status(f"Board '{self.behaviour_board_tag}' -> {behaviour_port}")
-            except (BoardNotFoundError, FileNotFoundError) as e:
-                self.root.after(0, lambda msg=str(e): self._on_startup_error(msg))
-                return
-            
-            self._update_startup_status(f"Connecting to behaviour rig on {behaviour_port}...")
-            self._serial = serial.Serial(behaviour_port, self.baud_rate, timeout=0.1)
+            # Connect to rig
+            self._update_startup_status("Connecting to behaviour rig...")
+            if self._simulate:
+                self._serial = MockSerial()
+            else:
+                self._serial = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
             
             self._update_startup_status("Resetting Arduino...")
-            reset_arduino_via_dtr(self._serial)
+            if self._simulate:
+                mock_reset_arduino_via_dtr(self._serial)
+            else:
+                reset_arduino_via_dtr(self._serial)
             
             self._update_startup_status("Creating BehaviourRigLink...")
-            self.link = BehaviourRigLink(self._serial)
+            board_type = self.rig_config.get("board_type", "giga")
+            if self._simulate and self._virtual_rig_state is not None:
+                self.link = SimulatedBehaviourRigLink(self._virtual_rig_state, self._serial)
+            elif self._simulate:
+                self.link = MockBehaviourRigLink(self._serial)
+            else:
+                self.link = BehaviourRigLink(self._serial, board_type=board_type)
             self.link.start()
             
             self._update_startup_status("Handshaking...")
@@ -404,6 +422,14 @@ class RigWindow:
         """Called when startup completes successfully."""
         self._hide_startup_overlay()
         
+        # Open virtual rig window in simulate mode
+        if self._simulate and self._virtual_rig_state is not None:
+            self._virtual_rig_window = VirtualRigWindow(self.root, self._virtual_rig_state)
+        
+        # Pass scales client to running mode for live plot
+        if self.peripheral_manager and self.peripheral_manager.scales_client is not None:
+            self.running_mode.set_scales_client(self.peripheral_manager.scales_client)
+        
         # Activate running mode
         self.running_mode.activate({
             "protocol_name": self._session_protocol_name,
@@ -424,9 +450,8 @@ class RigWindow:
         self.protocol_thread.start()
     
     def _on_startup_error(self, error_msg: str) -> None:
-        """Called when startup fails."""
-        self._hide_startup_overlay()
-        
+        """Called when startup fails. Keeps the overlay visible so the user can read the log."""
+        # Clean up peripherals in the background
         if self.peripheral_manager:
             self.peripheral_manager.stop()
             self.peripheral_manager = None
@@ -439,8 +464,28 @@ class RigWindow:
             self._serial = None
         
         self.link = None
+
+        # Stop the progress bar and update the overlay to show the error
+        self.startup_progress.stop()
+        self.startup_title.config(text="Startup Failed", foreground="red")
+        self.startup_status_var.set(error_msg[:80])
+
+        # Log the error into the overlay's scrolled text
+        self._do_update_startup_status(f"ERROR: {error_msg}")
+
+        # Change the Cancel button to a Close button that returns to setup
+        self.startup_cancel_btn.config(
+            text="Close",
+            command=self._close_startup_error,
+        )
+    
+    def _close_startup_error(self) -> None:
+        """Close the startup error overlay and return to setup mode."""
+        # Reset overlay state for next attempt
+        self.startup_title.config(text="Starting Session...", foreground="")
+        self.startup_cancel_btn.config(text="Cancel", command=self._cancel_startup)
+        self._hide_startup_overlay()
         self._show_mode(WindowMode.SETUP)
-        messagebox.showerror("Startup Failed", f"Failed to start session:\n\n{error_msg}")
     
     def _on_startup_cancelled(self) -> None:
         """Called when startup is cancelled."""
@@ -474,7 +519,7 @@ class RigWindow:
             if self.current_protocol:
                 self.current_protocol.run()
         except Exception as e:
-            self.root.after(0, lambda: self._on_protocol_error(e))
+            self.root.after(0, lambda err=e: self._on_protocol_error(err))
         finally:
             self.root.after(0, self._on_protocol_complete)
     
@@ -559,6 +604,12 @@ class RigWindow:
         """Clean up all session resources."""
         self.current_protocol = None
         self.protocol_thread = None
+        
+        # Close virtual rig window
+        if self._virtual_rig_window is not None:
+            self._virtual_rig_window.close()
+            self._virtual_rig_window = None
+        self._virtual_rig_state = None
         
         # Shutdown BehavLink
         if self.link is not None:
@@ -679,7 +730,7 @@ class RigWindow:
             self._update_startup_status(f"Failed to write metadata: {e}")
 
 
-def launch_rig_window(behaviour_board_tag: str = "", board_registry_path: str = "", baud_rate: int = 115200) -> None:
+def launch_rig_window(serial_port: str = "", baud_rate: int = 115200) -> None:
     """Launch the Behaviour Rig System GUI for a single rig."""
     app = RigWindow(behaviour_board_tag=behaviour_board_tag, board_registry_path=board_registry_path, baud_rate=baud_rate)
     app.run()

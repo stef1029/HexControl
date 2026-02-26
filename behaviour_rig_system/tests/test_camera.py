@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Configuration - adjust these for your setup
-CAMERA_SERIAL = "24243513"  # Rig 1 camera serial number
+CAMERA_SERIAL = "22181614"  # Rig 1 camera serial number
 MOUSE_ID = "test_camera"
 RUN_DURATION = 10  # seconds to run before stopping
 
@@ -31,7 +31,7 @@ WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 512
 
 # Paths - adjust CAMERA_EXECUTABLE to your setup
-CAMERA_EXECUTABLE = Path(r"C:\Dev\projects\Camera\x64\Release\Camera_to_binary.exe")
+CAMERA_EXECUTABLE = Path(r"C:\dev\projects\behaviour_camera\out\install\vs-release\bin\behaviour_camera.exe")
 OUTPUT_BASE = Path(r"D:\behaviour_data")
 
 

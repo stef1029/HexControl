@@ -8,13 +8,12 @@ Tests the scales system using the server-client architecture (as used by the mai
 3. Shuts down the server gracefully
 4. Verifies the saved CSV data
 
-Usage:
-    python -m tests.test_scales
+All configuration (scales board name, COM port resolution) is loaded
+automatically from rigs.yaml and the board registry.
 
-Requirements:
-    - Scales hardware connected
-    - ScalesLink package installed
-    - Board registered in board_registry.json and path set in rigs.yaml
+Usage:
+    Edit the configuration section below, then run:
+        python tests/test_scales.py
 """
 
 import subprocess
@@ -23,50 +22,73 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import yaml
+# ===========================================================================
+# CONFIGURATION — edit these values for your setup
+# ===========================================================================
+RIG_NUMBER = 1                                        # Which rig to test (1-based)
+CONFIG_PATH = Path(r"C:\dev\projects\rigs.yaml")      # Path to rigs.yaml
+TEST_DURATION = 10                                    # Seconds to read weights
+TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
+# ===========================================================================
 
-import sys as _sys
-_sys.path.insert(0, str(Path(__file__).parent.parent))
+# ---------------------------------------------------------------------------
+# Ensure the behaviour_rig_system root is on sys.path so we can import
+# core.board_registry and the ScalesLink package.
+# ---------------------------------------------------------------------------
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_DIR = _SCRIPT_DIR.parent                     # behaviour_rig_system/
+_HEX_BEHAV_CONTROL = _PROJECT_DIR.parent              # hex_behav_control/
+_SCALESLINK_SRC = _HEX_BEHAV_CONTROL / "ScalesLink" / "src"  # ScalesLink/src/
+
+for _p in (_PROJECT_DIR, _SCALESLINK_SRC):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+import yaml  # type: ignore
 from core.board_registry import BoardRegistry
 
 
-# =============================================================================
-# CONFIGURATION - Edit these values as needed
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-RIG = 1
-TEST_DURATION = 10  # seconds to read weights
-TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
+def load_rig_entry(config_path: Path, rig_number: int) -> dict:
+    """
+    Load the rig entry for *rig_number* from *config_path* (rigs.yaml).
 
-# =============================================================================
+    Returns the rig dict (with keys like ``scales``, ``board_name``, etc.)
+    Raises SystemExit if the file or rig entry is not found.
+    """
+    if not config_path.exists():
+        print(f"ERROR: Config file not found: {config_path}")
+        sys.exit(1)
 
-
-def load_scales_config(rig: int) -> tuple[dict, str]:
-    """Load scales configuration and board registry path from rigs.yaml for the given rig number."""
-    config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
-    
-    with open(config_path) as f:
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    
-    board_registry_path = config.get("board_registry", "")
-    
-    for rig_config in config.get("rigs", []):
-        rig_name = rig_config.get("name", "")
-        try:
-            rig_num = int(rig_name.split()[-1])
-            if rig_num == rig:
-                scales_config = rig_config.get("scales")
-                if scales_config is None:
-                    raise ValueError(f"No scales configuration found for {rig_name}")
-                return scales_config, board_registry_path
-        except (ValueError, IndexError):
-            continue
-    
-    raise ValueError(f"Rig {rig} not found in config")
+
+    rigs = config.get("rigs", [])
+    if not rigs:
+        print("ERROR: No rigs defined in config file")
+        sys.exit(1)
+
+    if rig_number < 1 or rig_number > len(rigs):
+        print(f"ERROR: Rig {rig_number} not found (config has {len(rigs)} rig(s))")
+        sys.exit(1)
+
+    return rigs[rig_number - 1]
 
 
 def main():
     from ScalesLink import ScalesClient
+    
+    # ------------------------------------------------------------------
+    # Load rig config
+    # ------------------------------------------------------------------
+    rig_entry = load_rig_entry(CONFIG_PATH, RIG_NUMBER)
+    scales_yaml = rig_entry.get("scales")
+    if scales_yaml is None:
+        print(f"ERROR: No scales configuration found for Rig {RIG_NUMBER}")
+        return
     
     print("=" * 60)
     print("  Scales Server-Client System Test")
@@ -77,16 +99,26 @@ def main():
     timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
     log_file = TEST_SAVE_PATH / f"scales_test_{timestamp}.csv"
     
-    print(f"  Rig: {RIG}")
-    print(f"  Test duration: {TEST_DURATION}s")
-    print(f"  Save file: {log_file}")
+    print(f"  Rig            : {RIG_NUMBER}")
+    print(f"  Config file    : {CONFIG_PATH}")
+    print(f"  Test duration  : {TEST_DURATION}s")
+    print(f"  Save file      : {log_file}")
     print()
     
     # Load config from rigs.yaml
     print("Loading scales config from rigs.yaml...")
-    scales_yaml, board_registry_path = load_scales_config(RIG)
+
+    # Resolve COM port via board registry
+    board_name = scales_yaml.get("board_name", "")
+    if board_name:
+        registry = BoardRegistry()
+        com_port = registry.find_board_port(board_name)
+        baud_rate = registry.get_baudrate(board_name)
+        print(f"  Board: {board_name} -> {com_port}")
+    else:
+        com_port = scales_yaml["com_port"]
+        baud_rate = scales_yaml.get("baud_rate", 115200)
     
-    board_tag = scales_yaml.get("board_tag", "")
     tcp_port = scales_yaml.get("tcp_port", 5100)
     is_wired = scales_yaml.get("is_wired", False)
     calibration_scale = scales_yaml.get("calibration_scale", 1.0)
