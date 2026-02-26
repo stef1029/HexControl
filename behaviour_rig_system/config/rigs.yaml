@@ -6,56 +6,66 @@
 #
 # Each rig entry should include:
 #   - name: Display name for the rig
-#   - serial_port: Serial port the rig is connected to
+#   - behaviour_board: Board tag for the rig's behaviour Arduino (looked up in board_registry.json)
+#   - daq_board: Board tag for the rig's DAQ Arduino (looked up in board_registry.json)
 #   - enabled: Whether the rig is available for use
 #   - description: Optional description of the rig
 #   - camera_serial: Serial number for the rig's camera
+#   - scales.board_tag: Board tag for the scales serial adapter (looked up in board_registry.json)
+
+# Board registry file
+# -------------------
+# Path to the JSON file that maps human-readable board tags to USB
+# serial numbers (VID/PID/serial_number). This replaces hardcoded COM
+# ports and makes connections robust to port reassignment.
+
+board_registry: "C:\\Dev\\projects\\hex_behav\\hex_behav_control\\behaviour_rig_system\\config\\board_registry.json"
 
 rigs:
   - name: "Rig 1"
-    serial_port: "COM7"
+    behaviour_board: "rig_1_behaviour"
+    daq_board: "rig_1_daq"
     enabled: true
     description: "Main behaviour rig"
     camera_serial: "24243513"
     scales:
-      com_port: "COM12"
-      baud_rate: 9600
+      board_tag: "rig_1_scales"
       is_wired: True
       calibration_scale: 0.22375971500351627
       calibration_intercept: -5617.39
 
   - name: "Rig 2"
-    serial_port: "COM8"
+    behaviour_board: "rig_2_behaviour"
+    daq_board: "rig_2_daq"
     enabled: true
     description: "Secondary rig"
     camera_serial: "20530175"
     scales:
-      com_port: "COM5"
-      baud_rate: 9600
+      board_tag: "rig_2_scales"
       is_wired: true
       calibration_scale: 0.27978473586250524
       calibration_intercept: 475.86
 
   - name: "Rig 3"
-    serial_port: "COM9"
+    behaviour_board: "rig_3_behaviour"
+    daq_board: "rig_3_daq"
     enabled: true
     description: "Third rig"
     camera_serial: "24174008"
     scales:
-      com_port: "COM10"
-      baud_rate: 9600
+      board_tag: "rig_3_scales"
       is_wired: true
       calibration_scale: 0.1725046376146776
       calibration_intercept: -1327.66
 
   - name: "Rig 4"
-    serial_port: "COM10"
+    behaviour_board: "rig_4_behaviour"
+    daq_board: "rig_4_daq"
     enabled: true
     description: "Fourth rig"
     camera_serial: "24243513"
     scales:
-      com_port: "COM12"
-      baud_rate: 9600
+      board_tag: "rig_4_scales"
       is_wired: true
       calibration_scale: 0.16461420192565693
       calibration_intercept: -616.28

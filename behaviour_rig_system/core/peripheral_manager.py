@@ -15,13 +15,15 @@ from typing import Callable, Optional
 
 import yaml
 
+from core.board_registry import BoardRegistry, BoardNotFoundError
+
 
 @dataclass
 class ScalesProcessConfig:
     """Configuration for scales subprocess."""
     enabled: bool = False
-    com_port: str = ""
-    baud_rate: int = 115200
+    board_tag: str = ""
+    baud_rate: int = 9600
     is_wired: bool = False
     calibration_scale: float = 1.0
     calibration_intercept: float = 0.0
@@ -35,6 +37,11 @@ class PeripheralConfig:
     rig_name: str
     rig_number: int
     camera_serial: str
+    
+    # Board tags (resolved to COM ports via board registry)
+    behaviour_board_tag: str
+    daq_board_tag: str
+    board_registry_path: str
     
     # Session info
     mouse_id: str
@@ -72,8 +79,8 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesPro
     if not scales_yaml:
         return None
     
-    com_port = scales_yaml.get("com_port", "")
-    if not com_port:
+    board_tag = scales_yaml.get("board_tag", "")
+    if not board_tag:
         return None
     
     # Assign unique TCP port per rig (5100 + rig_number)
@@ -81,8 +88,8 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> Optional[ScalesPro
     
     return ScalesProcessConfig(
         enabled=True,
-        com_port=com_port,
-        baud_rate=scales_yaml.get("baud_rate", 115200),
+        board_tag=board_tag,
+        baud_rate=scales_yaml.get("baud_rate", 9600),
         is_wired=scales_yaml.get("is_wired", False),
         calibration_scale=scales_yaml.get("calibration_scale", 1.0),
         calibration_intercept=scales_yaml.get("calibration_intercept", 0.0),
@@ -119,6 +126,7 @@ def load_peripheral_config(
         full_config = yaml.safe_load(f)
     
     process_settings = full_config.get("processes", {})
+    board_registry_path = full_config.get("board_registry", "")
     
     rig_name = rig_config.get("name", "Rig 1")
     try:
@@ -142,6 +150,9 @@ def load_peripheral_config(
         rig_name=rig_name,
         rig_number=rig_number,
         camera_serial=rig_config.get("camera_serial", ""),
+        behaviour_board_tag=rig_config.get("behaviour_board", ""),
+        daq_board_tag=rig_config.get("daq_board", ""),
+        board_registry_path=board_registry_path,
         mouse_id=mouse_id,
         session_folder=session_folder,
         multi_session_folder=multi_session_folder,
@@ -261,6 +272,8 @@ class PeripheralManager:
             "--date", self.config.date_time,
             "--path", self.config.session_folder,
             "--rig", str(self.config.rig_number),
+            "--board-tag", self.config.daq_board_tag,
+            "--registry", self.config.board_registry_path,
         ]
         
         try:
@@ -443,7 +456,18 @@ class PeripheralManager:
             self._log("No scales configured for this rig")
             return True  # Not an error, just no scales
         
-        self._log(f"Starting scales on {scales_cfg.com_port} (TCP port {scales_cfg.tcp_port})...")
+        # Resolve COM port from board registry
+        try:
+            registry = BoardRegistry(self.config.board_registry_path)
+            scales_com_port = registry.find_board_port(scales_cfg.board_tag)
+            scales_baud = registry.get_baudrate(scales_cfg.board_tag)
+            self._log(f"Scales board '{scales_cfg.board_tag}' -> {scales_com_port}")
+        except (BoardNotFoundError, FileNotFoundError) as e:
+            self.last_error = f"Failed to resolve scales board: {e}"
+            self._log(self.last_error)
+            return False
+        
+        self._log(f"Starting scales on {scales_com_port} (TCP port {scales_cfg.tcp_port})...")
         
         # Build log path in session folder with datetime and mouse name
         log_filename = f"{self.config.date_time}_{self.config.mouse_id}_scales_data.csv"
@@ -453,8 +477,8 @@ class PeripheralManager:
         command = [
             sys.executable,  # Use same Python interpreter
             "-m", "ScalesLink.server",
-            "--port", scales_cfg.com_port,
-            "--baud", str(scales_cfg.baud_rate),
+            "--port", scales_com_port,
+            "--baud", str(scales_baud),
             "--tcp", str(scales_cfg.tcp_port),
             "--log", log_path,
             "--scale", str(scales_cfg.calibration_scale),

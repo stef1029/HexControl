@@ -216,6 +216,8 @@ async def listen(
     new_path:      str | None = None,
     rig:           str | None = None,
     com_port:      str | None = None,
+    board_tag:     str | None = None,
+    registry_path: str | None = None,
 ) -> None:
     """Serial acquisition task (top‑level coroutine).
     
@@ -224,7 +226,9 @@ async def listen(
         new_date_time: Datetime stamp for the session
         new_path: Output directory path
         rig: Rig number (1-4) for naming signal files
-        com_port: COM port to use. If None, falls back to rig-based lookup.
+        com_port: COM port to use. If None, falls back to board registry or rig-based lookup.
+        board_tag: Human-readable board tag (e.g. 'rig_1_daq'). Resolved via registry.
+        registry_path: Path to board_registry.json file.
     """
     messages_from_arduino: deque[list[int | float]] = deque()
     backup_buffer: deque[list[int | float]] = deque()
@@ -241,8 +245,50 @@ async def listen(
 
     connection_signal_file = output_path / (f"rig_{rig}_arduino_connected.signal" if rig else "arduino_connected.signal")
 
-    # COM‑port determination: use provided port, or fall back to rig-based lookup
-    if com_port is None:
+    # COM‑port determination: use provided port, board registry, or fall back to rig-based lookup
+    if com_port is not None:
+        # Explicit --port override takes priority
+        pass
+    elif board_tag is not None and registry_path is not None:
+        # Resolve via board registry
+        try:
+            from pathlib import Path as _P
+            import json as _json
+            _reg_path = _P(registry_path)
+            if not _reg_path.exists():
+                raise FileNotFoundError(f"Board registry not found: {registry_path}")
+            with open(_reg_path, "r") as _f:
+                _data = _json.load(_f)
+            _board = _data.get("boards", {}).get(board_tag)
+            if _board is None:
+                raise ValueError(f"Board tag '{board_tag}' not found in registry")
+            # Match by VID/PID/serial_number
+            _vid_raw = _board.get("vid")
+            _pid_raw = _board.get("pid")
+            _sn = _board.get("serial_number")
+            _vid = int(_vid_raw, 16) if isinstance(_vid_raw, str) else _vid_raw
+            _pid = int(_pid_raw, 16) if isinstance(_pid_raw, str) else _pid_raw
+            from serial.tools import list_ports
+            _found = False
+            for _p in list_ports.comports():
+                _vid_ok = _vid is None or _p.vid == _vid
+                _pid_ok = _pid is None or _p.pid == _pid
+                if _vid_ok and _pid_ok:
+                    if _sn is None or _p.serial_number == _sn:
+                        com_port = _p.device
+                        _found = True
+                        break
+            if not _found:
+                raise RuntimeError(
+                    f"Board '{board_tag}' (VID={_vid_raw}, PID={_pid_raw}, "
+                    f"serial={_sn!r}) not found on any COM port."
+                )
+            print(f"Board '{board_tag}' resolved to {com_port}")
+        except Exception as exc:
+            print(f"Failed to resolve board '{board_tag}': {exc}")
+            return
+    else:
+        # Legacy fallback: rig-number-based lookup
         if rig is None:
             com_port = "COM2"
         else:
@@ -251,7 +297,7 @@ async def listen(
                         "3": "COM30", 
                         "4": "COM17"}.get(rig)
             if com_port is None:
-                raise ValueError(f"Rig number '{rig}' not recognised and no --port provided")
+                raise ValueError(f"Rig number '{rig}' not recognised and no --board-tag or --port provided")
 
     print(f"Connecting to Arduino Mega on {com_port}…")
     try:
@@ -359,14 +405,18 @@ def main() -> None:
         --date: date_time stamp (YYMMDD_HHMMSS)
         --path: output directory
         --rig: rig number [1‑4] (default: 1)
-        --port: COM port to use (e.g., COM7). If provided, overrides rig-based port selection.
+        --port: COM port to use (e.g., COM7). If provided, overrides all other port selection.
+        --board-tag: Human-readable board tag (e.g., rig_1_daq). Resolved via registry.
+        --registry: Path to board_registry.json file.
     """
     parser = argparse.ArgumentParser(description="Listen to serial port and save data")
     parser.add_argument("--id",   type=str, help="mouse ID",  default="NoID")
     parser.add_argument("--date", type=str, help="date_time stamp (YYMMDD_HHMMSS)")
     parser.add_argument("--path", type=str, help="output directory")
     parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
-    parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
+    parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides all other port selection.", default=None)
+    parser.add_argument("--board-tag", type=str, help="Board tag (e.g., rig_1_daq). Resolved via --registry.", default=None)
+    parser.add_argument("--registry", type=str, help="Path to board_registry.json file.", default=None)
     args = parser.parse_args()
 
     mouse_id = args.id
@@ -374,7 +424,15 @@ def main() -> None:
     output_path = args.path or str(Path.cwd() / f"{date_time}_{mouse_id}")
 
     try:
-        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=args.port))
+        asyncio.run(listen(
+            new_mouse_id=mouse_id,
+            new_date_time=date_time,
+            new_path=output_path,
+            rig=args.rig,
+            com_port=args.port,
+            board_tag=getattr(args, 'board_tag', None),
+            registry_path=args.registry,
+        ))
     except Exception:
         traceback.print_exc()
         input("ArduinoDAQ error — see traceback above.  Press Enter to exit…")

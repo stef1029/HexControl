@@ -21,6 +21,7 @@ import yaml
 from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
+from core.board_registry import BoardRegistry, BoardNotFoundError
 from .theme import apply_theme, Theme, style_rig_button, create_rig_button
 
 if TYPE_CHECKING:
@@ -29,14 +30,14 @@ if TYPE_CHECKING:
 
 # Default rig configuration if config file not found
 DEFAULT_RIGS = [
-    {"name": "Rig 1", "serial_port": "COM7", "enabled": True},
-    {"name": "Rig 2", "serial_port": "COM8", "enabled": True},
-    {"name": "Rig 3", "serial_port": "COM9", "enabled": True},
-    {"name": "Rig 4", "serial_port": "COM10", "enabled": True},
+    {"name": "Rig 1", "behaviour_board": "rig_1_behaviour", "daq_board": "rig_1_daq", "enabled": True},
+    {"name": "Rig 2", "behaviour_board": "rig_2_behaviour", "daq_board": "rig_2_daq", "enabled": True},
+    {"name": "Rig 3", "behaviour_board": "rig_3_behaviour", "daq_board": "rig_3_daq", "enabled": True},
+    {"name": "Rig 4", "behaviour_board": "rig_4_behaviour", "daq_board": "rig_4_daq", "enabled": True},
 ]
 
 
-def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict]:
+def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict, str]:
     """
     Load rig configuration from rigs.yaml.
     
@@ -44,7 +45,7 @@ def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict]:
         config_path: Path to the configuration file
     
     Returns:
-        Tuple of (list of rig configs, baud rate, processes config)
+        Tuple of (list of rig configs, baud rate, processes config, board_registry path)
     """
     if config_path.exists():
         with open(config_path) as f:
@@ -53,17 +54,19 @@ def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict]:
         rigs = config.get("rigs", DEFAULT_RIGS)
         baud_rate = config.get("global", {}).get("baud_rate", 115200)
         processes = config.get("processes", {})
-        return rigs, baud_rate, processes
+        board_registry = config.get("board_registry", "")
+        return rigs, baud_rate, processes, board_registry
     
-    return DEFAULT_RIGS, 115200, {}
+    return DEFAULT_RIGS, 115200, {}, ""
 
 
-def test_rig_connection(serial_port: str, baud_rate: int) -> tuple[bool, str]:
+def test_rig_connection(behaviour_board_tag: str, board_registry_path: str, baud_rate: int) -> tuple[bool, str]:
     """
-    Test connection to a rig.
+    Test connection to a rig by resolving the board tag to a COM port.
     
     Args:
-        serial_port: Serial port to test
+        behaviour_board_tag: Board tag to look up in the registry
+        board_registry_path: Path to the board_registry.json file
         baud_rate: Baud rate for connection
         
     Returns:
@@ -73,6 +76,10 @@ def test_rig_connection(serial_port: str, baud_rate: int) -> tuple[bool, str]:
     link = None
     
     try:
+        # Resolve COM port from board registry
+        registry = BoardRegistry(board_registry_path)
+        serial_port = registry.find_board_port(behaviour_board_tag)
+        
         # Try to open serial port
         ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
         
@@ -92,6 +99,8 @@ def test_rig_connection(serial_port: str, baud_rate: int) -> tuple[bool, str]:
         
         return True, "Connection successful!"
         
+    except BoardNotFoundError as e:
+        return False, f"Board not found: {e}"
     except serial.SerialException as e:
         return False, f"Serial port error: {e}"
     except TimeoutError:
@@ -133,7 +142,7 @@ class RigLauncher:
         self.config_path = config_path
         
         # Load configuration
-        self.rigs, self.baud_rate, self.processes = load_rig_config(config_path)
+        self.rigs, self.baud_rate, self.processes, self.board_registry_path = load_rig_config(config_path)
         
         # Track open rig windows: {rig_name: (window, button, rig_window)}
         self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button, "RigWindow"]] = {}
@@ -414,11 +423,11 @@ class RigLauncher:
             
             for rig in selected_rigs:
                 rig_name = rig.get("name", "Unknown")
-                serial_port = rig.get("serial_port", "")
+                behaviour_board = rig.get("behaviour_board", "")
                 
                 self.root.after(0, lambda n=rig_name: self.status_var.set(f"Testing {n}..."))
                 
-                success, message = test_rig_connection(serial_port, self.baud_rate)
+                success, message = test_rig_connection(behaviour_board, self.board_registry_path, self.baud_rate)
                 
                 if success:
                     successful_rigs.append(rig)
@@ -538,7 +547,7 @@ class RigLauncher:
         from .rig_window import RigWindow
         
         rig_name = rig.get("name", "Unknown")
-        serial_port = rig.get("serial_port", "")
+        behaviour_board = rig.get("behaviour_board", "")
         
         # Create new window
         window = tk.Toplevel(self.root)
@@ -553,7 +562,8 @@ class RigLauncher:
         
         # Create RigWindow content in the toplevel
         rig_window = RigWindow(
-            serial_port=serial_port,
+            behaviour_board_tag=behaviour_board,
+            board_registry_path=self.board_registry_path,
             baud_rate=self.baud_rate,
             parent=window,
             rig_name=rig_name,

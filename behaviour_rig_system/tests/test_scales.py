@@ -14,7 +14,7 @@ Usage:
 Requirements:
     - Scales hardware connected
     - ScalesLink package installed
-    - Correct COM port and baud rate configured in rigs.yaml
+    - Board registered in board_registry.json and path set in rigs.yaml
 """
 
 import subprocess
@@ -24,6 +24,10 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.board_registry import BoardRegistry
 
 
 # =============================================================================
@@ -37,12 +41,14 @@ TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
 # =============================================================================
 
 
-def load_scales_config(rig: int) -> dict:
-    """Load scales configuration from rigs.yaml for the given rig number."""
+def load_scales_config(rig: int) -> tuple[dict, str]:
+    """Load scales configuration and board registry path from rigs.yaml for the given rig number."""
     config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
     
     with open(config_path) as f:
         config = yaml.safe_load(f)
+    
+    board_registry_path = config.get("board_registry", "")
     
     for rig_config in config.get("rigs", []):
         rig_name = rig_config.get("name", "")
@@ -52,7 +58,7 @@ def load_scales_config(rig: int) -> dict:
                 scales_config = rig_config.get("scales")
                 if scales_config is None:
                     raise ValueError(f"No scales configuration found for {rig_name}")
-                return scales_config
+                return scales_config, board_registry_path
         except (ValueError, IndexError):
             continue
     
@@ -78,16 +84,21 @@ def main():
     
     # Load config from rigs.yaml
     print("Loading scales config from rigs.yaml...")
-    scales_yaml = load_scales_config(RIG)
+    scales_yaml, board_registry_path = load_scales_config(RIG)
     
-    com_port = scales_yaml["com_port"]
-    baud_rate = scales_yaml.get("baud_rate", 115200)
+    board_tag = scales_yaml.get("board_tag", "")
     tcp_port = scales_yaml.get("tcp_port", 5100)
     is_wired = scales_yaml.get("is_wired", False)
     calibration_scale = scales_yaml.get("calibration_scale", 1.0)
     calibration_intercept = scales_yaml.get("calibration_intercept", 0.0)
     
-    print(f"  COM Port: {com_port}")
+    # Resolve COM port from board registry
+    registry = BoardRegistry(board_registry_path)
+    com_port = registry.find_board_port(board_tag)
+    baud_rate = registry.get_baudrate(board_tag)
+    
+    print(f"  Board Tag: {board_tag}")
+    print(f"  Resolved Port: {com_port}")
     print(f"  Baud Rate: {baud_rate}")
     print(f"  TCP Port: {tcp_port}")
     print(f"  Is Wired: {is_wired}")

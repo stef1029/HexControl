@@ -22,6 +22,7 @@ from pathlib import Path
 
 # Configuration - adjust these for your setup
 RIG_NUMBER = "1"  # Which rig to test (1-4)
+DAQ_BOARD_TAG = "rig_1_daq"  # Board tag in board_registry.json
 MOUSE_ID = "test_daq"
 CONNECTION_TIMEOUT = 30  # seconds
 RUN_DURATION = 10  # seconds to run after connection before stopping
@@ -30,6 +31,7 @@ RUN_DURATION = 10  # seconds to run after connection before stopping
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 DAQ_SCRIPT = PROJECT_DIR / "daq" / "serial_listen_mega_fast.py"
+BOARD_REGISTRY = PROJECT_DIR / "config" / "board_registry.json"
 
 # Use the same Python as running this script, or specify your conda env
 PYTHON_PATH = sys.executable
@@ -80,6 +82,8 @@ def main():
         "--date", date_time,
         "--path", str(output_folder),
         "--rig", RIG_NUMBER,
+        "--board-tag", DAQ_BOARD_TAG,
+        "--registry", str(BOARD_REGISTRY),
     ]
     
     print("Starting DAQ process...")

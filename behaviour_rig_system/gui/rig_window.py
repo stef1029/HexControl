@@ -20,6 +20,7 @@ import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
+from core.board_registry import BoardRegistry, BoardNotFoundError
 from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 
@@ -43,17 +44,19 @@ class RigWindow:
     
     def __init__(
         self,
-        serial_port: str = "COM7",
+        behaviour_board_tag: str = "",
+        board_registry_path: str = "",
         baud_rate: int = 115200,
         parent: Optional[tk.Tk] = None,
         rig_name: str = "",
         rig_config: Optional[dict] = None,
     ):
-        self.serial_port = serial_port
+        self.behaviour_board_tag = behaviour_board_tag
+        self.board_registry_path = board_registry_path
         self.baud_rate = baud_rate
         self.parent = parent
         self.rig_name = rig_name
-        self.rig_config = rig_config or {"name": rig_name, "serial_port": serial_port}
+        self.rig_config = rig_config or {"name": rig_name, "behaviour_board": behaviour_board_tag}
         
         # Hardware/protocol state
         self._serial: Optional[serial.Serial] = None
@@ -326,9 +329,18 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
-            # Connect to rig
-            self._update_startup_status("Connecting to behaviour rig...")
-            self._serial = serial.Serial(self.serial_port, self.baud_rate, timeout=0.1)
+            # Connect to rig via board registry
+            self._update_startup_status("Resolving behaviour board...")
+            try:
+                registry = BoardRegistry(self.board_registry_path)
+                behaviour_port = registry.find_board_port(self.behaviour_board_tag)
+                self._update_startup_status(f"Board '{self.behaviour_board_tag}' -> {behaviour_port}")
+            except (BoardNotFoundError, FileNotFoundError) as e:
+                self.root.after(0, lambda msg=str(e): self._on_startup_error(msg))
+                return
+            
+            self._update_startup_status(f"Connecting to behaviour rig on {behaviour_port}...")
+            self._serial = serial.Serial(behaviour_port, self.baud_rate, timeout=0.1)
             
             self._update_startup_status("Resetting Arduino...")
             reset_arduino_via_dtr(self._serial)
@@ -667,7 +679,7 @@ class RigWindow:
             self._update_startup_status(f"Failed to write metadata: {e}")
 
 
-def launch_rig_window(serial_port: str = "COM7", baud_rate: int = 115200) -> None:
+def launch_rig_window(behaviour_board_tag: str = "", board_registry_path: str = "", baud_rate: int = 115200) -> None:
     """Launch the Behaviour Rig System GUI for a single rig."""
-    app = RigWindow(serial_port=serial_port, baud_rate=baud_rate)
+    app = RigWindow(behaviour_board_tag=behaviour_board_tag, board_registry_path=board_registry_path, baud_rate=baud_rate)
     app.run()
