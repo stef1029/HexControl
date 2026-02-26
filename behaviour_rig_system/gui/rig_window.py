@@ -22,7 +22,6 @@ from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_
 from BehavLink.simulated import SimulatedBehaviourRigLink
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
-from core.board_registry import BoardRegistry, BoardNotFoundError
 from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 from core.virtual_rig_state import VirtualRigState
@@ -55,8 +54,7 @@ class RigWindow:
         rig_config: Optional[dict] = None,
         simulate: bool = False,
     ):
-        self.behaviour_board_tag = behaviour_board_tag
-        self.board_registry_path = board_registry_path
+        self.serial_port = serial_port
         self.baud_rate = baud_rate
         self.parent = parent
         self.rig_name = rig_name
@@ -732,5 +730,5 @@ class RigWindow:
 
 def launch_rig_window(serial_port: str = "", baud_rate: int = 115200) -> None:
     """Launch the Behaviour Rig System GUI for a single rig."""
-    app = RigWindow(behaviour_board_tag=behaviour_board_tag, board_registry_path=board_registry_path, baud_rate=baud_rate)
+    app = RigWindow(serial_port=serial_port, baud_rate=baud_rate)
     app.run()

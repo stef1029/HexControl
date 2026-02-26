@@ -100,12 +100,8 @@ def _load_scales_config(rig_config: dict, rig_number: int) -> ScalesProcessConfi
     if not board_name:
         raise ValueError("Scales board_name missing from rig config")
     
-    # Resolve baud rate from board registry (fallback to YAML value)
-    try:
-        registry = BoardRegistry()
-        baud_rate = registry.resolve_baudrate(board_name, scales_yaml.get("baud_rate", 115200))
-    except (FileNotFoundError, KeyError):
-        baud_rate = scales_yaml.get("baud_rate", 115200)
+    # Get baud rate from rigs config
+    baud_rate = scales_yaml.get("baud_rate", 115200)
     
     # Assign unique TCP port per rig (5100 + rig_number)
     tcp_port = 5100 + rig_number
@@ -173,8 +169,8 @@ def load_peripheral_config(
         rig_name=rig_name,
         rig_number=rig_number,
         camera_serial=rig_config.get("camera_serial", ""),
-        behaviour_board_tag=rig_config.get("behaviour_board", ""),
-        daq_board_tag=rig_config.get("daq_board", ""),
+        behaviour_board_tag=rig_config.get("board_name", ""),
+        daq_board_tag=rig_config.get("daq_board_name", ""),
         board_registry_path=board_registry_path,
         mouse_id=mouse_id,
         session_folder=session_folder,

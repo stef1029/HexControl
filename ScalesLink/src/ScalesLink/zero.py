@@ -153,12 +153,11 @@ def zero_all_scales(
         # Resolve COM port: prefer board registry, fall back to legacy com_port
         board_name = scales_config.get("board_name", "")
         com_port = ""
-        baud_rate = scales_config.get("baud_rate", 9600)
+        baud_rate = scales_config.get("baud_rate", 115200)
         
         if board_name and registry is not None:
             try:
                 com_port = registry.find_board_port(board_name)
-                baud_rate = registry.get_baudrate(board_name)
             except (KeyError, RuntimeError) as e:
                 results.append(ZeroResult(
                     rig_name=rig_name,
@@ -233,3 +232,71 @@ def get_summary(results: list[ZeroResult]) -> str:
         return "No scales found to zero"
     
     return "\n".join(lines)
+
+
+# ── Configuration (for standalone use) ────────────────────────
+RIGS_CONFIG_PATH: str = r"C:\Dev\projects\rigs_config.yaml"
+RIG_NUMBER: int = 3
+# ──────────────────────────────────────────────────────────────
+
+
+def main():
+    """Zero scales for a single rig, using the config above."""
+    import yaml
+
+    config_path = Path(RIGS_CONFIG_PATH)
+    if not config_path.exists():
+        print(f"ERROR: Rigs config not found: {config_path}")
+        return
+
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    rigs = config.get("rigs", [])
+    if RIG_NUMBER < 1 or RIG_NUMBER > len(rigs):
+        print(f"ERROR: RIG_NUMBER={RIG_NUMBER} is out of range (1-{len(rigs)})")
+        return
+
+    rig = rigs[RIG_NUMBER - 1]
+    rig_name = rig.get("name", f"Rig {RIG_NUMBER}")
+    scales_cfg = rig.get("scales")
+    if not scales_cfg:
+        print(f"ERROR: No 'scales' section found for {rig_name}")
+        return
+
+    board_name = scales_cfg.get("board_name", "")
+    baud_rate = scales_cfg.get("baud_rate", 115200)
+    is_wired = scales_cfg.get("is_wired", False)
+
+    if not is_wired:
+        print(f"{rig_name}: Wireless scales — tare not supported over serial")
+        return
+
+    if not board_name:
+        print(f"ERROR: No 'board_name' in scales config for {rig_name}")
+        return
+
+    # Resolve COM port via board registry
+    try:
+        _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+        if str(_brs_root) not in sys.path:
+            sys.path.insert(0, str(_brs_root))
+        from core.board_registry import BoardRegistry
+        registry = BoardRegistry()
+        com_port = registry.find_board_port(board_name)
+    except Exception as e:
+        print(f"Failed to resolve board '{board_name}': {e}")
+        return
+
+    print(f"Zeroing scales for {rig_name}")
+    print(f"  Board: {board_name} -> {com_port} @ {baud_rate}")
+
+    success, message = zero_scales(com_port, baud_rate)
+    if success:
+        print(f"  ✓ {message}")
+    else:
+        print(f"  ✗ {message}")
+
+
+if __name__ == "__main__":
+    main()

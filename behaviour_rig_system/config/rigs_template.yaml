@@ -27,6 +27,7 @@ rigs:
     daq_board_name: "rig_1_daq"
     scales:
       board_name: "rig_1_scales"
+      baud_rate: 115200
       is_wired: True
       calibration_scale: 0.22375971500351627
       calibration_intercept: -5617.39
@@ -40,6 +41,7 @@ rigs:
     daq_board_name: "rig_2_daq"
     scales:
       board_name: "rig_2_scales"
+      baud_rate: 115200
       is_wired: true
       calibration_scale: 0.27978473586250524
       calibration_intercept: 475.86
@@ -53,6 +55,7 @@ rigs:
     daq_board_name: "rig_3_daq"
     scales:
       board_name: "rig_3_scales"
+      baud_rate: 115200
       is_wired: true
       calibration_scale: 0.1725046376146776
       calibration_intercept: -1327.66
@@ -66,6 +69,7 @@ rigs:
     daq_board_name: "rig_4_daq"
     scales:
       board_name: "rig_4_scales"
+      baud_rate: 115200
       is_wired: true
       calibration_scale: 0.16461420192565693
       calibration_intercept: -616.28

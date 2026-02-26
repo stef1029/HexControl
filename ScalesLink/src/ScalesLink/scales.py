@@ -72,7 +72,7 @@ class ScalesConfig:
         baud_rate = config_dict.get("baud_rate", 115200)
         
         if board_name:
-            # Resolve via board registry
+            # Resolve COM port via board registry
             try:
                 import sys
                 from pathlib import Path
@@ -82,7 +82,6 @@ class ScalesConfig:
                 from core.board_registry import BoardRegistry
                 registry = BoardRegistry()
                 port = registry.find_board_port(board_name)
-                baud_rate = registry.get_baudrate(board_name)
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to resolve scales board '{board_name}': {e}"

@@ -25,8 +25,8 @@ from pathlib import Path
 # ===========================================================================
 # CONFIGURATION — edit these values for your setup
 # ===========================================================================
-RIG_NUMBER = 1                                        # Which rig to test (1-based)
-CONFIG_PATH = Path(r"C:\dev\projects\rigs.yaml")      # Path to rigs.yaml
+RIG_NUMBER = 4
+CONFIG_PATH = Path(r"C:\Dev\projects\rigs_config.yaml")      # Path to rigs.yaml
 TEST_DURATION = 10                                    # Seconds to read weights
 TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
 # ===========================================================================
@@ -110,26 +110,20 @@ def main():
 
     # Resolve COM port via board registry
     board_name = scales_yaml.get("board_name", "")
+    baud_rate = scales_yaml.get("baud_rate", 115200)
     if board_name:
         registry = BoardRegistry()
         com_port = registry.find_board_port(board_name)
-        baud_rate = registry.get_baudrate(board_name)
         print(f"  Board: {board_name} -> {com_port}")
     else:
         com_port = scales_yaml["com_port"]
-        baud_rate = scales_yaml.get("baud_rate", 115200)
     
     tcp_port = scales_yaml.get("tcp_port", 5100)
     is_wired = scales_yaml.get("is_wired", False)
     calibration_scale = scales_yaml.get("calibration_scale", 1.0)
     calibration_intercept = scales_yaml.get("calibration_intercept", 0.0)
     
-    # Resolve COM port from board registry
-    registry = BoardRegistry(board_registry_path)
-    com_port = registry.find_board_port(board_tag)
-    baud_rate = registry.get_baudrate(board_tag)
-    
-    print(f"  Board Tag: {board_tag}")
+    print(f"  Board: {board_name}")
     print(f"  Resolved Port: {com_port}")
     print(f"  Baud Rate: {baud_rate}")
     print(f"  TCP Port: {tcp_port}")
