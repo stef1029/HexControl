@@ -348,7 +348,7 @@ class RigLauncher:
         # Disable button
         self._zero_btn.configure(state="disabled")
         self.status_var.set("Zeroing scales...")
-        self.root.update()
+        self.root.update_idletasks()
         
         def do_zeroing():
             def progress_callback(rig_name: str, message: str):
@@ -458,7 +458,7 @@ class RigLauncher:
         self._launch_selected_btn.configure(state="disabled")
         
         self.status_var.set(f"Testing connections to {len(selected_rigs)} rig(s)...")
-        self.root.update()
+        self.root.update_idletasks()
         
         # Test connections and open windows sequentially
         def test_and_open_all():
@@ -537,7 +537,7 @@ class RigLauncher:
         from .post_processing_window import open_post_processing_window
 
         self.status_var.set("Opening post-processing window...")
-        self.root.update()
+        self.root.update_idletasks()
 
         # Disable launcher while post-processing is open
         self._disable_launcher()

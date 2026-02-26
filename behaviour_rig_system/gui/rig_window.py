@@ -178,6 +178,13 @@ class RigWindow:
     
     def _show_mode(self, mode: WindowMode) -> None:
         """Switch to the specified mode."""
+        # Deactivate running mode when leaving it (stops scales poll, timer)
+        if self._current_mode == WindowMode.RUNNING and mode != WindowMode.RUNNING:
+            try:
+                self.running_mode.deactivate()
+            except Exception:
+                pass
+
         # Hide all frames
         self.setup_mode.pack_forget()
         self.running_mode.pack_forget()
@@ -449,19 +456,21 @@ class RigWindow:
     
     def _on_startup_error(self, error_msg: str) -> None:
         """Called when startup fails. Keeps the overlay visible so the user can read the log."""
-        # Clean up peripherals in the background
-        if self.peripheral_manager:
-            self.peripheral_manager.stop()
-            self.peripheral_manager = None
-        
-        if self._serial:
-            try:
-                self._serial.close()
-            except:
-                pass
-            self._serial = None
-        
+        # Capture references for background cleanup, then clear them
+        pm = self.peripheral_manager
+        ser = self._serial
+        link = self.link
+        self.peripheral_manager = None
+        self._serial = None
         self.link = None
+
+        # Clean up peripherals in a background thread to avoid blocking the GUI
+        if pm or ser or link:
+            threading.Thread(
+                target=self._cleanup_hardware_blocking,
+                args=(pm, ser, link),
+                daemon=True,
+            ).start()
 
         # Stop the progress bar and update the overlay to show the error
         self.startup_progress.stop()
@@ -493,18 +502,21 @@ class RigWindow:
         """Clean up after cancelled startup."""
         self._hide_startup_overlay()
         
-        if self.peripheral_manager:
-            self.peripheral_manager.stop()
-            self.peripheral_manager = None
-        
-        if self._serial:
-            try:
-                self._serial.close()
-            except:
-                pass
-            self._serial = None
-        
+        # Capture references for background cleanup, then clear them
+        pm = self.peripheral_manager
+        ser = self._serial
+        link = self.link
+        self.peripheral_manager = None
+        self._serial = None
         self.link = None
+        
+        if pm or ser or link:
+            threading.Thread(
+                target=self._cleanup_hardware_blocking,
+                args=(pm, ser, link),
+                daemon=True,
+            ).start()
+        
         self._show_mode(WindowMode.SETUP)
     
     # =========================================================================
@@ -538,6 +550,7 @@ class RigWindow:
     def _on_protocol_complete(self) -> None:
         """Handle protocol completion - clean up then show post-session."""
         self.running_mode.stop_timer()
+        self.running_mode.stop_scales_plot()
         
         # Get final status and duration before cleanup
         final_status = ProtocolStatus.COMPLETED
@@ -575,20 +588,22 @@ class RigWindow:
                 except Exception as e:
                     self.running_mode.log_message(f"Failed to save trial data: {e}")
         
-        # Clean up resources
-        self._cleanup_session()
-        
-        # Activate post-session mode
-        self.post_session_mode.activate({
+        # Prepare post-session data before cleanup clears references
+        post_session_data = {
             "status": status_str,
             "protocol_name": self._session_protocol_name,
             "mouse_id": self._session_mouse_id,
             "elapsed_time": elapsed,
             "save_path": self._session_save_path,
             "performance_report": performance_report,
-        })
+        }
         
-        # Switch to post-session mode
+        # Clean up resources (non-blocking: hardware shutdown on background thread)
+        self._cleanup_session(on_done=lambda: self._finish_post_session(post_session_data))
+    
+    def _finish_post_session(self, post_session_data: dict) -> None:
+        """Called (on main thread) after hardware cleanup completes."""
+        self.post_session_mode.activate(post_session_data)
         self._show_mode(WindowMode.POST_SESSION)
     
     def _stop_session(self) -> None:
@@ -598,44 +613,118 @@ class RigWindow:
             self.running_mode.log_message("Requesting stop...")
             self.current_protocol.request_abort()
     
-    def _cleanup_session(self) -> None:
-        """Clean up all session resources."""
+    def _cleanup_session(self, on_done=None) -> None:
+        """
+        Clean up all session resources.
+        
+        Quick GUI cleanup (virtual rig window) happens immediately on the
+        main thread.  Slow hardware shutdown (peripheral stop, serial close,
+        link shutdown) is offloaded to a background thread so the GUI stays
+        responsive.
+        
+        Args:
+            on_done: Optional callback to invoke on the main thread once
+                     hardware cleanup finishes.
+        """
         self.current_protocol = None
         self.protocol_thread = None
         
-        # Close virtual rig window
+        # Close virtual rig window (GUI-only, fast)
         if self._virtual_rig_window is not None:
             self._virtual_rig_window.close()
             self._virtual_rig_window = None
         self._virtual_rig_state = None
         
-        # Shutdown BehavLink
-        if self.link is not None:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-            try:
-                self.link.stop()
-            except Exception:
-                pass
-            self.link = None
+        # Capture hardware references, then clear them so no other code
+        # touches them while the background thread is shutting them down.
+        link = self.link
+        ser = self._serial
+        pm = self.peripheral_manager
+        self.link = None
+        self._serial = None
+        self.peripheral_manager = None
         
-        # Close serial
-        if self._serial is not None:
+        # Helper to log both to console and (thread-safe) the running mode log
+        def _log_cleanup(msg: str) -> None:
+            print(f"[cleanup] {msg}")
             try:
-                self._serial.close()
+                self.root.after(0, lambda m=msg: self.running_mode.log_message(m))
             except Exception:
                 pass
-            self._serial = None
+
+        if link or ser or pm:
+            def _bg_cleanup():
+                self._cleanup_hardware_blocking(pm, ser, link, _log_cleanup)
+                if on_done is not None:
+                    self.root.after(0, on_done)
+            
+            threading.Thread(target=_bg_cleanup, daemon=True).start()
+        elif on_done is not None:
+            on_done()
+    
+    @staticmethod
+    def _cleanup_hardware_blocking(pm, ser, link, log=None) -> None:
+        """
+        Blocking hardware cleanup — runs on a background thread.
         
-        # Stop peripherals
-        if self.peripheral_manager is not None:
+        Shuts down the BehaviourRigLink, closes the serial port, and stops
+        peripheral processes.  Each step may block for several seconds
+        (e.g. waiting for a subprocess to exit).
+        """
+        import time as _time
+
+        def _log(msg: str) -> None:
+            if log is not None:
+                log(msg)
+            else:
+                print(f"[cleanup] {msg}")
+
+        _log("Starting hardware cleanup...")
+
+        if link is not None:
+            # Only send shutdown if the receive thread is still alive
+            # (protocol cleanup already calls link.shutdown(), which resets
+            # the Arduino — a second call would just produce a write error)
+            thread_alive = (
+                hasattr(link, '_receive_thread')
+                and link._receive_thread is not None
+                and link._receive_thread.is_alive()
+            )
+            if thread_alive:
+                try:
+                    _log("Sending shutdown command to rig...")
+                    link.shutdown()
+                    _log("Shutdown command sent")
+                except Exception as e:
+                    _log(f"Link shutdown error (non-fatal): {e}")
+            else:
+                _log("Rig already shut down by protocol cleanup, skipping")
             try:
-                self.peripheral_manager.stop()
-            except Exception:
-                pass
-            self.peripheral_manager = None
+                _log("Stopping link receive thread...")
+                link.stop()
+                _log("Link receive thread stopped")
+            except Exception as e:
+                _log(f"Link stop error (non-fatal): {e}")
+        
+        if ser is not None:
+            try:
+                _log("Closing serial port...")
+                ser.close()
+                _log("Serial port closed")
+            except Exception as e:
+                _log(f"Serial close error (non-fatal): {e}")
+        
+        if pm is not None:
+            try:
+                _log("Stopping peripherals (camera, DAQ, scales)...")
+                t0 = _time.perf_counter()
+                pm.stop()
+                elapsed = _time.perf_counter() - t0
+                _log(f"Peripherals stopped ({elapsed:.1f}s)")
+            except Exception as e:
+                _log(f"Peripheral stop error (non-fatal): {e}")
+
+        _log("Hardware cleanup complete")
     
     def _new_session(self) -> None:
         """Start a new session - return to setup mode."""

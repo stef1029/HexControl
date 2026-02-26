@@ -316,10 +316,9 @@ class RunningMode(ttk.Frame):
         else:
             self._rolling_label.config(text="--")
         
-        # Log new trials to the trial log
-        trials = tracker.get_trials()
-        while self._last_logged_trial < len(trials):
-            trial = trials[self._last_logged_trial]
+        # Log new trials to the trial log (only fetch new ones)
+        new_trials = tracker.get_trials_since(self._last_logged_trial)
+        for trial in new_trials:
             self._log_trial(trial)
             self._last_logged_trial += 1
     
@@ -390,6 +389,10 @@ class RunningMode(ttk.Frame):
     def stop_timer(self) -> None:
         """Stop the elapsed time timer (public interface)."""
         self._stop_timer()
+    
+    def stop_scales_plot(self) -> None:
+        """Stop the scales poll loop (public interface)."""
+        self._scales_plot.stop()
     
     def get_elapsed_time(self) -> float:
         """Get elapsed time in seconds."""

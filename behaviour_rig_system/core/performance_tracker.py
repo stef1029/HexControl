@@ -69,10 +69,18 @@ class PerformanceTracker:
         self._on_update = on_update
         self._on_stimulus = on_stimulus
         self._start_time: Optional[float] = None
+        
+        # Cached running counters — O(1) instead of O(n) list scans
+        self._successes: int = 0
+        self._failures: int = 0
+        self._timeouts: int = 0
     
     def reset(self) -> None:
         """Clear all trial records."""
         self._trials.clear()
+        self._successes = 0
+        self._failures = 0
+        self._timeouts = 0
         self._start_time = datetime.now().timestamp()
         self._notify_update()
     
@@ -170,6 +178,15 @@ class PerformanceTracker:
             details=details,
         )
         self._trials.append(record)
+        
+        # Update cached counters
+        if outcome == TrialOutcome.SUCCESS:
+            self._successes += 1
+        elif outcome == TrialOutcome.FAILURE:
+            self._failures += 1
+        elif outcome == TrialOutcome.TIMEOUT:
+            self._timeouts += 1
+        
         self._notify_update()
     
     def _notify_update(self) -> None:
@@ -192,22 +209,22 @@ class PerformanceTracker:
     @property
     def successes(self) -> int:
         """Number of successful trials."""
-        return sum(1 for t in self._trials if t.outcome == TrialOutcome.SUCCESS)
+        return self._successes
     
     @property
     def failures(self) -> int:
         """Number of failed trials."""
-        return sum(1 for t in self._trials if t.outcome == TrialOutcome.FAILURE)
+        return self._failures
     
     @property
     def timeouts(self) -> int:
         """Number of timeout trials."""
-        return sum(1 for t in self._trials if t.outcome == TrialOutcome.TIMEOUT)
+        return self._timeouts
     
     @property
     def responses(self) -> int:
         """Number of trials with a response (success + failure, excluding timeouts)."""
-        return self.successes + self.failures
+        return self._successes + self._failures
     
     @property
     def accuracy(self) -> float:
@@ -281,6 +298,10 @@ class PerformanceTracker:
     def get_trials(self) -> list[TrialRecord]:
         """Get all trial records."""
         return list(self._trials)
+    
+    def get_trials_since(self, index: int) -> list[TrialRecord]:
+        """Get trial records from the given index onwards (avoids copying entire list)."""
+        return self._trials[index:]
     
     def get_report(self) -> dict:
         """
