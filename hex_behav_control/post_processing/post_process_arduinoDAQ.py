@@ -304,7 +304,7 @@ def process_cohort_directory(cohort_directory, num_processes=8, cleanup=True):
     directory_info = Cohort_folder(cohort_directory, 
                                    multi=True, 
                                    plot=False, 
-                                   OEAB_legacy=False,
+                                   system_type='v1',
                                    ignore_tests=ignore_test_sessions).cohort
 
     # Optionally clean up binary files in sessions that already have AVI files
@@ -366,7 +366,7 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
     logger.addHandler(console_handler)
     # --------------------------
 
-    Cohort = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions)
+    Cohort = Cohort_folder(cohort_directory, multi=True, system_type='v1', ignore_tests=ignore_test_sessions)
     directory_info = Cohort.cohort
 
     sessions_to_process = []
@@ -552,7 +552,7 @@ def main():
     #                 }
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx"),
+    cohort_directory = {'local': Path(r"/cephfs2/dwelch/Behaviour/pitx2_inhib_dtx"),
                     }
     cohort_directories.append(cohort_directory)
 
