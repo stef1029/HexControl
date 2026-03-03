@@ -13,7 +13,7 @@ import tkinter as tk
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import messagebox, ttk
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
@@ -26,7 +26,8 @@ from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
 from core.virtual_rig_state import VirtualRigState
 
 from .modes import SetupMode, RunningMode, PostSessionMode
-from .theme import apply_theme, Theme, style_scrolled_text
+from .startup_overlay import StartupOverlay
+from .theme import apply_theme, Theme
 from .virtual_rig_window import VirtualRigWindow
 
 
@@ -128,48 +129,10 @@ class RigWindow:
     
     def _create_startup_overlay(self) -> None:
         """Create the overlay shown during startup sequence."""
-        palette = Theme.palette
-        
-        self.startup_frame = ttk.Frame(self.root)
-        
-        inner_frame = ttk.Frame(self.startup_frame, padding=(18, 12))
-        inner_frame.pack(fill="both", expand=True)
-        
-        self.startup_title = ttk.Label(
-            inner_frame, text="Starting Session...",
-            style="Heading.TLabel"
+        self.startup_overlay = StartupOverlay(
+            self.root,
+            on_cancel=self._cancel_startup,
         )
-        self.startup_title.pack(pady=(6, 3))
-        
-        self.startup_status_var = tk.StringVar(value="Initializing...")
-        self.startup_status = ttk.Label(
-            inner_frame, textvariable=self.startup_status_var,
-            foreground=palette.accent_primary,
-            font=Theme.font(size=10)
-        )
-        self.startup_status.pack(pady=3)
-        
-        self.startup_progress = ttk.Progressbar(
-            inner_frame, mode="indeterminate", length=400
-        )
-        self.startup_progress.pack(pady=10)
-        
-        log_label = ttk.Label(inner_frame, text="Startup Log:", style="Subheading.TLabel")
-        log_label.pack(anchor="w", pady=(6, 3))
-        
-        self.startup_log = scrolledtext.ScrolledText(
-            inner_frame, height=14, width=70,
-            state="disabled", wrap="word"
-        )
-        style_scrolled_text(self.startup_log, log_style=True)
-        self.startup_log.pack(fill="both", expand=True, pady=3)
-        
-        self.startup_cancel_btn = ttk.Button(
-            inner_frame, text="Cancel",
-            command=self._cancel_startup,
-            style="Danger.TButton"
-        )
-        self.startup_cancel_btn.pack(pady=10)
     
     # =========================================================================
     # Mode Management
@@ -188,7 +151,7 @@ class RigWindow:
         self.setup_mode.pack_forget()
         self.running_mode.pack_forget()
         self.post_session_mode.pack_forget()
-        self.startup_frame.pack_forget()
+        self.startup_overlay.pack_forget()
         
         # Show the requested frame
         self._current_mode = mode
@@ -206,36 +169,16 @@ class RigWindow:
     def _show_startup_overlay(self) -> None:
         """Show the startup overlay."""
         self._startup_cancelled = False
-        self.startup_log.config(state="normal")
-        self.startup_log.delete("1.0", tk.END)
-        self.startup_log.config(state="disabled")
-        self.startup_status_var.set("Initializing...")
-        
         self.setup_mode.pack_forget()
-        self.startup_frame.pack(fill="both", expand=True)
-        self.startup_progress.start(10)
+        self.startup_overlay.show()
     
     def _hide_startup_overlay(self) -> None:
         """Hide the startup overlay."""
-        self.startup_progress.stop()
-        self.startup_frame.pack_forget()
+        self.startup_overlay.hide()
     
     def _update_startup_status(self, message: str) -> None:
         """Update startup status (thread-safe)."""
-        self.root.after(0, lambda: self._do_update_startup_status(message))
-    
-    def _do_update_startup_status(self, message: str) -> None:
-        """Actually update the startup status."""
-        short_msg = message.split("]", 1)[-1].strip() if "]" in message else message
-        self.startup_status_var.set(short_msg[:60] + "..." if len(short_msg) > 60 else short_msg)
-        
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        log_line = f"[{timestamp}] {message}\n"
-        
-        self.startup_log.config(state="normal")
-        self.startup_log.insert(tk.END, log_line)
-        self.startup_log.see(tk.END)
-        self.startup_log.config(state="disabled")
+        self.root.after(0, lambda: self.startup_overlay.update_status(message))
     
     def _cancel_startup(self) -> None:
         """Cancel the startup sequence."""
@@ -471,25 +414,11 @@ class RigWindow:
                 daemon=True,
             ).start()
 
-        # Stop the progress bar and update the overlay to show the error
-        self.startup_progress.stop()
-        self.startup_title.config(text="Startup Failed", foreground="red")
-        self.startup_status_var.set(error_msg[:80])
-
-        # Log the error into the overlay's scrolled text
-        self._do_update_startup_status(f"ERROR: {error_msg}")
-
-        # Change the Cancel button to a Close button that returns to setup
-        self.startup_cancel_btn.config(
-            text="Close",
-            command=self._close_startup_error,
-        )
+        # Switch overlay to error state
+        self.startup_overlay.show_error(error_msg, on_close=self._close_startup_error)
     
     def _close_startup_error(self) -> None:
         """Close the startup error overlay and return to setup mode."""
-        # Reset overlay state for next attempt
-        self.startup_title.config(text="Starting Session...", foreground="")
-        self.startup_cancel_btn.config(text="Cancel", command=self._cancel_startup)
         self._hide_startup_overlay()
         self._show_mode(WindowMode.SETUP)
     
