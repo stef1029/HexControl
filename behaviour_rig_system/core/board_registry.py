@@ -7,7 +7,7 @@ that are resolved at runtime by matching USB VID, PID, and serial number.
 Usage:
     from core.board_registry import BoardRegistry
 
-    registry = BoardRegistry()  # loads default board_registry.json
+    registry = BoardRegistry(Path("path/to/board_registry.json"))
     port = registry.find_board_port("rig_1_behaviour")  # -> "COM7" or raises
 
     # Discovery tool (run as script):
@@ -22,10 +22,6 @@ from pathlib import Path
 from typing import Optional
 
 import serial.tools.list_ports
-
-
-# Default path to the board registry JSON relative to this file
-_DEFAULT_REGISTRY_PATH = Path(__file__).parent.parent / "config" / "board_registry.json"
 
 
 @dataclass(frozen=True)
@@ -60,8 +56,8 @@ class BoardRegistry:
     and matched at runtime by USB VID, PID, and serial number.
     """
 
-    def __init__(self, registry_path: Optional[Path] = None):
-        self._path = registry_path or _DEFAULT_REGISTRY_PATH
+    def __init__(self, registry_path: Path):
+        self._path = registry_path
         self._boards: dict[str, BoardInfo] = {}
         self._load()
 
@@ -233,12 +229,13 @@ def main() -> None:
 
     discover_boards()
 
-    print(f"  Registry file: {_DEFAULT_REGISTRY_PATH}\n")
+    registry_path = Path(__file__).parent.parent / "config" / "board_registry.json"
+    print(f"  Registry file: {registry_path}\n")
 
     # If a registry already exists, show which boards are currently found
     try:
         from colorama import Fore, Style
-        registry = BoardRegistry()
+        registry = BoardRegistry(registry_path)
         print("  Current registry status:")
         print("  " + "-" * 50)
         for name, info in sorted(registry.boards.items()):

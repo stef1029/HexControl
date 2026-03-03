@@ -47,12 +47,16 @@ class ScalesConfig:
     is_wired: bool = False
 
     @classmethod
-    def from_yaml_dict(cls, config_dict: dict) -> "ScalesConfig":
+    def from_yaml_dict(cls, config_dict: dict, registry=None) -> "ScalesConfig":
         """
         Create a ScalesConfig from a YAML configuration dictionary.
         
         Supports both new board-registry style (board_name resolved to port)
         and legacy style (com_port directly).
+        
+        Args:
+            config_dict: YAML configuration dictionary with scales settings.
+            registry: A BoardRegistry instance for resolving board names to COM ports.
         
         Expected keys (new style):
             - board_name: Human-readable key resolved via board registry
@@ -72,15 +76,11 @@ class ScalesConfig:
         baud_rate = config_dict.get("baud_rate", 115200)
         
         if board_name:
-            # Resolve COM port via board registry
+            if registry is None:
+                raise ValueError(
+                    f"A BoardRegistry instance is required to resolve board name '{board_name}'"
+                )
             try:
-                import sys
-                from pathlib import Path
-                _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
-                if str(_brs_root) not in sys.path:
-                    sys.path.insert(0, str(_brs_root))
-                from core.board_registry import BoardRegistry
-                registry = BoardRegistry()
                 port = registry.find_board_port(board_name)
             except Exception as e:
                 raise RuntimeError(

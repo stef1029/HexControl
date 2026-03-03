@@ -257,8 +257,10 @@ async def listen(
                 if str(_brs_root) not in sys.path:
                     sys.path.insert(0, str(_brs_root))
                 from core.board_registry import BoardRegistry
-                registry = BoardRegistry()
-                board_name = f"rig_{rig}_daq"
+                if registry_path is None:
+                    raise ValueError("registry_path is required to resolve board names")
+                registry = BoardRegistry(Path(registry_path))
+                board_name = board_tag or f"rig_{rig}_daq"
                 com_port = registry.find_board_port(board_name)
                 print(f"Resolved DAQ board '{board_name}' -> {com_port}")
             except Exception:
@@ -392,6 +394,7 @@ def main() -> None:
     parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
     parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
     parser.add_argument("--board", type=str, help="Board registry name (e.g., rig_1_daq). Resolves port via board_registry.json.", default=None)
+    parser.add_argument("--registry", type=str, help="Path to board_registry.json file.", default=None)
     args = parser.parse_args()
 
     mouse_id = args.id
@@ -406,7 +409,9 @@ def main() -> None:
             if str(_brs_root) not in sys.path:
                 sys.path.insert(0, str(_brs_root))
             from core.board_registry import BoardRegistry
-            registry = BoardRegistry()
+            if args.registry is None:
+                raise ValueError("--registry is required when using --board")
+            registry = BoardRegistry(Path(args.registry))
             resolved_port = registry.find_board_port(args.board)
             print(f"Resolved board '{args.board}' -> {resolved_port}")
         except Exception as e:

@@ -47,6 +47,7 @@ class DAQManager:
         session_folder: str,
         rig_number: int,
         daq_board_name: str = "",
+        board_registry_path: str = "",
         connection_timeout: int = 30,
         log_callback: Optional[Callable[[str], None]] = None,
     ):
@@ -61,6 +62,7 @@ class DAQManager:
             daq_board_name: Board registry name for the DAQ Arduino. When set,
                             the COM port is resolved via the board registry and
                             passed to the serial_listen subprocess with ``--port``.
+            board_registry_path: Path to the board_registry.json file.
             connection_timeout: Seconds to wait for Arduino connection.
             log_callback: Optional callback for log messages.
         """
@@ -71,6 +73,7 @@ class DAQManager:
         self.session_folder = session_folder
         self.rig_number = rig_number
         self.daq_board_name = daq_board_name
+        self.board_registry_path = board_registry_path
         self.connection_timeout = connection_timeout
         self._log = log_callback or print
         
@@ -118,7 +121,9 @@ class DAQManager:
                 if str(_brs_root) not in _sys.path:
                     _sys.path.insert(0, str(_brs_root))
                 from core.board_registry import BoardRegistry
-                registry = BoardRegistry()
+                if not self.board_registry_path:
+                    raise ValueError("board_registry_path is required to resolve DAQ board names")
+                registry = BoardRegistry(Path(self.board_registry_path))
                 daq_port = registry.resolve_port(self.daq_board_name)
                 command.extend(["--port", daq_port])
                 self._log(f"Resolved DAQ board '{self.daq_board_name}' -> {daq_port}")

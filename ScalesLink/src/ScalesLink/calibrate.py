@@ -23,6 +23,7 @@ import yaml
 
 # ── Configuration ─────────────────────────────────────────────
 RIGS_CONFIG_PATH: str = r"C:\Dev\projects\rigs_config.yaml"
+BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\board_registry.json"
 RIG_NUMBER: int = 4
 NUM_READINGS: int = 400          # Number of readings to average
 # ──────────────────────────────────────────────────────────────
@@ -302,7 +303,7 @@ def main():
         if str(_brs_root) not in sys.path:
             sys.path.insert(0, str(_brs_root))
         from core.board_registry import BoardRegistry
-        registry = BoardRegistry()
+        registry = BoardRegistry(Path(BOARD_REGISTRY_PATH))
         com_port = registry.find_board_port(board_name)
         print(f"Rig: {rig_name}")
         print(f"Resolved board '{board_name}' -> {com_port} @ {baud_rate}")

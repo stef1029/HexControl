@@ -80,6 +80,7 @@ def zero_scales(
 
 def zero_all_scales(
     rig_configs: list[dict],
+    registry = None,
     callback: Optional[callable] = None,
 ) -> list[ZeroResult]:
     """
@@ -91,23 +92,13 @@ def zero_all_scales(
     Args:
         rig_configs: List of rig configuration dicts from rigs.yaml.
                      Each should have a "scales" sub-dict with "board_name".
+        registry: A BoardRegistry instance for resolving board names to COM ports.
         callback: Optional function called with (rig_name, status_message)
                   after each rig is processed.
     
     Returns:
         List of ZeroResult objects with success/failure for each rig.
     """
-    # Lazy import to avoid hard dependency when using zero_scales() directly
-    try:
-        # Add the behaviour_rig_system path so we can import core.board_registry
-        _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
-        if str(_brs_root) not in sys.path:
-            sys.path.insert(0, str(_brs_root))
-        from core.board_registry import BoardRegistry
-        registry = BoardRegistry()
-    except Exception:
-        registry = None
-    
     results = []
     
     for rig in rig_configs:
@@ -236,6 +227,7 @@ def get_summary(results: list[ZeroResult]) -> str:
 
 # ── Configuration (for standalone use) ────────────────────────
 RIGS_CONFIG_PATH: str = r"C:\Dev\projects\rigs_config.yaml"
+BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\board_registry.json"
 RIG_NUMBER: int = 3
 # ──────────────────────────────────────────────────────────────
 
@@ -282,7 +274,7 @@ def main():
         if str(_brs_root) not in sys.path:
             sys.path.insert(0, str(_brs_root))
         from core.board_registry import BoardRegistry
-        registry = BoardRegistry()
+        registry = BoardRegistry(Path(BOARD_REGISTRY_PATH))
         com_port = registry.find_board_port(board_name)
     except Exception as e:
         print(f"Failed to resolve board '{board_name}': {e}")

@@ -37,33 +37,10 @@ DEFAULT_RIGS = [
 ]
 
 
-def load_rig_config(config_path: Path) -> tuple[list[dict], int, dict, str]:
-    """
-    Load rig configuration from rigs.yaml.
-    
-    Args:
-        config_path: Path to the configuration file
-    
-    Returns:
-        Tuple of (list of rig configs, baud rate, processes config, board_registry path)
-    """
-    if config_path.exists():
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-        
-        rigs = config.get("rigs", DEFAULT_RIGS)
-        baud_rate = config.get("global", {}).get("baud_rate", 115200)
-        processes = config.get("processes", {})
-        board_registry = config.get("board_registry", "")
-        return rigs, baud_rate, processes, board_registry
-    
-    return DEFAULT_RIGS, 115200, {}, ""
-
-
 def test_rig_connection(
     board_name: str,
     board_type: str = "giga",
-    registry: BoardRegistry | None = None,
+    registry: BoardRegistry = None,
 ) -> tuple[bool, str]:
     """
     Test connection to a rig by resolving its board name via the registry.
@@ -71,19 +48,21 @@ def test_rig_connection(
     Args:
         board_name: Human-readable board key (e.g. "rig_1_behaviour")
         board_type: Board type string ("mega" or "giga")
-        registry: Optional pre-loaded BoardRegistry instance.
+        registry: Pre-loaded BoardRegistry instance.
         
     Returns:
         Tuple of (success, message)
     """
+    if registry is None:
+        raise ValueError("A BoardRegistry instance is required")
+    
     ser = None
     link = None
     
     try:
         # Resolve board name (or raw COM port) to a port string
-        reg = registry or BoardRegistry()
-        serial_port = reg.resolve_port(board_name)
-        baud_rate = reg.resolve_baudrate(board_name)
+        serial_port = registry.resolve_port(board_name)
+        baud_rate = registry.resolve_baudrate(board_name)
         
         # Try to open serial port
         ser = serial.Serial(serial_port, baud_rate, timeout=0.1)
@@ -136,7 +115,7 @@ class RigLauncher:
     connection and opens the rig's control window if successful.
     """
     
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path: Path, board_registry_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
         self.root.geometry("420x460")
@@ -149,14 +128,19 @@ class RigLauncher:
         self.config_path = config_path
         
         # Load configuration
-        self.rigs, self.baud_rate, self.processes, self.board_registry_path = load_rig_config(config_path)
+        if config_path.exists():
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            self.rigs = config.get("rigs", DEFAULT_RIGS)
+            self.baud_rate = config.get("global", {}).get("baud_rate", 115200)
+            self.processes = config.get("processes", {})
+        else:
+            raise FileNotFoundError(
+                f"Rig configuration file not found: {config_path}"
+            )
         
         # Load board registry for resolving board names to COM ports
-        registry_path = config_path.parent / "board_registry.json"
-        try:
-            self.board_registry = BoardRegistry(registry_path)
-        except FileNotFoundError:
-            self.board_registry = BoardRegistry()
+        self.board_registry = BoardRegistry(board_registry_path)
         
         # Track open rig windows: {rig_name: (window, button, rig_window)}
         self.open_windows: dict[str, tuple[tk.Toplevel, tk.Button, "RigWindow"]] = {}
@@ -355,7 +339,7 @@ class RigLauncher:
                 # Update status in main thread
                 self.root.after(0, lambda: self.status_var.set(f"{rig_name}: {message}"))
             
-            results = zero_all_scales(self.rigs, callback=progress_callback)
+            results = zero_all_scales(self.rigs, registry=self.board_registry, callback=progress_callback)
             summary = get_summary(results)
             
             # Show results in main thread
@@ -605,6 +589,7 @@ class RigLauncher:
             **rig,
             "processes": self.processes,
             "config_path": self.config_path,
+            "board_registry_path": self.board_registry._path,
             "shared_multi_session": shared_multi_session,
         }
         
@@ -709,7 +694,7 @@ class RigLauncher:
         self.root.mainloop()
 
 
-def launch(config_path: Path):
+def launch(config_path: Path, board_registry_path: Path):
     """Launch the rig launcher."""
-    launcher = RigLauncher(config_path)
+    launcher = RigLauncher(config_path, board_registry_path)
     launcher.run()

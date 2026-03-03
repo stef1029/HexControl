@@ -27,6 +27,7 @@ from pathlib import Path
 # ===========================================================================
 RIG_NUMBER = 4
 CONFIG_PATH = Path(r"C:\Dev\projects\rigs_config.yaml")      # Path to rigs.yaml
+BOARD_REGISTRY_PATH = Path(r"C:\Dev\projects\board_registry.json")  # Path to board registry
 TEST_DURATION = 10                                    # Seconds to read weights
 TEST_SAVE_PATH = Path("D:/behaviour_data/test_output")
 # ===========================================================================
@@ -112,7 +113,7 @@ def main():
     board_name = scales_yaml.get("board_name", "")
     baud_rate = scales_yaml.get("baud_rate", 115200)
     if board_name:
-        registry = BoardRegistry()
+        registry = BoardRegistry(BOARD_REGISTRY_PATH)
         com_port = registry.find_board_port(board_name)
         print(f"  Board: {board_name} -> {com_port}")
     else:

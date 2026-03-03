@@ -54,7 +54,7 @@ class PeripheralConfig:
     # Board tags (resolved to COM ports via board registry)
     behaviour_board_tag: str
     daq_board_tag: str
-    board_registry_path: str
+    board_registry_path: Path
     
     # Session info
     mouse_id: str
@@ -145,7 +145,7 @@ def load_peripheral_config(
         full_config = yaml.safe_load(f)
     
     process_settings = full_config.get("processes", {})
-    board_registry_path = full_config.get("board_registry", "")
+    board_registry_path = Path(rig_config.get("board_registry_path", ""))
     
     rig_name = rig_config.get("name", "Rig 1")
     try:
@@ -230,6 +230,7 @@ class PeripheralManager:
             session_folder=self.config.session_folder,
             rig_number=self.config.rig_number,
             daq_board_name=self.config.daq_board_name,
+            board_registry_path=str(self.config.board_registry_path),
             connection_timeout=self.config.connection_timeout,
             log_callback=self._log,
         )
@@ -280,7 +281,7 @@ class PeripheralManager:
         else:
             # Resolve board name (or raw COM port) via board registry
             try:
-                registry = BoardRegistry()
+                registry = BoardRegistry(self.config.board_registry_path)
                 com_port = registry.resolve_port(scales_cfg.board_name)
             except (FileNotFoundError, KeyError, RuntimeError) as e:
                 self.last_error = f"Failed to resolve scales board '{scales_cfg.board_name}': {e}"

@@ -28,6 +28,9 @@ sys.path.insert(0, str(project_root))
 # Path to the rig configuration file
 CONFIG_PATH = Path(r"C:\Dev\projects\rigs_config.yaml")
 
+# Path to the board registry file
+BOARD_REGISTRY_PATH = Path(r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\board_registry.json")
+
 
 # =============================================================================
 # Main Entry Point
@@ -45,11 +48,12 @@ def main() -> None:
     print("  Behaviour Rig System")
     print("=" * 60)
     print()
-    print(f"  Config: {CONFIG_PATH}")
+    print(f"  Config:         {CONFIG_PATH}")
+    print(f"  Board Registry: {BOARD_REGISTRY_PATH}")
     print("  Launching rig selector...")
     print()
 
-    launch(config_path=CONFIG_PATH)
+    launch(config_path=CONFIG_PATH, board_registry_path=BOARD_REGISTRY_PATH)
 
 
 if __name__ == "__main__":

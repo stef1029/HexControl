@@ -24,6 +24,7 @@ from pathlib import Path
 # ===========================================================================
 RIG_NUMBER = 1                                        # Which rig to test (1-based)
 CONFIG_PATH = Path(r"C:\dev\projects\rigs.yaml")      # Path to rigs.yaml
+BOARD_REGISTRY_PATH = Path(r"C:\dev\projects\board_registry.json")  # Path to board registry
 MOUSE_ID = "test_daq"                                 # Mouse ID for the test session
 CONNECTION_TIMEOUT = 30                               # Seconds to wait for connection
 RUN_DURATION = 10                                     # Seconds to run after connection
@@ -94,7 +95,7 @@ def main() -> int:
     # Resolve the COM port via the board registry so we can display it
     if daq_board_name:
         try:
-            registry = BoardRegistry()
+            registry = BoardRegistry(BOARD_REGISTRY_PATH)
             com_port = registry.resolve_port(daq_board_name)
             print(f"  Resolved COM port: {com_port}")
         except Exception as exc:

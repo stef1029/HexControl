@@ -315,6 +315,9 @@ class BehaviourRigLink:
         # Sequence number generator (starts at 1, wraps at 0xFFFF)
         self._next_sequence = 1
 
+        # Guard against duplicate shutdown calls
+        self._shutdown_sent = False
+
     @property
     def board_type(self) -> str:
         """Returns the board type string (e.g. 'mega' or 'giga')."""
@@ -393,6 +396,7 @@ class BehaviourRigLink:
         The rig should respond with HELLO_ACK. Use wait_hello() to block
         until the acknowledgement is received.
         """
+        self._shutdown_sent = False
         frame = build_frame(CMD_HELLO)
         self._serial.write(frame)
 
@@ -996,8 +1000,14 @@ class BehaviourRigLink:
         re-initialised with send_hello() after a shutdown.
 
         GPIO configurations are lost after shutdown and must be reconfigured.
+
+        Calling this multiple times is safe — subsequent calls are no-ops.
         """
+        if self._shutdown_sent:
+            return
+
         self._send_reliable_command(CMD_SHUTDOWN, b"")
+        self._shutdown_sent = True
 
         with self._gpio_lock:
             self._gpio_modes = [None] * self.NUM_GPIO_PINS
