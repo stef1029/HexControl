@@ -271,7 +271,7 @@ class RigWindow:
                 self._on_startup_cancelled()
                 return
             
-            # Start scales (always)
+            # Start scales
             self._update_startup_status("Starting scales...")
             if not self.peripheral_manager.start_scales():
                 error_msg = self.peripheral_manager.last_error or "Failed to start scales"
@@ -332,7 +332,7 @@ class RigWindow:
             # Set rig number so protocol can access it
             self.current_protocol.rig_number = rig_number
             
-            # Pass scales client to protocol (always available)
+            # Pass scales client to protocol
             if self.peripheral_manager.scales_client is not None:
                 self.current_protocol._scales_client = self.peripheral_manager.scales_client
             

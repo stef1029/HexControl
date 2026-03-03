@@ -50,7 +50,7 @@ except ImportError:
 # Protocol metadata (discovered by protocol loader)
 # =============================================================================
 
-NAME = "Training Autotraining"
+NAME = "Autotraining"
 DESCRIPTION = (
     "Adaptive training protocol. Automatically progresses through training "
     "stages based on mouse performance. Saves progress between sessions."
