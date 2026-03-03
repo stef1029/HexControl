@@ -14,7 +14,6 @@ from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
-from typing import Optional
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
@@ -49,29 +48,30 @@ class RigWindow:
         self,
         serial_port: str = "",
         baud_rate: int = 115200,
-        parent: Optional[tk.Tk] = None,
-        rig_name: str = "",
-        rig_config: Optional[dict] = None,
+        parent: tk.Toplevel = None,
+        rig_config: dict | None = None,
         simulate: bool = False,
     ):
+        if parent is None:
+            raise ValueError("RigWindow requires a parent window")
+
         self.serial_port = serial_port
         self.baud_rate = baud_rate
         self.parent = parent
-        self.rig_name = rig_name
-        self.rig_config = rig_config or {"name": rig_name}
+        self.rig_config = rig_config
         self._simulate = simulate
         
         # Hardware/protocol state
-        self._serial: Optional[serial.Serial] = None
-        self.link: Optional[BehaviourRigLink] = None
-        self.current_protocol: Optional[BaseProtocol] = None
-        self.protocol_thread: Optional[threading.Thread] = None
-        self.peripheral_manager: Optional[PeripheralManager] = None
-        self.startup_thread: Optional[threading.Thread] = None
+        self._serial: serial.Serial | None = None
+        self.link: BehaviourRigLink | None = None
+        self.current_protocol: BaseProtocol | None = None
+        self.protocol_thread: threading.Thread | None = None
+        self.peripheral_manager: PeripheralManager | None = None
+        self.startup_thread: threading.Thread | None = None
         
         # Virtual rig (simulate mode only)
-        self._virtual_rig_state: Optional[VirtualRigState] = None
-        self._virtual_rig_window: Optional[VirtualRigWindow] = None
+        self._virtual_rig_state: VirtualRigState | None = None
+        self._virtual_rig_window: VirtualRigWindow | None = None
         
         # Session info for summary
         self._session_protocol_name: str = ""
@@ -82,7 +82,7 @@ class RigWindow:
         self._startup_cancelled = False
         
         # Pending startup data
-        self._pending_session_config: Optional[dict] = None
+        self._pending_session_config: dict | None = None
         
         self._setup_window()
         self._create_modes()
@@ -95,13 +95,12 @@ class RigWindow:
     
     def _setup_window(self) -> None:
         """Configure the main window."""
-        if self.parent is not None:
-            self.root = self.parent
-        else:
-            self.root = tk.Tk()
+        self.root = self.parent
         
         # Apply modern theme
         apply_theme(self.root)
+
+        self.rig_name = self.rig_config.get("name", "Unknown")
         
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
@@ -746,15 +745,8 @@ class RigWindow:
         self._force_close()
     
     def _force_close(self) -> None:
-        """Force close the application."""
+        """Force close the rig window."""
         self._cleanup_session()
-        if self.parent is None:
-            self.root.destroy()
-    
-    def run(self) -> None:
-        """Start the application main loop."""
-        if self.parent is None:
-            self.root.mainloop()
 
     # =========================================================================
     # Metadata
@@ -816,8 +808,3 @@ class RigWindow:
         except Exception as e:
             self._update_startup_status(f"Failed to write metadata: {e}")
 
-
-def launch_rig_window(serial_port: str = "", baud_rate: int = 115200) -> None:
-    """Launch the Behaviour Rig System GUI for a single rig."""
-    app = RigWindow(serial_port=serial_port, baud_rate=baud_rate)
-    app.run()

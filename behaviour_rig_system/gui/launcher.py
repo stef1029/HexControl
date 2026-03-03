@@ -28,15 +28,6 @@ if TYPE_CHECKING:
     from .rig_window import RigWindow
 
 
-# Default rig configuration if config file not found
-DEFAULT_RIGS = [
-    {"name": "Rig 1", "board_name": "rig_1_behaviour", "enabled": True},
-    {"name": "Rig 2", "board_name": "rig_2_behaviour", "enabled": True},
-    {"name": "Rig 3", "board_name": "rig_3_behaviour", "enabled": True},
-    {"name": "Rig 4", "board_name": "rig_4_behaviour", "enabled": True},
-]
-
-
 def test_rig_connection(
     board_name: str,
     board_type: str = "giga",
@@ -53,9 +44,7 @@ def test_rig_connection(
     Returns:
         Tuple of (success, message)
     """
-    if registry is None:
-        raise ValueError("A BoardRegistry instance is required")
-    
+   
     ser = None
     link = None
     
@@ -128,16 +117,24 @@ class RigLauncher:
         self.config_path = config_path
         
         # Load configuration
-        if config_path.exists():
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-            self.rigs = config.get("rigs", DEFAULT_RIGS)
-            self.baud_rate = config.get("global", {}).get("baud_rate", 115200)
-            self.processes = config.get("processes", {})
-        else:
+        if not config_path.exists():
             raise FileNotFoundError(
                 f"Rig configuration file not found: {config_path}"
             )
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+
+        if "rigs" not in config:
+            raise KeyError("'rigs' section missing from config file")
+        if "global" not in config or "baud_rate" not in config["global"]:
+            raise KeyError("'global.baud_rate' missing from config file")
+        if "processes" not in config:
+            raise KeyError("'processes' section missing from config file")
+
+        self.rigs = config["rigs"]
+        self.baud_rate = config["global"]["baud_rate"]
+        self.processes = config["processes"]
         
         # Load board registry for resolving board names to COM ports
         self.board_registry = BoardRegistry(board_registry_path)
@@ -371,7 +368,7 @@ class RigLauncher:
         self.rig_selected[rig_name] = not self.rig_selected.get(rig_name, False)
         
         # Update button appearance
-        self._update_button_appearance(rig_name)
+        self._style_rig_button_state(rig_name)
         
         # Update launch button state
         self._update_launch_button()
@@ -396,8 +393,8 @@ class RigLauncher:
         self._open_rig_window(rig, simulate=True)
         self.status_var.set("Mock Rig opened (simulated hardware)")
 
-    def _update_button_appearance(self, rig_name: str) -> None:
-        """Update button appearance based on selection and open state."""
+    def _style_rig_button_state(self, rig_name: str) -> None:
+        """Style a rig button to reflect its current selection and open state."""
         btn = self.rig_buttons.get(rig_name)
         if not btn:
             return
@@ -423,16 +420,12 @@ class RigLauncher:
         # Get selected rigs
         selected_rigs = []
         for rig in self.rigs:
-            rig_name = rig.get("name", f"Rig {self.rigs.index(rig)+1}")
+            rig_name = rig.get("name", "Unknown")
             if self.rig_selected.get(rig_name, False):
                 # Check if already open
                 if rig_name in self.open_windows:
                     continue
                 selected_rigs.append(rig)
-        
-        if not selected_rigs:
-            messagebox.showinfo("No Rigs Selected", "Please select at least one rig to launch.")
-            return
         
         # Create shared multi-session folder timestamp
         date_time = datetime.now().strftime("%y%m%d_%H%M%S")
@@ -480,7 +473,7 @@ class RigLauncher:
         # Clear selections and update button appearances
         for rig_name in self.rig_selected:
             self.rig_selected[rig_name] = False
-            self._update_button_appearance(rig_name)
+            self._style_rig_button_state(rig_name)
         self._update_launch_button()
         
         # Report failures
@@ -556,7 +549,7 @@ class RigLauncher:
             enabled = rig.get("enabled", True)
             if enabled:
                 # Update button appearance based on current state
-                self._update_button_appearance(rig_name)
+                self._style_rig_button_state(rig_name)
 
         # Re-enable utility buttons
         self._zero_btn.configure(state="normal")
@@ -606,7 +599,6 @@ class RigLauncher:
             serial_port=serial_port,
             baud_rate=baud_rate,
             parent=window,
-            rig_name=rig_name,
             rig_config=rig_config,
             simulate=simulate,
         )
@@ -616,7 +608,7 @@ class RigLauncher:
         self.open_windows[rig_name] = (window, btn, rig_window)
         
         # Update button appearance to show it's open (grayed out)
-        self._update_button_appearance(rig_name)
+        self._style_rig_button_state(rig_name)
         
         # Handle window close
         def on_window_close():
@@ -654,7 +646,7 @@ class RigLauncher:
             
             # Update button appearance (restore to normal unselected state)
             self.rig_selected[rig_name] = False
-            self._update_button_appearance(rig_name)
+            self._style_rig_button_state(rig_name)
             
             self.status_var.set(f"{rig_name} closed")
     
