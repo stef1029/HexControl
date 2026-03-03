@@ -62,7 +62,7 @@ class ColorPalette(NamedTuple):
 
 
 # Modern blue theme - professional and clean
-MODERN_PALETTE = ColorPalette(
+LIGHT_PALETTE = ColorPalette(
     # Main backgrounds - light slate grey tones
     bg_primary="#f5f7fa",          # Light blue-grey
     bg_secondary="#ffffff",        # White for cards
@@ -102,10 +102,51 @@ MODERN_PALETTE = ColorPalette(
 )
 
 
+# Dark theme - easy on the eyes for long sessions
+DARK_PALETTE = ColorPalette(
+    # Main backgrounds - dark blue-grey tones
+    bg_primary="#1e1e2e",          # Dark base
+    bg_secondary="#2a2a3d",        # Slightly lighter for cards
+    bg_tertiary="#33334d",         # Input fields
+    bg_header="#16162a",           # Deepest dark for headers
+
+    # Text colors
+    text_primary="#e0e0ef",        # Off-white
+    text_secondary="#8888a8",      # Muted lavender-grey
+    text_disabled="#555570",       # Dim grey
+    text_inverse="#1e1e2e",        # Dark (for use on bright buttons)
+
+    # Accent colors - softer blue
+    accent_primary="#5b9bd5",      # Muted blue
+    accent_secondary="#4a89c8",    # Slightly darker blue
+    accent_hover="#74b3e8",        # Lighter blue hover
+    accent_active="#3570a5",       # Pressed blue
+
+    # Status colors
+    success="#4caf79",             # Soft green
+    success_light="#1e3d2b",       # Dark green tint
+    warning="#e5a832",             # Amber
+    warning_light="#3d3520",       # Dark amber tint
+    error="#e05555",               # Soft red
+    error_light="#3d1e1e",         # Dark red tint
+    info="#5b9bd5",                # Matches accent
+    info_light="#1e2d3d",          # Dark blue tint
+
+    # Border colors
+    border_light="#3a3a55",        # Subtle
+    border_medium="#50506b",       # Medium
+    border_dark="#6a6a85",         # Visible
+
+    # Special colors
+    rig_selected="#3d8c5c",        # Muted green for selected
+    rig_open="#4a4a60",            # Dark grey for open/disabled
+)
+
+
 class Theme:
     """Theme configuration and utilities."""
     
-    palette = MODERN_PALETTE
+    palette = DARK_PALETTE
     
     # Font configurations
     FONT_FAMILY = "Segoe UI"  # Modern Windows font
