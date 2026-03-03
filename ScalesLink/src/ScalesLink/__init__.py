@@ -32,7 +32,6 @@ from .calibrate import run_calibration
 from .client import ScalesClient, quick_get_weight
 from .zero import zero_scales, zero_all_scales, ZeroResult, get_summary
 from .manager import ScalesManager
-from .mock import MockScalesClient, MockScalesManager
 
 __all__ = [
     # Direct hardware access
@@ -44,9 +43,6 @@ __all__ = [
     "quick_get_weight",
     # Manager for subprocess lifecycle
     "ScalesManager",
-    # Mock classes for virtual rig testing
-    "MockScalesClient",
-    "MockScalesManager",
     # Zeroing utilities
     "zero_scales",
     "zero_all_scales",

@@ -23,7 +23,7 @@ from typing import Optional, TYPE_CHECKING
 from .theme import Theme, apply_theme
 
 if TYPE_CHECKING:
-    from core.virtual_rig_state import VirtualRigState, RigStateSnapshot
+    from BehavLink.simulation import VirtualRigState, RigStateSnapshot
 
 
 # ── Colour helpers ──────────────────────────────────────────────────────────

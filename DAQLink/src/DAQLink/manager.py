@@ -50,6 +50,7 @@ class DAQManager:
         board_registry_path: str = "",
         connection_timeout: int = 30,
         log_callback: Optional[Callable[[str], None]] = None,
+        simulate: bool = False,
     ):
         """
         Initialise the DAQ manager.
@@ -65,7 +66,9 @@ class DAQManager:
             board_registry_path: Path to the board_registry.json file.
             connection_timeout: Seconds to wait for Arduino connection.
             log_callback: Optional callback for log messages.
+            simulate: If True, skip subprocess launch and return success.
         """
+        self._simulate = simulate
         self.python_path = sys.executable
         self.serial_listen_script = _SERIAL_LISTEN_SCRIPT
         self.mouse_id = mouse_id
@@ -79,11 +82,14 @@ class DAQManager:
         
         self._process: Optional[subprocess.Popen] = None
         self._log_file_handle = None  # File handle for subprocess output
+        self._started: bool = False
         self.last_error: Optional[str] = None
     
     @property
     def is_running(self) -> bool:
         """Check if the DAQ process is alive."""
+        if self._simulate:
+            return self._started
         return self._process is not None and self._process.poll() is None
     
     def start(self) -> bool:
@@ -93,6 +99,11 @@ class DAQManager:
         Returns:
             True if the DAQ process launched successfully.
         """
+        if self._simulate:
+            self._log("DAQ (simulated): skipping subprocess launch")
+            self._started = True
+            return True
+
         if not os.path.exists(self.serial_listen_script):
             self.last_error = f"Serial listen script not found: {self.serial_listen_script}"
             self._log(self.last_error)
@@ -170,6 +181,12 @@ class DAQManager:
         Raises:
             RuntimeError: If start() has not been called.
         """
+        if self._simulate:
+            if not self._started:
+                raise RuntimeError("DAQ process not started — call start() first")
+            self._log("DAQ (simulated): connection ready")
+            return True
+
         if self._process is None:
             raise RuntimeError("DAQ process not started — call start() first")
         
@@ -234,6 +251,12 @@ class DAQManager:
         Creates the camera-finished signal file (which the DAQ watches
         to know it should stop), then waits for the process to exit.
         """
+        if self._simulate:
+            if self._started:
+                self._log("DAQ (simulated): stopping")
+                self._started = False
+            return
+
         self._create_stop_signal()
         self._cleanup_process()
         self._cleanup_signal_files()

@@ -29,9 +29,12 @@ import os
 import subprocess
 import sys
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 
 from .client import ScalesClient
+
+if TYPE_CHECKING:
+    from BehavLink.simulation import VirtualRigState
 
 
 class ScalesManager:
@@ -54,6 +57,8 @@ class ScalesManager:
         date_time: str = "",
         mouse_id: str = "",
         log_callback: Optional[Callable[[str], None]] = None,
+        simulate: bool = False,
+        virtual_rig_state: Optional["VirtualRigState"] = None,
     ):
         """
         Initialise the scales manager.
@@ -69,11 +74,19 @@ class ScalesManager:
             date_time: Date/time string for this session (for log filename).
             mouse_id: Mouse identifier for this session (for log filename).
             log_callback: Optional callback for log messages.
+            simulate: If True, skip subprocess launch and create a mock client.
+            virtual_rig_state: When simulate=True and this is provided,
+                               the mock client reads weight from the shared
+                               VirtualRigState (driven by the GUI slider).
         """
-        if not com_port:
-            raise ValueError("com_port must be provided for scales")
-        if not tcp_port:
-            raise ValueError("tcp_port must be provided for scales")
+        self._simulate = simulate
+        self._virtual_rig_state = virtual_rig_state
+        
+        if not simulate:
+            if not com_port:
+                raise ValueError("com_port must be provided for scales")
+            if not tcp_port:
+                raise ValueError("tcp_port must be provided for scales")
         
         self.com_port = com_port
         self.baud_rate = baud_rate
@@ -89,12 +102,15 @@ class ScalesManager:
         self._process: Optional[subprocess.Popen] = None
         self._log_file_handle = None
         self._log_file_path: Optional[str] = None
+        self._started: bool = False
         self.client: Optional[ScalesClient] = None
         self.last_error: Optional[str] = None
     
     @property
     def is_running(self) -> bool:
         """Check if the scales server process is alive."""
+        if self._simulate:
+            return self._started
         return self._process is not None and self._process.poll() is None
     
     def start(self) -> bool:
@@ -104,6 +120,9 @@ class ScalesManager:
         Returns:
             True if the server started and the client connected successfully.
         """
+        if self._simulate:
+            return self._start_simulated()
+
         self._log(f"Starting scales on {self.com_port} (TCP port {self.tcp_port})...")
         
         # Build log path in session folder
@@ -205,6 +224,14 @@ class ScalesManager:
     
     def stop(self) -> None:
         """Stop the scales server gracefully."""
+        if self._simulate:
+            if self._started:
+                self._log("Scales (simulated): stopping")
+                if self.client is not None:
+                    self.client = None
+                self._started = False
+            return
+
         # Send shutdown via client
         if self.client is not None:
             try:
@@ -268,3 +295,57 @@ class ScalesManager:
             self._close_log_file()
             self._process = None
             self.client = None
+
+    # ── Simulated mode ──────────────────────────────────────────────────
+
+    def _start_simulated(self) -> bool:
+        """Start in simulated mode — no subprocess, mock or virtual client."""
+        if self._virtual_rig_state is not None:
+            self._log("Scales (simulated): starting virtual scales (weight from GUI)")
+            self.client = _VirtualScalesClient(self._virtual_rig_state)
+        else:
+            self._log("Scales (simulated): starting mock scales (weight = 0.0g)")
+            self.client = _MockScalesClient()
+        self._started = True
+        return True
+
+
+class _MockScalesClient:
+    """Internal mock client — returns 0.0 for all weight readings."""
+
+    def get_weight(self, timeout: float = 5.0) -> Optional[float]:
+        return 0.0
+
+    def ping(self, timeout: float = 5.0) -> bool:
+        return True
+
+    def connect(self, timeout: float = 10.0) -> bool:
+        return True
+
+    def disconnect(self) -> None:
+        pass
+
+    def shutdown(self) -> bool:
+        return True
+
+
+class _VirtualScalesClient:
+    """Internal simulated client — reads weight from VirtualRigState."""
+
+    def __init__(self, state: "VirtualRigState") -> None:
+        self._state = state
+
+    def get_weight(self, timeout: float = 5.0) -> Optional[float]:
+        return self._state.get_weight()
+
+    def ping(self, timeout: float = 5.0) -> bool:
+        return True
+
+    def connect(self, timeout: float = 10.0) -> bool:
+        return True
+
+    def disconnect(self) -> None:
+        pass
+
+    def shutdown(self) -> bool:
+        return True

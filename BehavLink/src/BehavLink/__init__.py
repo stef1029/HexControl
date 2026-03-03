@@ -45,7 +45,8 @@ from BehavLink.link import (
     calculate_crc16,
     reset_arduino_via_dtr,
 )
-from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
+from BehavLink.mock import MockSerial, mock_reset_arduino_via_dtr
+from BehavLink.simulation import SimulatedRig, VirtualRigState, RigStateSnapshot
 
 __all__ = [
     "BehaviourRigLink",
@@ -58,10 +59,13 @@ __all__ = [
     "build_frame",
     "calculate_crc16",
     "reset_arduino_via_dtr",
-    # Mock classes for virtual rig testing
-    "MockBehaviourRigLink",
+    # Mock serial stubs
     "MockSerial",
     "mock_reset_arduino_via_dtr",
+    # Simulation
+    "SimulatedRig",
+    "VirtualRigState",
+    "RigStateSnapshot",
 ]
 
 __version__ = "0.1.0"

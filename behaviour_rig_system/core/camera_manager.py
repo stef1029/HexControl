@@ -52,6 +52,7 @@ class CameraManager:
         window_width: int = 640,
         window_height: int = 512,
         log_callback: Optional[Callable[[str], None]] = None,
+        simulate: bool = False,
     ):
         """
         Initialise the camera manager.
@@ -67,11 +68,15 @@ class CameraManager:
             window_width: Preview window width.
             window_height: Preview window height.
             log_callback: Optional callback for log messages.
+            simulate: If True, skip subprocess launch and return success.
         """
-        if not camera_executable:
-            raise ValueError("camera_executable must be provided")
-        if not camera_serial:
-            raise ValueError("camera_serial must be provided")
+        self._simulate = simulate
+        
+        if not simulate:
+            if not camera_executable:
+                raise ValueError("camera_executable must be provided")
+            if not camera_serial:
+                raise ValueError("camera_serial must be provided")
         
         self.camera_executable = camera_executable
         self.camera_serial = camera_serial
@@ -85,11 +90,14 @@ class CameraManager:
         self._log = log_callback or print
         
         self._process: Optional[subprocess.Popen] = None
+        self._started: bool = False
         self.last_error: Optional[str] = None
     
     @property
     def is_running(self) -> bool:
         """Check if the camera process is alive."""
+        if self._simulate:
+            return self._started
         return self._process is not None and self._process.poll() is None
     
     def start(self) -> bool:
@@ -99,6 +107,11 @@ class CameraManager:
         Returns:
             True if the camera process launched successfully.
         """
+        if self._simulate:
+            self._log("Camera (simulated): skipping subprocess launch")
+            self._started = True
+            return True
+
         if not os.path.exists(self.camera_executable):
             self.last_error = f"Camera executable not found: {self.camera_executable}"
             self._log(self.last_error)
@@ -132,6 +145,12 @@ class CameraManager:
         """
         Stop the camera gracefully via signal file, then clean up.
         """
+        if self._simulate:
+            if self._started:
+                self._log("Camera (simulated): stopping")
+                self._started = False
+            return
+
         self._create_stop_signal()
         self._cleanup_process()
         self._cleanup_signal_files()

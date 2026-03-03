@@ -8,8 +8,8 @@ GPIOs, platform weight) and provides methods for:
     - Dirty-flag based change notification    (polled by GUI at fixed rate)
 
 The same VirtualRigState instance is shared between:
-    - SimulatedBehaviourRigLink  (reads/writes hardware state, waits for events)
-    - SimulatedScalesClient      (reads platform_weight)
+    - SimulatedRig               (reads/writes hardware state, waits for events)
+    - ScalesManager (simulated)  (reads platform_weight)
     - VirtualRigWindow           (reads state for drawing, writes events on click)
 
 Performance notes:
@@ -26,7 +26,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from BehavLink.link import (
@@ -142,7 +142,7 @@ class VirtualRigState:
             gpio_output_states=tuple(self._gpio_output_states),
         )
 
-    # ── Hardware setters (called by SimulatedBehaviourRigLink) ──────────
+    # ── Hardware setters (called by SimulatedRig) ───────────────────────
 
     def set_led(self, port: int, brightness: int) -> None:
         with self._lock:
@@ -237,7 +237,7 @@ class VirtualRigState:
         """Remove finished timers from the list. Must be called with _lock held."""
         self._active_timers = [t for t in self._active_timers if t.is_alive()]
 
-    # ── GPIO (called by SimulatedBehaviourRigLink) ──────────────────────
+    # ── GPIO (called by SimulatedRig) ───────────────────────────────────
 
     def set_gpio_mode(self, pin: int, mode: GPIOMode) -> None:
         with self._lock:

@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.virtual_rig_state import VirtualRigState
+    from BehavLink.simulation import VirtualRigState
 
 
 class SimulatedScalesClient:

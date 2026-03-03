@@ -17,13 +17,12 @@ from tkinter import messagebox, ttk
 
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
-from BehavLink.mock import MockBehaviourRigLink, MockSerial, mock_reset_arduino_via_dtr
-from BehavLink.simulated import SimulatedBehaviourRigLink
+from BehavLink import SimulatedRig, VirtualRigState
+from BehavLink.mock import MockSerial, mock_reset_arduino_via_dtr
 
 from core.peripheral_manager import PeripheralManager, load_peripheral_config
 from core.performance_tracker import PerformanceTracker
 from core.protocol_base import BaseProtocol, ProtocolEvent, ProtocolStatus
-from core.virtual_rig_state import VirtualRigState
 
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .startup_overlay import StartupOverlay
@@ -166,16 +165,6 @@ class RigWindow:
     # Startup Overlay
     # =========================================================================
     
-    def _show_startup_overlay(self) -> None:
-        """Show the startup overlay."""
-        self._startup_cancelled = False
-        self.setup_mode.pack_forget()
-        self.startup_overlay.show()
-    
-    def _hide_startup_overlay(self) -> None:
-        """Hide the startup overlay."""
-        self.startup_overlay.hide()
-    
     def _update_startup_status(self, message: str) -> None:
         """Update startup status (thread-safe)."""
         self.root.after(0, lambda: self.startup_overlay.update_status(message))
@@ -201,7 +190,9 @@ class RigWindow:
         self._session_protocol_name = session_config["protocol_class"].get_name()
         
         # Show startup overlay
-        self._show_startup_overlay()
+        self._startup_cancelled = False
+        self.setup_mode.pack_forget()
+        self.startup_overlay.show()
         
         # Run startup in background thread
         self.startup_thread = threading.Thread(target=self._startup_sequence, daemon=True)
@@ -306,10 +297,8 @@ class RigWindow:
             
             self._update_startup_status("Creating BehaviourRigLink...")
             board_type = self.rig_config.get("board_type", "giga")
-            if self._simulate and self._virtual_rig_state is not None:
-                self.link = SimulatedBehaviourRigLink(self._virtual_rig_state, self._serial)
-            elif self._simulate:
-                self.link = MockBehaviourRigLink(self._serial)
+            if self._simulate:
+                self.link = SimulatedRig(self._serial, self._virtual_rig_state)
             else:
                 self.link = BehaviourRigLink(self._serial, board_type=board_type)
             self.link.start()
@@ -367,7 +356,7 @@ class RigWindow:
     
     def _on_startup_complete(self) -> None:
         """Called when startup completes successfully."""
-        self._hide_startup_overlay()
+        self.startup_overlay.hide()
         
         # Open virtual rig window in simulate mode
         if self._simulate and self._virtual_rig_state is not None:
@@ -419,7 +408,7 @@ class RigWindow:
     
     def _close_startup_error(self) -> None:
         """Close the startup error overlay and return to setup mode."""
-        self._hide_startup_overlay()
+        self.startup_overlay.hide()
         self._show_mode(WindowMode.SETUP)
     
     def _on_startup_cancelled(self) -> None:
@@ -428,7 +417,7 @@ class RigWindow:
     
     def _cleanup_startup_cancelled(self) -> None:
         """Clean up after cancelled startup."""
-        self._hide_startup_overlay()
+        self.startup_overlay.hide()
         
         # Capture references for background cleanup, then clear them
         pm = self.peripheral_manager

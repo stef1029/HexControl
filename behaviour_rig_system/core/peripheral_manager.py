@@ -23,13 +23,9 @@ import yaml
 
 from core.board_registry import BoardRegistry
 from DAQLink.manager import DAQManager
-from DAQLink.mock import MockDAQManager
 from ScalesLink.manager import ScalesManager
-from ScalesLink.mock import MockScalesManager
-from ScalesLink.simulated import SimulatedScalesManager
 
 from .camera_manager import CameraManager
-from .mock_camera_manager import MockCameraManager
 
 
 @dataclass
@@ -222,9 +218,8 @@ class PeripheralManager:
         self.last_error: Optional[str] = None
     
     def start_daq(self) -> bool:
-        """Start the Arduino DAQ process via DAQManager (or mock)."""
-        ManagerClass = MockDAQManager if self._simulate else DAQManager
-        self._daq_manager = ManagerClass(
+        """Start the Arduino DAQ process via DAQManager."""
+        self._daq_manager = DAQManager(
             mouse_id=self.config.mouse_id,
             date_time=self.config.date_time,
             session_folder=self.config.session_folder,
@@ -233,6 +228,7 @@ class PeripheralManager:
             board_registry_path=str(self.config.board_registry_path),
             connection_timeout=self.config.connection_timeout,
             log_callback=self._log,
+            simulate=self._simulate,
         )
         
         result = self._daq_manager.start()
@@ -251,9 +247,8 @@ class PeripheralManager:
         return result
     
     def start_camera(self) -> bool:
-        """Start the camera process via CameraManager (or mock)."""
-        ManagerClass = MockCameraManager if self._simulate else CameraManager
-        self._camera_manager = ManagerClass(
+        """Start the camera process via CameraManager."""
+        self._camera_manager = CameraManager(
             camera_executable=self.config.camera_executable,
             camera_serial=self.config.camera_serial,
             mouse_id=self.config.mouse_id,
@@ -264,6 +259,7 @@ class PeripheralManager:
             window_width=self.config.camera_window_width,
             window_height=self.config.camera_window_height,
             log_callback=self._log,
+            simulate=self._simulate,
         )
         
         result = self._camera_manager.start()
@@ -272,7 +268,7 @@ class PeripheralManager:
         return result
     
     def start_scales(self) -> bool:
-        """Start the scales server subprocess via ScalesManager (or mock)."""
+        """Start the scales server subprocess via ScalesManager."""
         scales_cfg = self.config.scales
         
         # In simulate mode, skip real hardware resolution
@@ -288,36 +284,20 @@ class PeripheralManager:
                 self._log(self.last_error)
                 return False
         
-        ManagerClass = MockScalesManager if self._simulate else ScalesManager
-        
-        # Use simulated scales if virtual rig state is available
-        if self._simulate and self._virtual_rig_state is not None:
-            self._scales_manager = SimulatedScalesManager(
-                virtual_rig_state=self._virtual_rig_state,
-                com_port=com_port,
-                baud_rate=scales_cfg.baud_rate,
-                tcp_port=scales_cfg.tcp_port,
-                is_wired=scales_cfg.is_wired,
-                calibration_scale=scales_cfg.calibration_scale,
-                calibration_intercept=scales_cfg.calibration_intercept,
-                session_folder=self.config.session_folder,
-                date_time=self.config.date_time,
-                mouse_id=self.config.mouse_id,
-                log_callback=self._log,
-            )
-        else:
-            self._scales_manager = ManagerClass(
-                com_port=com_port,
-                baud_rate=scales_cfg.baud_rate,
-                tcp_port=scales_cfg.tcp_port,
-                is_wired=scales_cfg.is_wired,
-                calibration_scale=scales_cfg.calibration_scale,
-                calibration_intercept=scales_cfg.calibration_intercept,
-                session_folder=self.config.session_folder,
-                date_time=self.config.date_time,
-                mouse_id=self.config.mouse_id,
-                log_callback=self._log,
-            )
+        self._scales_manager = ScalesManager(
+            com_port=com_port,
+            baud_rate=scales_cfg.baud_rate,
+            tcp_port=scales_cfg.tcp_port,
+            is_wired=scales_cfg.is_wired,
+            calibration_scale=scales_cfg.calibration_scale,
+            calibration_intercept=scales_cfg.calibration_intercept,
+            session_folder=self.config.session_folder,
+            date_time=self.config.date_time,
+            mouse_id=self.config.mouse_id,
+            log_callback=self._log,
+            simulate=self._simulate,
+            virtual_rig_state=self._virtual_rig_state,
+        )
         
         result = self._scales_manager.start()
         if result:
