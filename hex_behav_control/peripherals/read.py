@@ -19,9 +19,9 @@ class Scales():
             self.intercept = 6497.609999999999
         else:
             if rig == 1:
-                self.port = "COM7"
-                self.scale = float(0.24866958662784275)       # these values are found by running Calibrate() and copying the output          ## Calibrated 29th September '25 (DW)
-                self.intercept = 250.44
+                self.port = "COM12"
+                self.scale = float(0.22375971500351627)       # these values are found by running Calibrate() and copying the output
+                self.intercept = -5617.39 
                 baudrate = 115200
             elif rig == 2:
                 self.port = "COM5"     ## These port numbers need checking
@@ -34,7 +34,7 @@ class Scales():
                 self.intercept = -1327.66
                 baudrate = 9600
             elif rig == 4:
-                self.port = "COM8"
+                self.port = "COM12"
                 self.scale = float(0.16461420192565693)
                 self.intercept = -616.28
                 baudrate = 9600
@@ -323,7 +323,11 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
+<<<<<<< HEAD
     scales = Scales(rig=1)
+=======
+    scales = Scales(rig=4)
+>>>>>>> hex-behav-code-v2.0
 
     scales.calibrate()
         

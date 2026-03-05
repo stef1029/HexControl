@@ -20,6 +20,7 @@ import csv
 import glob
 import json
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -48,35 +49,6 @@ EXIT_KEY   = "esc"     # Emergency‑stop key (test mode only)
 TEST_MODE  = False     # Set to ``True`` to enable hot‑key exit
 BAK_INTSEC = 5.0       # Seconds between incremental back‑ups
 
-# ---------------------------------------------------------------------------
-# UI helpers
-# ---------------------------------------------------------------------------
-
-class StatusWindow:
-    """Popup window showing current script status."""
-
-    def __init__(self) -> None:
-        self.root = tk.Tk()
-        self.root.title("Script Status")
-        self.root.geometry("300x100")
-        self.status_label = tk.Label(self.root, text="Initializing…", font=("Helvetica", 14))
-        self.status_label.pack(expand=True)
-        self.update_flag = True
-
-    def update_status(self, message: str) -> None:
-        """Update the status message displayed in the window."""
-        if self.update_flag:
-            self.status_label.config(text=message)
-            self.root.update()
-
-    def close_window(self) -> None:
-        """Mark the window as disabled and destroy it."""
-        self.update_flag = False
-        self.root.destroy()
-
-    def run(self) -> None:  # blocking
-        """Start the main event loop of the window."""
-        self.root.mainloop()
 
 # ---------------------------------------------------------------------------
 # Utility helpers (back‑up housekeeping, sentinel checking)
@@ -107,17 +79,28 @@ def delete_backups(backup_folder: Path) -> None:
 
 async def watch_sentinel(signal_path: Path, stop_event: asyncio.Event) -> None:
     """Set *stop_event* when *signal_path* appears (camera finished signal)."""
+    print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Watching for stop signal: {signal_path}")
+    
     if TEST_MODE:
         threading.Thread(target=lambda: keyboard.wait(EXIT_KEY) or stop_event.set(), daemon=True).start()
 
+    check_count = 0
     try:
         while not stop_event.is_set():
+            check_count += 1
             if signal_path.exists():
-                print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel detected → stopping acquisition")
+                print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel detected -> stopping acquisition")
                 stop_event.set()
                 break
+            # Log every 30 seconds that we're still watching
+            if check_count % 30 == 0:
+                print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Still watching for stop signal... (check #{check_count})")
             await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print(f"{Fore.YELLOW}ArduinoDAQ:{Style.RESET_ALL} Sentinel watcher cancelled")
+        raise
     finally:
+        print(f"{Fore.CYAN}ArduinoDAQ:{Style.RESET_ALL} Sentinel watcher finished (checked {check_count} times)")
         if TEST_MODE:
             keyboard.unhook_all()
 
@@ -199,9 +182,9 @@ def save_hdf5_json(
     }
 
     # JSON
-    json_file_path = output_directory / f"{foldername}-ArduinoDAQ.json"
-    with open(json_file_path, "w") as file_handle:
-        json.dump(metadata_dict, file_handle, indent=4)
+    # json_file_path = output_directory / f"{foldername}-ArduinoDAQ.json"
+    # with open(json_file_path, "w") as file_handle:
+    #     json.dump(metadata_dict, file_handle, indent=4)
 
     # HDF5
     hdf5_file_path = output_directory / f"{foldername}-ArduinoDAQ.h5"
@@ -233,8 +216,21 @@ async def listen(
     new_date_time: str | None = None,
     new_path:      str | None = None,
     rig:           str | None = None,
+    com_port:      str | None = None,
+    board_tag:     str | None = None,
+    registry_path: str | None = None,
 ) -> None:
-    """Serial acquisition task (top‑level coroutine)."""
+    """Serial acquisition task (top‑level coroutine).
+    
+    Args:
+        new_mouse_id: Mouse ID for the session
+        new_date_time: Datetime stamp for the session
+        new_path: Output directory path
+        rig: Rig number (1-4) for naming signal files
+        com_port: COM port to use. If None, falls back to board registry or rig-based lookup.
+        board_tag: Human-readable board tag (e.g. 'rig_1_daq'). Resolved via registry.
+        registry_path: Path to board_registry.json file.
+    """
     messages_from_arduino: deque[list[int | float]] = deque()
     backup_buffer: deque[list[int | float]] = deque()
 
@@ -243,45 +239,68 @@ async def listen(
     foldername = f"{date_time}_{mouse_id}"
 
     output_path = Path(new_path) if new_path else Path.cwd() / foldername
-    output_path.mkdir(exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     backup_folder = output_path / "backup_files"
-    backup_folder.mkdir(exist_ok=True)
+    backup_folder.mkdir(parents=True, exist_ok=True)
 
     connection_signal_file = output_path / (f"rig_{rig}_arduino_connected.signal" if rig else "arduino_connected.signal")
 
-    # COM‑port determination
-    if rig is None:
-        com_port = "COM2"
-    else:
-        com_port = {"1": "COM10", "2": "COM18", "3": "COM30", "4": "COM17"}.get(rig)
-        if com_port is None:
-            raise ValueError("Rig number not recognised")
+    # COM‑port determination: use provided port, or resolve via board registry, or fall back to rig-based lookup
+    if com_port is None:
+        if rig is None:
+            com_port = "COM2"
+        else:
+            # Try board registry first
+            try:
+                _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+                if str(_brs_root) not in sys.path:
+                    sys.path.insert(0, str(_brs_root))
+                from core.board_registry import BoardRegistry
+                if registry_path is None:
+                    raise ValueError("registry_path is required to resolve board names")
+                registry = BoardRegistry(Path(registry_path))
+                board_name = board_tag or f"rig_{rig}_daq"
+                com_port = registry.find_board_port(board_name)
+                print(f"Resolved DAQ board '{board_name}' -> {com_port}")
+            except Exception:
+                # Legacy fallback
+                com_port = {"1": "COM10", 
+                            "2": "COM18", 
+                            "3": "COM30", 
+                            "4": "COM17"}.get(rig)
+                if com_port is None:
+                    raise ValueError(f"Rig number '{rig}' not recognised and no --port provided")
 
     print(f"Connecting to Arduino Mega on {com_port}…")
     try:
         serial_connection = serial.Serial(com_port, 115200, timeout=1)
     except serial.SerialException:
-        print("Serial not found → retrying in 3 s…")
+        print("Serial not found -> retrying in 3s...")
         time.sleep(3)
         try:
             serial_connection = serial.Serial(com_port, 115200, timeout=1)
             time.sleep(3)
-        except serial.SerialException:
-            print("Failed to connect to Arduino Mega after retry.")
-            return
+        except serial.SerialException as exc:
+            print(f"Failed to connect to Arduino Mega after retry: {exc}")
+            sys.exit(1)
+
+    # Wait for the Arduino bootloader to finish after the DTR-triggered reset.
+    # Mega boards need ~1-2s; Giga boards don't reset on DTR so this is harmless.
+    print("Waiting for bootloader to finish...")
+    time.sleep(2)
 
     try:
-        serial_connection.write(b"s")
         serial_connection.reset_input_buffer()
+        serial_connection.write(b"s")
         if b"s" not in serial_connection.read_until(b"s", 5):
             print("Handshake failed — aborting.")
-            return
+            sys.exit(1)
         print("Arduino Mega connection established.")
         connection_signal_file.write_text(f"Connected at {datetime.now()}")
     except Exception as exc:  # noqa: BLE001
         print(f"Handshake error: {exc}")
-        return
+        sys.exit(1)
 
     start_time = time.perf_counter()
     message_counter = 0
@@ -323,10 +342,13 @@ async def listen(
         await asyncio.sleep(0)  # yield to event‑loop
 
     # -- acquisition ended -------------------------------------------------
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Stop signal received, ending acquisition...")
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Sending end commands to Arduino...")
     for _ in range(3):
         serial_connection.write(b"e")
         time.sleep(0.1)
     serial_connection.close()
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Serial connection closed")
 
     if backup_buffer:  # flush remainder
         # np.save(backup_folder / f"backup-{backup_counter:04d}.npy", np.array(backup_buffer))
@@ -335,8 +357,10 @@ async def listen(
     end_time = time.perf_counter()
 
     # Archive full dataset
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Saving data to HDF5/JSON...")
     save_hdf5_json(foldername, output_path, mouse_id, date_time, list(messages_from_arduino), 
                   message_counter, full_messages, start_time, end_time, error_messages)
+    print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Data saved successfully")
 
     # Consolidate incremental backups
     # combined_backup = read_all_backups(backup_folder)
@@ -358,24 +382,49 @@ def main() -> None:
         --id: mouse ID (default: NoID)
         --date: date_time stamp (YYMMDD_HHMMSS)
         --path: output directory
-        --rig: rig number [1‑4] (default: 3)
+        --rig: rig number [1‑4] (default: 1)
+        --port: COM port to use (e.g., COM7). If provided, overrides all other port selection.
+        --board-tag: Human-readable board tag (e.g., rig_1_daq). Resolved via registry.
+        --registry: Path to board_registry.json file.
     """
     parser = argparse.ArgumentParser(description="Listen to serial port and save data")
     parser.add_argument("--id",   type=str, help="mouse ID",  default="NoID")
     parser.add_argument("--date", type=str, help="date_time stamp (YYMMDD_HHMMSS)")
     parser.add_argument("--path", type=str, help="output directory")
-    parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="3")
+    parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
+    parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
+    parser.add_argument("--board", type=str, help="Board registry name (e.g., rig_1_daq). Resolves port via board_registry.json.", default=None)
+    parser.add_argument("--registry", type=str, help="Path to board_registry.json file.", default=None)
     args = parser.parse_args()
 
     mouse_id = args.id
     date_time = args.date or f"{datetime.now():%y%m%d_%H%M%S}"
     output_path = args.path or str(Path.cwd() / f"{date_time}_{mouse_id}")
 
+    # Resolve port: --board takes precedence over --port
+    resolved_port = args.port
+    if args.board:
+        try:
+            _brs_root = Path(__file__).resolve().parents[3] / "behaviour_rig_system"
+            if str(_brs_root) not in sys.path:
+                sys.path.insert(0, str(_brs_root))
+            from core.board_registry import BoardRegistry
+            if args.registry is None:
+                raise ValueError("--registry is required when using --board")
+            registry = BoardRegistry(Path(args.registry))
+            resolved_port = registry.find_board_port(args.board)
+            print(f"Resolved board '{args.board}' -> {resolved_port}")
+        except Exception as e:
+            print(f"Failed to resolve board '{args.board}': {e}")
+            resolved_port = args.port
+
     try:
-        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig))
+        asyncio.run(listen(new_mouse_id=mouse_id, new_date_time=date_time, new_path=output_path, rig=args.rig, com_port=resolved_port))
+    except SystemExit:
+        raise  # Let sys.exit() propagate with its exit code
     except Exception:
         traceback.print_exc()
-        input("ArduinoDAQ error — see traceback above.  Press Enter to exit…")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
