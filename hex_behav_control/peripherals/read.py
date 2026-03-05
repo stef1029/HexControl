@@ -323,11 +323,7 @@ def test_scales(scales):
 if __name__ == '__main__':
 
 
-<<<<<<< HEAD
-    scales = Scales(rig=1)
-=======
     scales = Scales(rig=4)
->>>>>>> hex-behav-code-v2.0
 
     scales.calibrate()
         
