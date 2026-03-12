@@ -22,6 +22,7 @@ from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 from core.board_registry import BoardRegistry
+from .launcher_background import draw_background
 from .theme import apply_theme, Theme, style_rig_button, create_rig_button
 
 if TYPE_CHECKING:
@@ -107,7 +108,7 @@ class RigLauncher:
     def __init__(self, config_path: Path, board_registry_path: Path):
         self.root = tk.Tk()
         self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("420x460")
+        self.root.geometry("440x480")
         self.root.resizable(False, False)
         
         # Apply modern theme
@@ -172,13 +173,17 @@ class RigLauncher:
         """Create the launcher widgets."""
         palette = Theme.palette
         
-        # Main container with padding
-        main_container = ttk.Frame(self.root, padding=(16, 10))
-        main_container.pack(fill="both", expand=True)
+        # Background canvas with daily generative art — also acts as
+        # the main layout container so art is visible between widgets.
+        self._bg_canvas = tk.Canvas(
+            self.root, highlightthickness=0, bg=palette.bg_primary
+        )
+        self._bg_canvas.pack(fill="both", expand=True)
+        draw_background(self._bg_canvas, 440, 480)
         
         # Header section with clock
-        header_frame = ttk.Frame(main_container)
-        header_frame.pack(fill="x", pady=(0, 6))
+        header_frame = ttk.Frame(self._bg_canvas)
+        header_frame.pack(pady=(10, 6))
         
         # Clock and date
         clock_frame = ttk.Frame(header_frame)
@@ -202,31 +207,31 @@ class RigLauncher:
         date_label.pack()
         
         # Separator
-        ttk.Separator(main_container, orient="horizontal").pack(fill="x", pady=6)
+        ttk.Separator(self._bg_canvas, orient="horizontal").pack(fill="x", pady=6)
         
         # Title
         title_label = ttk.Label(
-            main_container,
-            text="Behaviour Rig System",
+            self._bg_canvas,
+            text="Hex Behaviour Launcher",
             style="Heading.TLabel",
-            font=("Old English Text MT", 18)
+            font=("Old English Text MT", 24)
         )
         title_label.pack(pady=(3, 2))
         
         # Instructions
         instructions = ttk.Label(
-            main_container,
+            self._bg_canvas,
             text="Select rigs to launch:",
             style="Muted.TLabel"
         )
         instructions.pack(pady=(0, 8))
         
-        # Store main_container for use in other widget creation
-        self._main_container = main_container
+        # Use canvas as the main container so art shows between widgets
+        self._main_container = self._bg_canvas
         
         # Rig selection frame (toggle buttons in 2x2 grid)
         button_frame = ttk.Frame(self._main_container)
-        button_frame.pack(pady=6, fill="both", expand=True)
+        button_frame.pack(pady=(10, 10), padx=40)
         
         # Create a toggle button for each rig (2x2 grid)
         for i, rig in enumerate(self.rigs[:4]):  # Max 4 rigs
@@ -245,7 +250,7 @@ class RigLauncher:
                 text=rig_name,
                 command=lambda r=rig: self._on_rig_toggle(r),
             )
-            btn.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+            btn.grid(row=row, column=col, padx=10, pady=8, sticky="nsew")
             
             # Store reference
             self.rig_buttons[rig_name] = btn
