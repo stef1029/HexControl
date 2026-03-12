@@ -7,10 +7,17 @@ Provides a consistent, professional appearance across all windows with:
 - Consistent fonts and spacing
 - Status color coding (success, warning, error)
 
+Available palettes:
+- LIGHT_PALETTE: Modern blue theme - professional and clean
+- DARK_PALETTE: Dark theme - easy on the eyes for long sessions
+- DARK_GREEN_PALETTE: Hacker green - classic Matrix terminal style
+- DARK_RED_PALETTE: Hacker red - cyberpunk danger style
+
 Usage:
     from gui.theme import apply_theme, Theme
     
     root = tk.Tk()
+    Theme.palette = DARK_GREEN_PALETTE  # Switch palette before applying
     apply_theme(root)  # Applies modern styling to all widgets
 """
 
@@ -143,10 +150,92 @@ DARK_PALETTE = ColorPalette(
 )
 
 
+# Green theme
+DARK_GREEN_PALETTE = ColorPalette(
+    # Main backgrounds - pure black/dark charcoal
+    bg_primary="#0a0a0a",          # Near black base
+    bg_secondary="#0f0f0f",        # Slightly lighter for cards
+    bg_tertiary="#161616",         # Input fields
+    bg_header="#050505",           # Deepest black for headers
+
+    # Text colors - neon green glow
+    text_primary="#00ff41",        # Bright matrix green
+    text_secondary="#00cc33",      # Dimmer green
+    text_disabled="#004d1a",       # Dark muted green
+    text_inverse="#0a0a0a",        # Black for text on bright buttons
+
+    # Accent colors - phosphor green variants
+    accent_primary="#00ff41",      # Bright neon green
+    accent_secondary="#00cc33",    # Medium green
+    accent_hover="#33ff66",        # Lighter hover green
+    accent_active="#009926",       # Pressed darker green
+
+    # Status colors
+    success="#00ff41",             # Bright green
+    success_light="#0a1f0f",       # Dark green tint
+    warning="#ccff00",             # Yellow-green warning
+    warning_light="#1a1f0a",       # Dark warning tint
+    error="#ff3333",               # Red stands out
+    error_light="#1f0a0a",         # Dark red tint
+    info="#00ffcc",                # Cyan-green info
+    info_light="#0a1f1a",          # Dark cyan tint
+
+    # Border colors - subtle green glow
+    border_light="#003314",        # Subtle dark green
+    border_medium="#004d1a",       # Medium green
+    border_dark="#006622",         # Brighter green
+
+    # Special colors
+    rig_selected="#00cc33",        # Selected green
+    rig_open="#1a1a1a",            # Dark grey for open/disabled
+)
+
+
+# Red theme
+DARK_RED_PALETTE = ColorPalette(
+    # Main backgrounds - pure black/dark charcoal
+    bg_primary="#0a0a0a",          # Near black base
+    bg_secondary="#0f0f0f",        # Slightly lighter for cards
+    bg_tertiary="#161616",         # Input fields
+    bg_header="#050505",           # Deepest black for headers
+
+    # Text colors - neon red glow
+    text_primary="#ff3333",        # Bright neon red
+    text_secondary="#cc2929",      # Dimmer red
+    text_disabled="#4d1414",       # Dark muted red
+    text_inverse="#0a0a0a",        # Black for text on bright buttons
+
+    # Accent colors - crimson/neon red variants
+    accent_primary="#ff3333",      # Bright neon red
+    accent_secondary="#cc2929",    # Medium red
+    accent_hover="#ff6666",        # Lighter hover red
+    accent_active="#991f1f",       # Pressed darker red
+
+    # Status colors
+    success="#33ff77",             # Green still means success
+    success_light="#0a1f10",       # Dark green tint
+    warning="#ffcc00",             # Amber warning
+    warning_light="#1f1a0a",       # Dark amber tint
+    error="#ff3333",               # Red (matches theme)
+    error_light="#1f0a0a",         # Dark red tint
+    info="#ff6699",                # Pink info
+    info_light="#1f0a10",          # Dark pink tint
+
+    # Border colors - subtle red glow
+    border_light="#331414",        # Subtle dark red
+    border_medium="#4d1a1a",       # Medium red
+    border_dark="#662222",         # Brighter red
+
+    # Special colors
+    rig_selected="#cc2929",        # Selected red
+    rig_open="#1a1a1a",            # Dark grey for open/disabled
+)
+
+
 class Theme:
     """Theme configuration and utilities."""
     
-    palette = DARK_PALETTE
+    palette = DARK_RED_PALETTE
     
     # Font configurations
     # FONT_FAMILY = "Segoe UI"  # Modern Windows font

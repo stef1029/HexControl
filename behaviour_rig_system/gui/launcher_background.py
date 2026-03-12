@@ -2,6 +2,7 @@
 
 Renders a decorative line pattern onto a tkinter Canvas.
 The pattern is randomly chosen each launch from the enabled generators.
+Colors are automatically derived from the active theme in theme.py.
 """
 
 from __future__ import annotations
@@ -9,8 +10,13 @@ from __future__ import annotations
 import math
 import random
 
-# Line colors against bg_primary (#1e1e2e)
-_LINE_COLORS = ["#5b9bd5", "#4a89c8", "#74b3e8"]
+from behaviour_rig_system.gui.theme import Theme
+
+
+def _get_line_colors() -> list[str]:
+    """Get line colors from the current theme palette."""
+    palette = Theme.palette
+    return [palette.accent_primary, palette.accent_secondary, palette.accent_hover]
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +66,7 @@ def _draw_topo_rings(canvas, w: int, h: int, rng: random.Random) -> None:
         cy = rng.random() * h
         num_rings = rng.randint(12, 22)
         max_r = max(w, h) * rng.uniform(0.25, 0.55)
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
 
         for ring_i in range(num_rings):
             base_r = (ring_i + 1) * max_r / num_rings
@@ -89,7 +95,7 @@ def _draw_flow_field(canvas, w: int, h: int, rng: random.Random) -> None:
     step_sz = 3.0
 
     for _ in range(n_lines):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         x, y = rng.random() * w, rng.random() * h
         pts: list[float] = [x, y]
         for _ in range(steps):
@@ -115,7 +121,7 @@ def _draw_network(canvas, w: int, h: int, rng: random.Random) -> None:
     max_d_sq = (min(w, h) * 0.22) ** 2
 
     for i in range(n_pts):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         for j in range(i + 1, n_pts):
             dx = points[j][0] - points[i][0]
             dy = points[j][1] - points[i][1]
@@ -126,7 +132,7 @@ def _draw_network(canvas, w: int, h: int, rng: random.Random) -> None:
                     fill=color, width=1,
                 )
     for x, y in points:
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         canvas.create_oval(x - 2, y - 2, x + 2, y + 2,
                            fill=color, outline="")
 
@@ -141,7 +147,7 @@ def _draw_spirograph(canvas, w: int, h: int, rng: random.Random) -> None:
     cx, cy = w / 2, h / 2
 
     for _ in range(n_curves):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         a_freq = rng.randint(2, 7)
         b_freq = rng.randint(2, 7)
         phase = rng.random() * math.pi * 2
@@ -168,7 +174,7 @@ def _draw_moire(canvas, w: int, h: int, rng: random.Random) -> None:
     spacing = rng.uniform(14, 22)
 
     for sx, sy in sources:
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         max_r = math.hypot(max(w - sx, sx), max(h - sy, sy))
         n_rings = int(max_r / spacing)
         for ring_i in range(1, n_rings + 1):
@@ -212,7 +218,7 @@ def _draw_mondrian(canvas, w: int, h: int, rng: random.Random) -> None:
         rects = new_rects
 
     for x0, y0, x1, y1 in rects:
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         canvas.create_rectangle(x0, y0, x1, y1, outline=color, width=1)
 
 
@@ -242,7 +248,7 @@ def _draw_circle_packing(canvas, w: int, h: int, rng: random.Random) -> None:
             circles.append((cx, cy, r))
 
     for cx, cy, r in circles:
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
                            outline=color, width=1)
 
@@ -258,7 +264,7 @@ def _draw_crosshatch(canvas, w: int, h: int, rng: random.Random) -> None:
     diag = math.hypot(w, h)
 
     for _ in range(n_passes):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         base_angle = rng.uniform(0, math.pi)
         spacing = rng.uniform(12, 24)
         n_lines = int(diag / spacing) + 1
@@ -290,7 +296,7 @@ def _draw_fractal_trees(canvas, w: int, h: int, rng: random.Random) -> None:
     n_trees = rng.randint(4, 8)
 
     for _ in range(n_trees):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         root_x = rng.random() * w
         root_y = h * rng.uniform(0.95, 1.15)
         trunk_len = rng.uniform(120, 220)
@@ -320,7 +326,7 @@ def _draw_delaunay(canvas, w: int, h: int, rng: random.Random) -> None:
     """Triangulate random points into a mesh of edges (Bowyer-Watson)."""
     n_pts = rng.randint(60, 100)
     points = [(rng.random() * w, rng.random() * h) for _ in range(n_pts)]
-    color = rng.choice(_LINE_COLORS)
+    color = rng.choice(_get_line_colors())
 
     margin = max(w, h) * 3
     st = [(-margin, -margin), (2 * margin + w, -margin), (w / 2, 2 * margin + h)]
@@ -395,7 +401,7 @@ def _draw_orbital_trails(canvas, w: int, h: int, rng: random.Random) -> None:
     steps = rng.randint(250, 450)
 
     for _ in range(n_particles):
-        color = rng.choice(_LINE_COLORS)
+        color = rng.choice(_get_line_colors())
         x = rng.random() * w
         y = rng.random() * h
         # Higher initial velocity for sweeping arcs
