@@ -23,9 +23,15 @@ Usage:
 
 from __future__ import annotations
 
+import ctypes
+import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import NamedTuple
+
+# Icon path (relative to this file)
+_ICON_PATH = Path(__file__).parent / "favicon.ico"
 
 
 class ColorPalette(NamedTuple):
@@ -235,7 +241,7 @@ DARK_RED_PALETTE = ColorPalette(
 class Theme:
     """Theme configuration and utilities."""
     
-    palette = DARK_RED_PALETTE
+    palette = DARK_GREEN_PALETTE
     
     # Font configurations
     # FONT_FAMILY = "Segoe UI"  # Modern Windows font
@@ -300,6 +306,42 @@ class Theme:
         return (cls.FONT_FAMILY, cls.FONT_SIZE_TINY)
 
 
+def apply_dark_title_bar(window: tk.Tk | tk.Toplevel) -> bool:
+    """
+    Apply dark mode to the Windows title bar using the DWM API.
+    
+    This uses the official DWMWA_USE_IMMERSIVE_DARK_MODE attribute
+    available in Windows 10 build 18985+ and Windows 11.
+    
+    Args:
+        window: The tkinter window to apply dark title bar to.
+        
+    Returns:
+        True if dark title bar was applied, False if not supported.
+    """
+    if sys.platform != "win32":
+        return False
+    
+    try:
+        # Ensure window is created so we can get its handle
+        window.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+        
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        value = ctypes.c_int(1)  # 1 = enable dark mode
+        
+        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(value),
+            ctypes.sizeof(value)
+        )
+        return result == 0  # S_OK = 0
+    except Exception:
+        return False
+
+
 def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     """
     Apply the modern theme to a tkinter root window.
@@ -318,6 +360,16 @@ def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     
     # Configure root window
     root.configure(bg=palette.bg_primary)
+    
+    # Apply dark title bar on Windows
+    apply_dark_title_bar(root)
+    
+    # Apply custom icon
+    if _ICON_PATH.exists():
+        try:
+            root.iconbitmap(_ICON_PATH)
+        except tk.TclError:
+            pass  # Silently ignore if icon can't be loaded
     
     # =========================================================================
     # Frame Styles
