@@ -82,7 +82,7 @@ class RunningMode(ttk.Frame):
         ttk.Label(stats_row, text="Accuracy:", style="Subheading.TLabel").pack(side="left")
         self._accuracy_label = ttk.Label(
             stats_row, text="--", 
-            font=(Theme.FONT_FAMILY_MONO, 12, "bold"),
+            font=Theme.font_mono(size=12, weight="bold"),
             foreground=palette.info
         )
         self._accuracy_label.pack(side="left", padx=(6, 16))
@@ -152,7 +152,7 @@ class RunningMode(ttk.Frame):
         ttk.Label(timer_frame, text="Elapsed:", style="Subheading.TLabel").pack(side="left")
         self._timer_label = ttk.Label(
             timer_frame, text="00:00:00",
-            font=(Theme.FONT_FAMILY_MONO, 22, "bold"), 
+            font=Theme.font_mono(size=22, weight="bold"), 
             foreground=palette.success
         )
         self._timer_label.pack(side="left", padx=10)

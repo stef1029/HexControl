@@ -42,15 +42,15 @@ class TextRedirector:
         palette = Theme.palette
         
         # Cohort header (===) - accent blue
-        self.widget.tag_configure("header", foreground=palette.accent_primary, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        self.widget.tag_configure("header", foreground=palette.accent_primary, font=Theme.font_mono(size=9, weight="bold"))
         # Step headers (-----) - info color
-        self.widget.tag_configure("step", foreground=palette.info, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        self.widget.tag_configure("step", foreground=palette.info, font=Theme.font_mono(size=9, weight="bold"))
         # Labels (COHORT:, DIRECTORY:, etc.) - success green
         self.widget.tag_configure("label", foreground=palette.success)
         # Errors - error red
         self.widget.tag_configure("error", foreground=palette.error)
         # Success messages - success green bold
-        self.widget.tag_configure("success", foreground=palette.success, font=(Theme.FONT_FAMILY_MONO, 9, "bold"))
+        self.widget.tag_configure("success", foreground=palette.success, font=Theme.font_mono(size=9, weight="bold"))
         # Warnings - warning orange
         self.widget.tag_configure("warning", foreground=palette.warning)
         # Normal text

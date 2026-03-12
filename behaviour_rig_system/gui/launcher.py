@@ -188,7 +188,7 @@ class RigLauncher:
         clock_label = ttk.Label(
             clock_frame,
             textvariable=self._clock_var,
-            font=(Theme.FONT_FAMILY, 26, "bold"),
+            font=Theme.font(size=26, weight="bold"),
             foreground=palette.accent_primary
         )
         clock_label.pack()
@@ -208,7 +208,8 @@ class RigLauncher:
         title_label = ttk.Label(
             main_container,
             text="Behaviour Rig System",
-            style="Heading.TLabel"
+            style="Heading.TLabel",
+            font=("Old English Text MT", 18)
         )
         title_label.pack(pady=(3, 2))
         

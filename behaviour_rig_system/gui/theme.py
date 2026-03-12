@@ -149,8 +149,11 @@ class Theme:
     palette = DARK_PALETTE
     
     # Font configurations
-    FONT_FAMILY = "Segoe UI"  # Modern Windows font
-    FONT_FAMILY_MONO = "Consolas"
+    # FONT_FAMILY = "Segoe UI"  # Modern Windows font
+    # FONT_FAMILY_MONO = "Consolas"
+
+    FONT_FAMILY = "Small Fonts"
+    FONT_FAMILY_MONO = "Terminal"
     
     FONT_SIZE_TITLE = 18
     FONT_SIZE_HEADING = 14
@@ -176,10 +179,12 @@ class Theme:
         return (cls.FONT_FAMILY, size, weight)
     
     @classmethod
-    def font_mono(cls, size: int = None) -> tuple:
+    def font_mono(cls, size: int = None, weight: str = "normal") -> tuple:
         """Get a font tuple for monospace fonts."""
         size = size or cls.FONT_SIZE_BODY
-        return (cls.FONT_FAMILY_MONO, size)
+        if weight == "normal":
+            return (cls.FONT_FAMILY_MONO, size)
+        return (cls.FONT_FAMILY_MONO, size, weight)
     
     @classmethod
     def font_title(cls) -> tuple:
@@ -774,7 +779,7 @@ def style_rig_button(
     palette = Theme.palette
     
     base_config = {
-        "font": Theme.font(size=11, weight="bold"),
+        "font": Theme.font(size=13, weight="bold"),
         "relief": "flat",
         "borderwidth": 0,
         "cursor": "hand2",
@@ -831,7 +836,7 @@ def create_rig_button(parent, text: str, command, **kwargs) -> tk.Button:
         parent,
         text=text,
         command=command,
-        font=Theme.font(size=11, weight="bold"),
+        font=Theme.font(size=13, weight="bold"),
         relief="flat",
         borderwidth=0,
         cursor="hand2",
