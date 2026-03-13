@@ -7,18 +7,31 @@ Provides a consistent, professional appearance across all windows with:
 - Consistent fonts and spacing
 - Status color coding (success, warning, error)
 
+Available palettes:
+- LIGHT_PALETTE: Modern blue theme - professional and clean
+- DARK_PALETTE: Dark theme - easy on the eyes for long sessions
+- DARK_GREEN_PALETTE: Hacker green - classic Matrix terminal style
+- DARK_RED_PALETTE: Hacker red - cyberpunk danger style
+
 Usage:
     from gui.theme import apply_theme, Theme
     
     root = tk.Tk()
+    Theme.palette = DARK_GREEN_PALETTE  # Switch palette before applying
     apply_theme(root)  # Applies modern styling to all widgets
 """
 
 from __future__ import annotations
 
+import ctypes
+import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import NamedTuple
+
+# Icon path (relative to this file)
+_ICON_PATH = Path(__file__).parent / "favicon.ico"
 
 
 class ColorPalette(NamedTuple):
@@ -143,14 +156,99 @@ DARK_PALETTE = ColorPalette(
 )
 
 
+# Green theme
+DARK_GREEN_PALETTE = ColorPalette(
+    # Main backgrounds - pure black/dark charcoal
+    bg_primary="#0a0a0a",          # Near black base
+    bg_secondary="#0f0f0f",        # Slightly lighter for cards
+    bg_tertiary="#161616",         # Input fields
+    bg_header="#050505",           # Deepest black for headers
+
+    # Text colors - neon green glow
+    text_primary="#00ff41",        # Bright matrix green
+    text_secondary="#00cc33",      # Dimmer green
+    text_disabled="#004d1a",       # Dark muted green
+    text_inverse="#0a0a0a",        # Black for text on bright buttons
+
+    # Accent colors - phosphor green variants
+    accent_primary="#00ff41",      # Bright neon green
+    accent_secondary="#00cc33",    # Medium green
+    accent_hover="#33ff66",        # Lighter hover green
+    accent_active="#009926",       # Pressed darker green
+
+    # Status colors
+    success="#00ff41",             # Bright green
+    success_light="#0a1f0f",       # Dark green tint
+    warning="#ccff00",             # Yellow-green warning
+    warning_light="#1a1f0a",       # Dark warning tint
+    error="#ff3333",               # Red stands out
+    error_light="#1f0a0a",         # Dark red tint
+    info="#00ffcc",                # Cyan-green info
+    info_light="#0a1f1a",          # Dark cyan tint
+
+    # Border colors - subtle green glow
+    border_light="#003314",        # Subtle dark green
+    border_medium="#004d1a",       # Medium green
+    border_dark="#006622",         # Brighter green
+
+    # Special colors
+    rig_selected="#00cc33",        # Selected green
+    rig_open="#1a1a1a",            # Dark grey for open/disabled
+)
+
+
+# Red theme
+DARK_RED_PALETTE = ColorPalette(
+    # Main backgrounds - pure black/dark charcoal
+    bg_primary="#0a0a0a",          # Near black base
+    bg_secondary="#0f0f0f",        # Slightly lighter for cards
+    bg_tertiary="#161616",         # Input fields
+    bg_header="#050505",           # Deepest black for headers
+
+    # Text colors - neon red glow
+    text_primary="#ff3333",        # Bright neon red
+    text_secondary="#cc2929",      # Dimmer red
+    text_disabled="#4d1414",       # Dark muted red
+    text_inverse="#0a0a0a",        # Black for text on bright buttons
+
+    # Accent colors - crimson/neon red variants
+    accent_primary="#ff3333",      # Bright neon red
+    accent_secondary="#cc2929",    # Medium red
+    accent_hover="#ff6666",        # Lighter hover red
+    accent_active="#991f1f",       # Pressed darker red
+
+    # Status colors
+    success="#33ff77",             # Green still means success
+    success_light="#0a1f10",       # Dark green tint
+    warning="#ffcc00",             # Amber warning
+    warning_light="#1f1a0a",       # Dark amber tint
+    error="#ff3333",               # Red (matches theme)
+    error_light="#1f0a0a",         # Dark red tint
+    info="#ff6699",                # Pink info
+    info_light="#1f0a10",          # Dark pink tint
+
+    # Border colors - subtle red glow
+    border_light="#331414",        # Subtle dark red
+    border_medium="#4d1a1a",       # Medium red
+    border_dark="#662222",         # Brighter red
+
+    # Special colors
+    rig_selected="#cc2929",        # Selected red
+    rig_open="#1a1a1a",            # Dark grey for open/disabled
+)
+
+
 class Theme:
     """Theme configuration and utilities."""
     
-    palette = DARK_PALETTE
+    palette = DARK_GREEN_PALETTE
     
     # Font configurations
-    FONT_FAMILY = "Segoe UI"  # Modern Windows font
-    FONT_FAMILY_MONO = "Consolas"
+    # FONT_FAMILY = "Segoe UI"  # Modern Windows font
+    # FONT_FAMILY_MONO = "Consolas"
+
+    FONT_FAMILY = "Small Fonts"
+    FONT_FAMILY_MONO = "Terminal"
     
     FONT_SIZE_TITLE = 18
     FONT_SIZE_HEADING = 14
@@ -176,10 +274,12 @@ class Theme:
         return (cls.FONT_FAMILY, size, weight)
     
     @classmethod
-    def font_mono(cls, size: int = None) -> tuple:
+    def font_mono(cls, size: int = None, weight: str = "normal") -> tuple:
         """Get a font tuple for monospace fonts."""
         size = size or cls.FONT_SIZE_BODY
-        return (cls.FONT_FAMILY_MONO, size)
+        if weight == "normal":
+            return (cls.FONT_FAMILY_MONO, size)
+        return (cls.FONT_FAMILY_MONO, size, weight)
     
     @classmethod
     def font_title(cls) -> tuple:
@@ -206,6 +306,42 @@ class Theme:
         return (cls.FONT_FAMILY, cls.FONT_SIZE_TINY)
 
 
+def apply_dark_title_bar(window: tk.Tk | tk.Toplevel) -> bool:
+    """
+    Apply dark mode to the Windows title bar using the DWM API.
+    
+    This uses the official DWMWA_USE_IMMERSIVE_DARK_MODE attribute
+    available in Windows 10 build 18985+ and Windows 11.
+    
+    Args:
+        window: The tkinter window to apply dark title bar to.
+        
+    Returns:
+        True if dark title bar was applied, False if not supported.
+    """
+    if sys.platform != "win32":
+        return False
+    
+    try:
+        # Ensure window is created so we can get its handle
+        window.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+        
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        value = ctypes.c_int(1)  # 1 = enable dark mode
+        
+        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(value),
+            ctypes.sizeof(value)
+        )
+        return result == 0  # S_OK = 0
+    except Exception:
+        return False
+
+
 def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     """
     Apply the modern theme to a tkinter root window.
@@ -224,6 +360,16 @@ def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     
     # Configure root window
     root.configure(bg=palette.bg_primary)
+    
+    # Apply dark title bar on Windows
+    apply_dark_title_bar(root)
+    
+    # Apply custom icon
+    if _ICON_PATH.exists():
+        try:
+            root.iconbitmap(_ICON_PATH)
+        except tk.TclError:
+            pass  # Silently ignore if icon can't be loaded
     
     # =========================================================================
     # Frame Styles
@@ -774,7 +920,7 @@ def style_rig_button(
     palette = Theme.palette
     
     base_config = {
-        "font": Theme.font(size=11, weight="bold"),
+        "font": Theme.font(size=13, weight="bold"),
         "relief": "flat",
         "borderwidth": 0,
         "cursor": "hand2",
@@ -831,7 +977,7 @@ def create_rig_button(parent, text: str, command, **kwargs) -> tk.Button:
         parent,
         text=text,
         command=command,
-        font=Theme.font(size=11, weight="bold"),
+        font=Theme.font(size=13, weight="bold"),
         relief="flat",
         borderwidth=0,
         cursor="hand2",

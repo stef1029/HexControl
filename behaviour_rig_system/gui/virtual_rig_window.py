@@ -250,7 +250,7 @@ class VirtualRigWindow:
             fill=_COLOUR_CANVAS_BG, outline="#4a5568", width=1,
         )
         self._speaker_label = c.create_text(
-            sx, sy, text="♪", fill="#555", font=("Segoe UI", 12),
+            sx, sy, text="♪", fill="#555", font=Theme.font(size=12),
         )
 
         # IR indicator (small circle top-left of platform)
@@ -260,7 +260,7 @@ class VirtualRigWindow:
             fill=_COLOUR_CANVAS_BG, outline="#4a5568", width=1,
         )
         self._ir_label = c.create_text(
-            ix, iy, text="IR", fill="#555", font=("Segoe UI", 8, "bold"),
+            ix, iy, text="IR", fill="#555", font=Theme.font(size=8, weight="bold"),
         )
 
         # 6 ports
@@ -295,7 +295,7 @@ class VirtualRigWindow:
             sensor_lbl = c.create_text(
                 px, py + 10,
                 text="⬡", fill="#555",
-                font=("Segoe UI", 12),
+                font=Theme.font(size=12),
             )
 
             # Click binding on the port circle
