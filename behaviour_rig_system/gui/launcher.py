@@ -117,7 +117,7 @@ class RigLauncher:
         # Store config path for passing to child windows
         self.config_path = config_path
         
-        # Load configuration
+        # Check configuration
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Rig configuration file not found: {config_path}"
