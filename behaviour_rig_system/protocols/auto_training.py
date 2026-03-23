@@ -17,14 +17,11 @@ from autotraining.persistence import (
     save_training_state,
 )
 from core.parameter_types import FloatParameter, IntParameter, StringParameter
-from core.protocol_base import BaseProtocol, ProtocolEvent
+from core.protocol_base import BaseProtocol
 
 
 class AutoTrainingProtocol(BaseProtocol):
     """Adaptive training protocol with persistent stage progression."""
-
-    _scales_client = None
-    _perf_tracker = None
 
     @classmethod
     def get_name(cls) -> str:
@@ -87,30 +84,13 @@ class AutoTrainingProtocol(BaseProtocol):
             ),
         ]
 
-    def _cleanup(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _on_abort(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _log(self, message: str) -> None:
-        self._emit_event(ProtocolEvent("status_update", data={"message": message}))
-
     def _run_protocol(self) -> None:
         params = self.parameters
-        scales = getattr(self, "_scales_client", None)
-        perf_tracker = getattr(self, "_perf_tracker", None)
+        scales = self.scales
+        perf_tracker = self.perf_tracker
 
         if scales is None:
-            self._log("ERROR: Scales not available!")
+            self.log("ERROR: Scales not available!")
             return
 
         if perf_tracker is not None:
@@ -144,14 +124,14 @@ class AutoTrainingProtocol(BaseProtocol):
         if start_override and start_override in STAGES:
             saved_stage = start_override
             saved_trials = 0
-            self._log(f"Manual stage override: {start_override}")
+            self.log(f"Manual stage override: {start_override}")
         else:
             saved_stage = saved_state.current_stage or default_first_stage
             saved_trials = saved_state.trials_in_stage
 
-        self._log(f"Mouse: {mouse_id}")
-        self._log(f"Saved stage: {saved_stage} ({saved_trials} trials accumulated)")
-        self._log(f"Progress folder: {progress_folder}")
+        self.log(f"Mouse: {mouse_id}")
+        self.log(f"Saved stage: {saved_stage} ({saved_trials} trials accumulated)")
+        self.log(f"Progress folder: {progress_folder}")
 
         engine = AutotrainingEngine(
             stages=STAGES,
@@ -161,7 +141,7 @@ class AutoTrainingProtocol(BaseProtocol):
         )
 
         if perf_tracker is not None:
-            engine.initialise_session(perf_tracker, self._log)
+            engine.initialise_session(perf_tracker, self.log)
 
         session_start = time.time()
         trial_num = 0
@@ -169,11 +149,11 @@ class AutoTrainingProtocol(BaseProtocol):
         try:
             while True:
                 if num_trials > 0 and trial_num >= num_trials:
-                    self._log(f"Completed {num_trials} trials")
+                    self.log(f"Completed {num_trials} trials")
                     break
 
                 if self._check_abort():
-                    self._log("Aborted by user")
+                    self.log("Aborted by user")
                     break
 
                 stage_params = engine.get_active_params()
@@ -195,7 +175,7 @@ class AutoTrainingProtocol(BaseProtocol):
                         enabled_ports.append(i)
 
                 if not enabled_ports:
-                    self._log(f"WARNING: No ports enabled in stage {engine.current_stage_name}, using port 0")
+                    self.log(f"WARNING: No ports enabled in stage {engine.current_stage_name}, using port 0")
                     enabled_ports = [0]
 
                 platform_ready = False
@@ -233,7 +213,7 @@ class AutoTrainingProtocol(BaseProtocol):
                     elapsed = time.time() - activation_time
                     weight = scales.get_weight()
                     if weight is None or weight < weight_threshold:
-                        self._log("  Mouse left platform during wait period")
+                        self.log("  Mouse left platform during wait period")
                         break
                     if elapsed >= wait_duration:
                         wait_complete = True
@@ -287,14 +267,14 @@ class AutoTrainingProtocol(BaseProtocol):
                     if perf_tracker is not None:
                         perf_tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
                     outcome = "timeout"
-                    self._log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
+                    self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
                 elif event.port == target_port:
                     if perf_tracker is not None:
                         perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
                     self.link.valve_pulse(target_port, reward_ms)
                     outcome = "success"
                     chosen_port = event.port
-                    self._log(
+                    self.log(
                         f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
                     )
                 else:
@@ -306,7 +286,7 @@ class AutoTrainingProtocol(BaseProtocol):
                         )
                     outcome = "failure"
                     chosen_port = event.port
-                    self._log(
+                    self.log(
                         f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
                     )
 
@@ -323,8 +303,8 @@ class AutoTrainingProtocol(BaseProtocol):
                 )
 
                 if new_stage is not None and perf_tracker is not None:
-                    self._log(f"    Rolling accuracy: {perf_tracker.rolling_accuracy(10):.0f}% (last 10)")
-                    self._log(f"    Now entering: {engine.current_stage_display}")
+                    self.log(f"    Rolling accuracy: {perf_tracker.rolling_accuracy(10):.0f}% (last 10)")
+                    self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self._check_abort() and iti > 0:
                     time.sleep(iti)
@@ -340,18 +320,18 @@ class AutoTrainingProtocol(BaseProtocol):
                     trials_in_stage=end_state["trials_in_stage"],
                     previous_state=saved_state,
                 )
-                self._log(
+                self.log(
                     f"Training state saved: stage={end_state['current_stage']}, "
                     f"trials={end_state['trials_in_stage']}"
                 )
             else:
-                self._log("Session ended during warm-up — training state NOT updated")
+                self.log("Session ended during warm-up — training state NOT updated")
 
             session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             transition_log = engine.get_transition_log()
             if transition_log:
                 append_transition_log(progress_folder, mouse_id, session_id, transition_log)
-                self._log(f"Logged {len(transition_log)} stage transition(s)")
+                self.log(f"Logged {len(transition_log)} stage transition(s)")
 
             session_duration = (time.time() - session_start) / 60.0
-            self._log(f"Session complete: {trial_num} trials in {session_duration:.1f} minutes")
+            self.log(f"Session complete: {trial_num} trials in {session_duration:.1f} minutes")

@@ -8,7 +8,7 @@ import random
 import time
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter
-from core.protocol_base import BaseProtocol, ProtocolEvent
+from core.protocol_base import BaseProtocol
 
 
 try:
@@ -24,9 +24,6 @@ except ImportError:
 
 class FullTaskWithWaitProtocol(BaseProtocol):
     """Complete task: wait on platform, then respond to visual/audio cue for reward."""
-
-    _scales_client = None
-    _perf_tracker = None
 
     @classmethod
     def get_name(cls) -> str:
@@ -118,30 +115,13 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             ),
         ]
 
-    def _cleanup(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _on_abort(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _log(self, message: str) -> None:
-        self._emit_event(ProtocolEvent("status_update", data={"message": message}))
-
     def _run_protocol(self) -> None:
         params = self.parameters
-        scales = getattr(self, "_scales_client", None)
-        perf_tracker = getattr(self, "_perf_tracker", None)
+        scales = self.scales
+        perf_tracker = self.perf_tracker
 
         if scales is None:
-            self._log("ERROR: Scales not available!")
+            self.log("ERROR: Scales not available!")
             return
 
         if perf_tracker is not None:
@@ -172,7 +152,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 enabled_ports.append(i)
 
         if not enabled_ports and not audio_enabled:
-            self._log("ERROR: No ports enabled and audio disabled! Enable at least one port.")
+            self.log("ERROR: No ports enabled and audio disabled! Enable at least one port.")
             return
 
         trial_order = None
@@ -180,16 +160,16 @@ class FullTaskWithWaitProtocol(BaseProtocol):
         if audio_enabled:
             if audio_proportion == 0:
                 weighted_pool = [6]
-                self._log("Mode: All audio trials (reward at port 0)")
+                self.log("Mode: All audio trials (reward at port 0)")
             else:
                 weighted_pool = enabled_ports.copy()
                 for _ in range(audio_proportion):
                     weighted_pool.append(6)
-                self._log(f"Mode: Mixed audio/visual (audio proportion: {audio_proportion})")
-                self._log(f"Visual ports: {enabled_ports}")
+                self.log(f"Mode: Mixed audio/visual (audio proportion: {audio_proportion})")
+                self.log(f"Visual ports: {enabled_ports}")
         else:
             weighted_pool = enabled_ports.copy()
-            self._log(f"Mode: Visual only, ports: {enabled_ports}")
+            self.log(f"Mode: Visual only, ports: {enabled_ports}")
 
         if num_trials > 0:
             trial_order = []
@@ -198,25 +178,25 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             random.shuffle(trial_order)
 
         trials_str = "unlimited" if num_trials == 0 else str(num_trials)
-        self._log("Starting Full Task with Wait Period")
-        self._log(f"  Mouse weight: {mouse_weight}g, threshold: {weight_threshold:.1f}g")
-        self._log(f"  Trials: {trials_str}")
-        self._log(f"  Wait duration: {wait_duration}s, Response timeout: {response_timeout}s")
+        self.log("Starting Full Task with Wait Period")
+        self.log(f"  Mouse weight: {mouse_weight}g, threshold: {weight_threshold:.1f}g")
+        self.log(f"  Trials: {trials_str}")
+        self.log(f"  Wait duration: {wait_duration}s, Response timeout: {response_timeout}s")
         if cue_duration > 0:
-            self._log(f"  Cue duration: {cue_duration}s (limited)")
+            self.log(f"  Cue duration: {cue_duration}s (limited)")
         else:
-            self._log("  Cue duration: unlimited (until response)")
-        self._log("---")
+            self.log("  Cue duration: unlimited (until response)")
+        self.log("---")
 
         trial_num = 0
 
         while True:
             if num_trials > 0 and trial_num >= num_trials:
-                self._log(f"Completed {num_trials} trials")
+                self.log(f"Completed {num_trials} trials")
                 break
 
             if self._check_abort():
-                self._log("Aborted by user")
+                self.log("Aborted by user")
                 break
 
             platform_ready = False
@@ -262,7 +242,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 weight = scales.get_weight()
 
                 if weight is None or weight < weight_threshold:
-                    self._log("  Mouse left platform during wait period")
+                    self.log("  Mouse left platform during wait period")
                     break
 
                 if elapsed >= wait_duration:
@@ -288,7 +268,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 try:
                     self.link.speaker_set(SpeakerFrequency.FREQ_3300_HZ, SpeakerDuration.DURATION_500_MS)
                 except Exception as e:
-                    self._log(f"  Warning: Could not play audio cue: {e}")
+                    self.log(f"  Warning: Could not play audio cue: {e}")
             else:
                 self.link.led_set(target_port, led_brightness)
 
@@ -322,12 +302,12 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             if event is None:
                 if perf_tracker is not None:
                     perf_tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
-                self._log(f"  TIMEOUT - no response in {response_timeout:.1f}s")
+                self.log(f"  TIMEOUT - no response in {response_timeout:.1f}s")
             elif event.port == target_port:
                 if perf_tracker is not None:
                     perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
                 self.link.valve_pulse(target_port, reward_ms)
-                self._log(f"  SUCCESS - correct port {event.port}, reward delivered")
+                self.log(f"  SUCCESS - correct port {event.port}, reward delivered")
             else:
                 if perf_tracker is not None:
                     perf_tracker.failure(
@@ -335,7 +315,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                         chosen_port=event.port,
                         trial_duration=trial_duration,
                     )
-                self._log(f"  FAILURE - chose port {event.port}, expected port {target_port}")
+                self.log(f"  FAILURE - chose port {event.port}, expected port {target_port}")
 
                 if punishment_s > 0:
                     self.link.spotlight_set(255, 255)

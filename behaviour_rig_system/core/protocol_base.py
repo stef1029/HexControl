@@ -78,11 +78,14 @@ class BaseProtocol(ABC):
     def __init__(
         self,
         parameters: dict[str, Any],
-        link: "BehaviourRigLink | None" = None,
+        link: Any | None = None,
     ):
         self.parameters = parameters  # Dict of parameter values
         self.link = link              # BehaviourRigLink (direct hardware access)
         self.status = ProtocolStatus.IDLE
+        self.scales = None
+        self.perf_tracker = None
+        self.rig_number: int | None = None
         
         self._abort_requested = False
         self._event_listeners: list[Callable[[ProtocolEvent], None]] = []
@@ -131,12 +134,20 @@ class BaseProtocol(ABC):
         pass
 
     def _cleanup(self) -> None:
-        """Called after _run_protocol. Always runs! Turn off outputs here."""
-        pass
+        """Called after _run_protocol. Default behavior turns rig outputs off."""
+        if self.link:
+            try:
+                self.link.shutdown()
+            except Exception:
+                pass
 
     def _on_abort(self) -> None:
-        """Called when user clicks Stop. Turn off outputs immediately."""
-        pass
+        """Called when user clicks Stop. Default behavior turns rig outputs off."""
+        if self.link:
+            try:
+                self.link.shutdown()
+            except Exception:
+                pass
 
     # =========================================================================
     # Public Methods
@@ -193,6 +204,18 @@ class BaseProtocol(ABC):
         """Register a callback to receive events (used by GUI)."""
         self._event_listeners.append(listener)
 
+    def set_runtime_context(
+        self,
+        *,
+        scales=None,
+        perf_tracker=None,
+        rig_number: int | None = None,
+    ) -> None:
+        """Attach runtime services provided by the GUI/orchestrator."""
+        self.scales = scales
+        self.perf_tracker = perf_tracker
+        self.rig_number = rig_number
+
     # =========================================================================
     # Protected Methods - Use these in your protocol
     # =========================================================================
@@ -222,6 +245,10 @@ class BaseProtocol(ABC):
                 return
         """
         return self._abort_requested
+
+    def log(self, message: str) -> None:
+        """Convenience helper for status messages in the GUI log."""
+        self._emit_event(ProtocolEvent("status_update", data={"message": message}))
 
     # =========================================================================
     # Properties

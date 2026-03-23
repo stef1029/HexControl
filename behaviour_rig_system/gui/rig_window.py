@@ -329,19 +329,21 @@ class RigWindow:
                 parameters=config["parameters"],
                 link=self.link,
             )
-            # Set rig number so protocol can access it
-            self.current_protocol.rig_number = rig_number
-            
-            # Pass scales client to protocol
-            if self.peripheral_manager.scales_client is not None:
-                self.current_protocol._scales_client = self.peripheral_manager.scales_client
             
             # Create and pass performance tracker
             self._perf_tracker = PerformanceTracker(
                 on_update=lambda t: self.running_mode.update_performance(t),
                 on_stimulus=lambda port: self.running_mode.log_stimulus(port),
             )
-            self.current_protocol._perf_tracker = self._perf_tracker
+            scales_client = None
+            if self.peripheral_manager.scales_client is not None:
+                scales_client = self.peripheral_manager.scales_client
+
+            self.current_protocol.set_runtime_context(
+                scales=scales_client,
+                perf_tracker=self._perf_tracker,
+                rig_number=rig_number,
+            )
             
             self.current_protocol.add_event_listener(self._on_protocol_event)
             

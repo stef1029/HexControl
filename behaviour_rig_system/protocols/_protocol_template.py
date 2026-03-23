@@ -2,30 +2,53 @@
 Hidden template for new class-based protocols.
 
 Copy this file to a new filename (without leading underscore) to create a protocol.
+
+Minimum required protocol shape:
+
+    from core.protocol_base import BaseProtocol
+
+    class MyProtocol(BaseProtocol):
+        @classmethod
+        def get_name(cls) -> str:
+            return "My Protocol"
+
+        @classmethod
+        def get_description(cls) -> str:
+            return "What it does"
+
+        @classmethod
+        def get_parameters(cls) -> list:
+            return []
+
+        def _run_protocol(self) -> None:
+            if self._check_abort():
+                return
+
+Everything else in this template is optional quality-of-life.
 """
 
 import time
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter, StringParameter
-from core.protocol_base import BaseProtocol, ProtocolEvent
+from core.protocol_base import BaseProtocol
 
 
 class ProtocolTemplate(BaseProtocol):
-    """Template protocol: copy and rename this class for a new protocol."""
-
-    _scales_client = None
-    _perf_tracker = None
+    """Template protocol: copy, rename, then simplify as needed."""
 
     @classmethod
     def get_name(cls) -> str:
+        """REQUIRED: display name shown in setup tabs."""
         return "Template Protocol"
 
     @classmethod
     def get_description(cls) -> str:
+        """REQUIRED: short description shown at top of the protocol tab."""
         return "Template description. Replace with your protocol summary."
 
     @classmethod
     def get_parameters(cls) -> list:
+        """REQUIRED: list of parameter definitions. Can be [] if none."""
         return [
             IntParameter(
                 name="example_int",
@@ -53,43 +76,27 @@ class ProtocolTemplate(BaseProtocol):
             ),
         ]
 
-    def _cleanup(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _on_abort(self) -> None:
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _log(self, message: str) -> None:
-        self._emit_event(ProtocolEvent("status_update", data={"message": message}))
-
     def _run_protocol(self) -> None:
-        scales = getattr(self, "_scales_client", None)
-        perf_tracker = getattr(self, "_perf_tracker", None)
+        """REQUIRED: main protocol body."""
+        scales = self.scales
+        perf_tracker = self.perf_tracker
 
         if perf_tracker is not None:
             perf_tracker.reset()
 
-        self._log("Template protocol started")
-        self._log(f"Parameters: {self.parameters}")
+        self.log("Template protocol started")
+        self.log(f"Parameters: {self.parameters}")
 
         if scales is not None:
             weight = scales.get_weight()
             if weight is not None:
-                self._log(f"Current weight: {weight:.2f} g")
+                self.log(f"Current weight: {weight:.2f} g")
 
         for trial in range(self.parameters["example_int"]):
             if self._check_abort():
-                self._log("Aborted by user")
+                self.log("Aborted by user")
                 return
 
             time.sleep(0.1)
 
-        self._log("Template protocol complete")
+        self.log("Template protocol complete")
