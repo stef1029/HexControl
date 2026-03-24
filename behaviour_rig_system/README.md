@@ -1,83 +1,458 @@
 # Behaviour Rig System
 
-A modular framework for running behaviour experiments on custom hardware rigs.
+A modular framework for running behaviour experiments on custom Arduino-based hardware rigs, with a tkinter GUI built on top of what is fundamentally a linear script.
 
 ## Overview
 
-This system provides a graphical interface for configuring and running behaviour protocols on behaviour rig hardware. It manages:
+At its core, a behaviour session is a straight-line sequence:
 
-- **Session configuration** - Select mouse, save location, and protocol parameters
-- **Peripheral orchestration** - Automatically starts/stops DAQ and camera subprocesses
-- **Protocol execution** - Run behaviour protocols with real-time event logging
-- **Hardware communication** - Serial communication with Arduino-based behaviour rigs via BehavLink
+1. Ask the user for inputs (mouse, protocol, parameters, save location)
+2. Start peripheral processes (DAQ, camera, scales)
+3. Connect to the Arduino rig over serial
+4. Run the experiment protocol
+5. Clean up hardware
+6. Show results
 
-### Key Features
+This system wraps that sequence in a GUI so the user gets forms instead of `input()` prompts, live displays instead of `print()` statements, and the ability to cancel or stop at any point without the window freezing.
 
-- **Multi-rig launcher** - Launch separate windows for each rig
-- **Mode-based UI** - Setup → Running → Post-Session flow
-- **Dynamic parameter forms** - Automatically generated from protocol definitions
-- **Real-time event logging** - Live updates during protocol execution
-- **Peripheral management** - DAQ and camera processes with signal-file coordination
-- **Modular protocol system** - Add new protocols by creating a single Python file
+---
+
+## System Architecture
+
+### The Three Layers
+
+The system is split into three layers that each have a single job:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  GUI Layer (gui/)                                   │
+│  Displays things, takes user input, owns widgets    │
+│  No business logic — just shows what it's told      │
+├─────────────────────────────────────────────────────┤
+│  Controller Layer (core/session_controller.py)      │
+│  Runs the session lifecycle on background threads   │
+│  No tkinter — communicates through named events     │
+├─────────────────────────────────────────────────────┤
+│  Hardware Layer (core/ + external libs)             │
+│  Protocol execution, peripheral management,         │
+│  serial communication, performance tracking         │
+└─────────────────────────────────────────────────────┘
+```
+
+**Why separate them?** The session lifecycle involves blocking operations (waiting for hardware connections, running experiment loops) that take seconds or minutes. If those run on the GUI thread, the window freezes. So the controller runs them on background threads, and the GUI reacts to what the controller reports.
+
+### Who runs what
+
+The GUI is the main thing running. It owns the tkinter `mainloop()`, creates the controller, and tells it to do things in response to button presses (`start_session`, `stop_session`, etc.).
+
+The controller then does the actual work on background threads — starting hardware, running the protocol, cleaning up. But it has a problem: things happen during that work that the user needs to see. The DAQ connects, a trial completes, an error occurs. In a CLI script you'd just `print()`. Here, the controller can't touch the GUI (it doesn't even import tkinter). So instead, it announces what happened by calling `_emit()`, and whatever functions were registered beforehand get called.
+
+The key insight is the direction: **the GUI pushes its own functions into the controller at setup time, not the other way around.** The controller never imports anything from the GUI. It just calls whatever functions are sitting in its `_listeners` dict, without knowing what they do.
+
+### Event Pattern
+
+This is the mechanism that makes the above work. Every component that needs to announce things implements the same ~10-line pattern independently (no shared base class):
+
+```python
+def on(self, event_name: str, callback: Callable) -> None:
+    """Let someone register a function to be called when an event fires."""
+    self._listeners.setdefault(event_name, []).append(callback)
+
+def _emit(self, event_name: str, **kwargs) -> None:
+    """Call all registered functions for this event."""
+    for cb in self._listeners.get(event_name, []):
+        try:
+            cb(**kwargs)
+        except Exception:
+            pass
+```
+
+Think of `.on()` as giving someone your phone number, and `._emit()` as dialling it. The controller doesn't know who it's calling or what they'll do with the information — it just dials. If the GUI registered a function that updates a label, the label gets updated. If you registered `print` instead, it would print to the terminal. If nobody registered anything, the emit does nothing.
+
+This is how the GUI "listens" without polling. There's no loop checking for new messages. The GUI handed the controller a set of functions during setup, and the controller calls them directly whenever something happens.
+
+Components that use this pattern:
+- **SessionController** — emits startup progress, protocol logs, cleanup status
+- **BaseProtocol** — emits `"log"`, `"started"`, `"error"`
+- **PerformanceTracker** — emits `"update"` (new trial recorded), `"stimulus"` (stimulus presented)
+- **PeripheralManager** — emits `"log"` (status during peripheral startup/shutdown)
+- **CameraManager** — emits `"log"` (camera process status)
+
+### How the GUI registers its functions
+
+All of the wiring between controller events and GUI updates happens in one place — `RigWindow._bind_controller_events()`:
+
+```python
+def _bind_controller_events(self):
+    def on_main_thread(fn):
+        def wrapper(**kwargs):
+            self.root.after(0, lambda: fn(**kwargs))
+        return wrapper
+
+    self.controller.on("startup_status",    on_main_thread(self._on_startup_status))
+    self.controller.on("protocol_log",      on_main_thread(self._on_protocol_log))
+    self.controller.on("performance_update", on_main_thread(self._on_performance_update))
+    # ... etc
+```
+
+Each `.on()` call takes one of RigWindow's own methods and pushes it into the controller's `_listeners` dict. After this runs, the controller's internal state looks something like:
+
+```python
+_listeners = {
+    "startup_status":    [<wrapped _on_startup_status>],
+    "protocol_log":      [<wrapped _on_protocol_log>],
+    "performance_update": [<wrapped _on_performance_update>],
+    ...
+}
+```
+
+When the controller later calls `self._emit("startup_status", message="Starting DAQ...")`, it loops through that list and calls each function. The function happens to update a tkinter widget — but the controller doesn't know that.
+
+### Thread safety
+
+There's one complication: the controller calls `_emit()` from background threads, but tkinter widgets can only be touched from the main thread. That's what the `on_main_thread` wrapper handles. Instead of calling the GUI method directly, it schedules it via `root.after(0, fn)` — tkinter's way of saying "run this on the main thread next chance you get." The background thread doesn't wait; it fires and moves on. The main thread picks it up on its next loop iteration.
+
+The full chain for a single message:
+
+```
+Background thread:
+  controller._emit("startup_status", message="Starting DAQ...")
+    → calls wrapper(message="Starting DAQ...")
+      → wrapper calls root.after(0, _on_startup_status)
+      → returns immediately (background thread continues its work)
+
+Main thread (next loop iteration):
+  tkinter processes its queue
+    → runs _on_startup_status(message="Starting DAQ...")
+      → updates the startup overlay label
+```
+
+This is the only place in the codebase where thread-to-GUI marshalling happens — all in that one `_bind_controller_events` method.
+
+---
+
+## Session Lifecycle
+
+### Phase Diagram
+
+```
+IDLE ──→ STARTING ──→ RUNNING ──→ CLEANING_UP ──→ COMPLETED
+           │              │
+           ▼              ▼
+      (cancelled)    STOPPING ──→ CLEANING_UP ──→ COMPLETED
+           │
+           ▼
+         IDLE
+```
+
+These phases are tracked by `SessionPhase` in `core/session_state.py`.
+
+### Detailed Flow
+
+#### 1. Setup (IDLE phase)
+
+**What the user sees:** A form with mouse selection, save directory, protocol tabs with parameter widgets, and a Start button.
+
+**What happens:** `main.py` launches the Launcher window, which reads `rigs.yaml` and shows a button per rig. Clicking a rig opens a `RigWindow`, which creates a `SessionController` and shows `SetupMode`.
+
+SetupMode generates its parameter form dynamically from whatever `get_parameters()` returns on each protocol class. When the user clicks Start, SetupMode validates inputs and packages them into a config dict:
+
+```python
+session_config = {
+    "protocol_class": FullTaskWithWait,   # The class itself
+    "parameters": {"num_trials": 100, "reward_duration": 0.1, ...},
+    "mouse_id": "mouse_001",
+    "save_directory": "D:\\behaviour_data\\cohort_name",
+}
+```
+
+#### 2. Startup (STARTING phase)
+
+**What the user sees:** An overlay with a progress log and cancel button.
+
+**What happens:** `SessionController.start_session()` spawns a background thread that runs `_startup_sequence()` — a linear sequence of blocking calls:
+
+```
+_startup_sequence(config)
+│
+├── load_peripheral_config()           Build paths, resolve COM ports
+├── PeripheralManager(config)          Create manager
+│   ├── .start_daq()                   Launch Arduino DAQ subprocess
+│   ├── .wait_for_daq_connection()     Block until signal file appears
+│   ├── .start_camera()                Launch camera executable
+│   └── .start_scales()                Launch scales server subprocess
+│
+├── serial.Serial(port, baud)          Open serial to behaviour Arduino
+├── reset_arduino_via_dtr(serial)      Reset Arduino via DTR pin
+├── BehaviourRigLink(serial)           Create communication layer
+├── link.send_hello() / wait_hello()   Handshake with Arduino firmware
+│
+├── _write_session_metadata()          Save JSON with session info
+│
+├── Protocol(params, link)             Create protocol instance
+├── PerformanceTracker()               Create tracker, wire events
+└── emit("startup_complete")           Tell GUI everything is ready
+```
+
+Each step emits `"startup_status"` messages that appear in the overlay log. Between steps, the controller checks `_startup_cancelled` so the user can bail out at any point.
+
+If anything fails, the controller emits `"startup_error"` and cleans up whatever was already started.
+
+#### 3. Running (RUNNING phase)
+
+**What the user sees:** Session summary, live performance stats, trial log, scales plot, session log, elapsed timer, and a Stop button.
+
+**What happens:** After `"startup_complete"`, RigWindow switches to RunningMode and calls `controller.run_protocol()`, which spawns another background thread that calls `protocol.run()`.
+
+The protocol's `run()` method executes the lifecycle: `_setup()` → `_run_protocol()` → `_cleanup()`. Inside `_run_protocol()`, the protocol author writes their experiment loop:
+
+```python
+def _run_protocol(self):
+    self.perf_tracker.reset()
+    for trial in range(self.parameters["num_trials"]):
+        if self._check_abort():
+            return
+        self.log(f"Trial {trial + 1}")
+        # ... experiment logic using self.link ...
+        self.perf_tracker.success(correct_port=target, trial_duration=rt)
+```
+
+- `self.log("message")` → emits `"log"` → controller forwards as `"protocol_log"` → appears in session log
+- `self.perf_tracker.success(...)` → tracker emits `"update"` → controller forwards as `"performance_update"` → RunningMode updates accuracy display
+- `self._check_abort()` → returns True if the user clicked Stop
+
+#### 4. Stopping (STOPPING phase)
+
+When the user clicks Stop, `controller.stop_session()` calls `protocol.request_abort()`, which sets `_abort_requested = True` and calls `_on_abort()` (turns off rig outputs). The protocol loop checks this flag via `_check_abort()` and returns early.
+
+#### 5. Cleanup (CLEANING_UP phase)
+
+**What the user sees:** "Cleaning up..." messages in the session log.
+
+**What happens:** After the protocol thread finishes, the controller:
+1. Gathers results (final status, performance report, saves trial CSV)
+2. Emits `"protocol_complete"` — RigWindow stops the timer
+3. Runs hardware cleanup on a background thread:
+   - `link.shutdown()` — send shutdown command to Arduino
+   - `link.stop()` — stop the receive thread
+   - `serial.close()` — close the serial port
+   - `peripheral_manager.stop()` — stop camera, DAQ, scales subprocesses
+4. Emits `"cleanup_complete"` — RigWindow switches to PostSessionMode
+
+#### 6. Results (COMPLETED phase)
+
+**What the user sees:** Post-session summary with status, elapsed time, save path, performance report, and a "New Session" button.
+
+Clicking "New Session" returns to SetupMode and the cycle repeats.
+
+---
+
+## Thread Diagram
+
+```
+Main thread (tkinter)              Background threads
+─────────────────────              ──────────────────
+SetupMode visible
+User fills form, clicks Start
+  │
+  ├──spawn────────────────────→    _startup_sequence()
+  │                                  start DAQ...
+StartupOverlay visible               wait for connection...
+  shows status messages    ←──────   emit("startup_status")
+  │                                  start camera, scales...
+  │                                  open serial, handshake...
+  receives startup_complete ←─────   emit("startup_complete")
+  │
+RunningMode visible
+  │
+  ├──spawn────────────────────→    _run_protocol_thread()
+  │                                  protocol.run()
+  shows log messages       ←──────     emit("protocol_log")
+  updates accuracy display ←──────     emit("performance_update")
+  shows stimulus markers   ←──────     emit("stimulus")
+  │                                  protocol finishes
+  receives protocol_complete ←────   emit("protocol_complete")
+  │
+  │                                ┌─spawn─────────────────
+  │                                │ _cleanup_hardware_blocking()
+  shows "Cleaning up..."          │   link.shutdown()
+  │                                │   serial.close()
+  │                                │   peripheral_manager.stop()
+  receives cleanup_complete  ←────┘   done
+  │
+PostSessionMode visible
+```
+
+---
 
 ## Project Structure
 
 ```
 behaviour_rig_system/
-├── main.py                     # Application entry point
-├── core/                       # Core system components
-│   ├── parameter_types.py      # Parameter definitions for GUI generation
-│   ├── protocol_base.py        # Base class for all protocols
-│   ├── protocol_loader.py      # Creates protocol classes from simple definitions
-│   ├── peripheral_manager.py   # Manages DAQ and camera subprocesses
-│   └── session.py              # Session configuration
-├── protocols/                  # Behaviour protocol implementations
-│   ├── __init__.py             # Protocol registry
-│   └── hardware_test.py        # Example: Hardware test protocol
-├── gui/                        # GUI components
-│   ├── launcher.py             # Multi-rig launcher window
-│   ├── rig_window.py           # Main rig window (orchestrator)
-│   ├── parameter_widget.py     # Dynamic parameter form builder
-│   └── modes/                  # UI modes
-│       ├── setup_mode.py       # Session configuration UI
-│       ├── running_mode.py     # Active session monitoring UI
-│       └── post_session_mode.py # Session summary UI
-└── config/
-    └── rigs.yaml               # Rig and experiment configuration
+├── main.py                          # Entry point — config paths, launches launcher
+│
+├── core/                            # Business logic (no GUI dependency)
+│   ├── session_controller.py        # Session lifecycle — startup, run, cleanup
+│   ├── session_state.py             # SessionPhase, SessionConfig, SessionResult
+│   ├── protocol_base.py             # BaseProtocol — abstract class for all protocols
+│   ├── performance_tracker.py       # Trial outcome tracking and statistics
+│   ├── peripheral_manager.py        # Orchestrates DAQ, camera, scales managers
+│   ├── camera_manager.py            # Camera subprocess lifecycle
+│   ├── board_registry.py            # Maps board names to COM ports
+│   └── parameter_types.py           # Parameter definitions for GUI generation
+│
+├── protocols/                       # Experiment protocol implementations
+│   ├── __init__.py                  # Auto-loader (scans folder for BaseProtocol subclasses)
+│   ├── _protocol_template.py        # Template for new protocols (copy to create new ones)
+│   ├── hardware_test.py             # Hardware test protocol
+│   ├── full_task_with_wait.py       # Full behaviour task
+│   └── auto_training.py             # Auto-training protocol
+│
+├── autotraining/                    # Auto-training engine (stage graph, transitions)
+│   ├── engine.py                    # Runs the stage graph
+│   ├── stage.py                     # Stage base class
+│   ├── transitions.py               # Transition logic between stages
+│   ├── persistence.py               # Save/load training state
+│   └── definitions/                 # Stage and graph definitions
+│
+├── gui/                             # GUI layer (tkinter, no business logic)
+│   ├── launcher.py                  # Multi-rig launcher window
+│   ├── rig_window.py                # Thin view — modes + controller event binding
+│   ├── startup_overlay.py           # Progress overlay during startup
+│   ├── parameter_widget.py          # Builds parameter forms from protocol definitions
+│   ├── scales_plot_widget.py        # Live weight plot (matplotlib in tkinter)
+│   ├── virtual_rig_window.py        # Simulated rig controls (for testing)
+│   ├── theme.py                     # Colours, fonts, widget styling
+│   └── modes/
+│       ├── setup_mode.py            # Session configuration form
+│       ├── running_mode.py          # Live session display (stats, logs, timer)
+│       └── post_session_mode.py     # Session results summary
+│
+├── config/
+│   ├── rigs.yaml                    # Rig definitions (serial ports, peripherals)
+│   └── board_registry.json          # Maps board friendly names to COM ports
+│
+├── post_processing/                 # Offline analysis tools
+│   └── post_process_arduinoDAQ.py
+│
+└── tests/                           # Test scripts
+    ├── test_daq_connection.py
+    ├── test_camera.py
+    ├── test_scales.py
+    └── test_autotraining.py
 ```
 
-## Installation
+### Key Files
 
-### Requirements
+| File | Role |
+|------|------|
+| `core/session_controller.py` | The "script" — runs the session lifecycle on background threads, emits events |
+| `gui/rig_window.py` | The "display" — receives events, updates widgets, delegates user actions to controller |
+| `core/protocol_base.py` | Abstract base class that all experiment protocols inherit from |
+| `core/peripheral_manager.py` | Starts/stops DAQ, camera, and scales subprocesses |
+| `core/performance_tracker.py` | Tracks trial outcomes (success/failure/timeout) and computes statistics |
+| `gui/modes/setup_mode.py` | Config form — builds parameter widgets from protocol definitions |
+| `gui/modes/running_mode.py` | Live display — performance stats, trial log, scales plot, session log |
 
-- Python 3.10 or later
-- tkinter (usually included with Python)
-- pyserial (for hardware communication)
-- PyYAML (for configuration files)
-- BehavLink (for Arduino communication)
+---
 
-### Setup
+## Creating New Protocols
 
-1. Clone or download the project
-2. Install dependencies:
-   ```bash
-   pip install pyserial pyyaml
-   ```
-3. Ensure your BehavLink library is available in your Python path
+### Quick Start
 
-## Usage
+1. Copy `protocols/_protocol_template.py` to a new file (e.g. `protocols/my_protocol.py`)
+2. Rename the class
+3. Fill in `get_name()`, `get_description()`, `get_parameters()`, `_run_protocol()`
+4. The protocol auto-loads — no registration needed
 
-### Running the GUI
+### Minimal Protocol
 
-```bash
-python main.py
+```python
+from core.protocol_base import BaseProtocol
+
+class MyProtocol(BaseProtocol):
+    @classmethod
+    def get_name(cls) -> str:
+        return "My Protocol"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "What this protocol does."
+
+    @classmethod
+    def get_parameters(cls) -> list:
+        return []
+
+    def _run_protocol(self) -> None:
+        if self._check_abort():
+            return
+        self.log("Done")
 ```
 
-The launcher window will open showing available rigs. Click a rig button to test the connection and open its control window.
+### Protocol API
 
-### Configuration
+Inside `_run_protocol()`, you have access to:
 
-Edit `config/rigs.yaml` to configure:
+| Attribute | What it is |
+|-----------|------------|
+| `self.parameters` | Dict of parameter values from the GUI form |
+| `self.link` | `BehaviourRigLink` — controls LEDs, valves, sensors, etc. |
+| `self.scales` | Scales client (`.get_weight()`) or None |
+| `self.perf_tracker` | `PerformanceTracker` for recording trial outcomes |
+| `self.rig_number` | Which rig this is running on |
+
+Key methods:
+
+| Method | Purpose |
+|--------|---------|
+| `self.log("message")` | Send a message to the session log |
+| `self._check_abort()` | Returns True if user clicked Stop — check this in your loop |
+| `self.perf_tracker.reset()` | Clear tracker and start timing |
+| `self.perf_tracker.success(correct_port, trial_duration)` | Record a correct trial |
+| `self.perf_tracker.failure(correct_port, chosen_port, trial_duration)` | Record an incorrect trial |
+| `self.perf_tracker.timeout(correct_port, trial_duration)` | Record a timeout |
+| `self.perf_tracker.stimulus(target_port)` | Log that a stimulus was presented |
+
+### Optional Overrides
+
+```python
+def _setup(self) -> None:
+    """Called before _run_protocol(). Use for initialisation."""
+    pass
+
+def _cleanup(self) -> None:
+    """Called after _run_protocol() (always runs, even on error).
+    Default: calls link.shutdown() to turn off rig outputs."""
+    pass
+
+def _on_abort(self) -> None:
+    """Called when user clicks Stop.
+    Default: calls link.shutdown() to turn off rig outputs."""
+    pass
+```
+
+### Parameter Types
+
+Parameters defined in `get_parameters()` are automatically rendered as GUI widgets in the setup form:
+
+| Type | Widget | Example Use |
+|------|--------|-------------|
+| `IntParameter` | Spinbox | Trial counts, port numbers |
+| `FloatParameter` | Spinbox | Delays, thresholds, durations |
+| `BoolParameter` | Checkbox | Enable/disable options |
+| `ChoiceParameter` | Dropdown | Selection from fixed options |
+| `StringParameter` | Text entry | Free-form text input |
+
+All parameters accept: `name`, `display_name`, `description`, `default`, `group`, `order`.
+Numeric parameters also accept: `min_value`, `max_value`, `step`.
+
+---
+
+## Configuration
+
+### rigs.yaml
+
+Defines available rigs, their hardware, and experiment settings:
 
 ```yaml
 global:
@@ -86,7 +461,17 @@ global:
 rigs:
   - name: "Rig 1"
     serial_port: "COM7"
+    board_type: "giga"
+    camera_serial: "24243513"
+    board_name: "behaviour_board_1"
+    daq_board_name: "daq_board_1"
     enabled: true
+    scales:
+      board_name: "scales_board_1"
+      baud_rate: 115200
+      is_wired: false
+      calibration_scale: 1.0
+      calibration_intercept: 0.0
 
 cohort_folders:
   - name: "My Experiment"
@@ -97,344 +482,42 @@ mice:
     description: "Control group"
 ```
 
----
+### board_registry.json
 
-## Code Flow Walkthrough
+Maps friendly board names to COM ports, so you don't hardcode COM port numbers in the rig config:
 
-This section explains how the application flows from startup to session completion.
-
-### 1. Application Launch
-
-```
-main.py
-   └── launcher.launch(CONFIG_PATH)
-```
-
-- `main.py` defines the config path and calls `launcher.launch()`
-- `launcher.py` creates a window showing available rigs (loaded from `rigs.yaml`)
-- User clicks a rig button to connect
-
-### 2. Rig Window Opens
-
-```
-launcher.py
-   └── RigWindow(serial_port, baud_rate, parent, rig_name, rig_config)
-```
-
-`RigWindow.__init__()` runs:
-1. `_setup_window()` - Creates the Tk window
-2. `_create_modes()` - Creates the three mode frames (Setup, Running, PostSession)
-3. `_create_startup_overlay()` - Creates the overlay shown during startup
-4. `_show_mode(SETUP)` - Shows the setup mode
-
-**User sees:** Setup screen with cohort/mouse selection, protocol tabs, and Start button
-
-### 3. User Clicks "Start Session"
-
-```
-SetupMode (Start button clicked)
-   └── on_start callback
-       └── RigWindow._start_session(session_config)
-```
-
-1. `SetupMode` validates the config and calls `_start_session()` with:
-   - `protocol_class` - The protocol to run
-   - `parameters` - Protocol parameters from the UI
-   - `mouse_id` - Selected mouse
-   - `save_directory` - Selected cohort folder path
-
-2. `_start_session()`:
-   - Stores session info for later display
-   - Shows startup overlay
-   - Spawns `_startup_sequence()` in a background thread
-
-### 4. Startup Sequence (Background Thread)
-
-```
-_startup_sequence()
-   ├── load_peripheral_config()      # Create config for DAQ/camera
-   ├── PeripheralManager()           # Create manager instance
-   ├── _start_daq()                  # Launch DAQ subprocess
-   ├── _wait_for_connection()        # Wait for arduino_connected.signal
-   ├── _start_camera()               # Launch camera subprocess
-   ├── serial.Serial()               # Open serial port to behaviour rig
-   ├── reset_arduino_via_dtr()       # Reset Arduino
-   ├── BehaviourRigLink()            # Create protocol communication layer
-   ├── link.send_hello/wait_hello()  # Handshake with Arduino
-   └── protocol_class()              # Create protocol instance
-```
-
-**User sees:** Startup overlay with progress log
-
-- **On success:** Calls `_on_startup_complete()` on main thread
-- **On error:** Calls `_on_startup_error()` on main thread
-
-### 5. Session Running
-
-```
-_on_startup_complete()
-   ├── _hide_startup_overlay()
-   ├── running_mode.activate(session_info)
-   ├── _show_mode(RUNNING)
-   ├── running_mode.start_timer()
-   └── Thread(_run_protocol_thread)    # Start protocol in background
-```
-
-- Running mode shows: session summary, timer, log, Stop button
-- Protocol runs in background thread via `current_protocol.run()`
-- Protocol emits events → `_on_protocol_event()` → `_handle_event()` → updates UI
-
-**User sees:** Running mode with live timer and event log
-
-### 6. Session Ends (Stop or Complete)
-
-**If user clicks Stop:**
-```
-RunningMode (Stop button clicked)
-   └── on_stop callback
-       └── RigWindow._stop_session()
-           └── current_protocol.request_abort()
-```
-
-The protocol checks `_abort_requested` in its run loop and exits cleanly.
-
-**When protocol finishes:**
-```
-_run_protocol_thread() completes
-   └── _on_protocol_complete()
-```
-
-### 7. Cleanup and Post-Session
-
-```
-_on_protocol_complete()
-   ├── running_mode.stop_timer()
-   ├── Get final status and duration
-   ├── _cleanup_session()
-   │      ├── link.shutdown()              # Send shutdown to Arduino
-   │      ├── link.stop()                  # Stop BehavLink thread
-   │      ├── serial.close()               # Close serial port
-   │      └── peripheral_manager.stop()
-   │             ├── _stop_camera_gracefully()   # Create stop signal, wait
-   │             ├── _cleanup_daq()              # Wait for DAQ to finish
-   │             └── _cleanup_signal_files()     # Delete .signal files
-   ├── post_session_mode.activate(summary)
-   └── _show_mode(POST_SESSION)
-```
-
-**User sees:** Post-session summary with status, duration, save path, and "New Session" button
-
-### 8. New Session or Close
-
-**If user clicks "New Session":**
-```
-PostSessionMode (New Session button clicked)
-   └── on_new_session callback
-       └── RigWindow._new_session()
-           └── _show_mode(SETUP)
-```
-
-Back to setup screen.
-
-**If user closes window:**
-```
-Window close event
-   └── RigWindow._on_close()
-       ├── If session running: confirm dialog, then _stop_session()
-       └── _force_close()
-           ├── _cleanup_session()
-           └── root.destroy()
-```
-
-### Key Files Summary
-
-| File | Purpose |
-|------|---------|
-| `main.py` | Entry point, defines config path |
-| `launcher.py` | Rig selection window |
-| `gui/rig_window.py` | **Orchestrator** - manages modes, hardware, session lifecycle |
-| `gui/modes/setup_mode.py` | Config UI (cohort, mouse, protocol params) |
-| `gui/modes/running_mode.py` | Active session UI (timer, log, stop button) |
-| `gui/modes/post_session_mode.py` | Summary UI (results, new session button) |
-| `core/peripheral_manager.py` | Manages DAQ and camera subprocesses |
-| `core/protocol_base.py` | Base class for protocols |
-| `protocols/*.py` | Protocol implementations |
-
-### Data Flow
-
-```
-User selections (SetupMode)
-        ↓
-   session_config dict
-        ↓
-   PeripheralConfig (for DAQ/camera paths)
-        ↓
-   Protocol instance (with parameters + BehavLink)
-        ↓
-   Protocol events → RunningMode log
-        ↓
-   Final status + duration → PostSessionMode summary
+```json
+{
+  "behaviour_board_1": "COM7",
+  "daq_board_1": "COM8",
+  "scales_board_1": "COM9"
+}
 ```
 
 ---
 
-## Creating New Protocols
+## Running
 
-To add a new behaviour protocol:
-
-1. Create a new Python file in the `protocols/` directory
-2. Define a class that inherits from `BaseProtocol`
-3. Implement the required methods:
-   - `get_name()`: Return the protocol's display name
-   - `get_description()`: Return a description for the GUI
-   - `get_parameters()`: Return a list of configurable parameters
-   - `_run_protocol()`: Implement the main behaviour loop
-4. Add the new protocol to `protocols/__init__.py`
-
-### Example Protocol Template
-
-```python
-from core.parameter_types import IntParameter, FloatParameter, BoolParameter
-from core.protocol_base import BaseProtocol, ProtocolEvent
-
-
-class MyProtocol(BaseProtocol):
-    """My custom behaviour protocol."""
-
-    @classmethod
-    def get_name(cls) -> str:
-        return "My Protocol"
-
-    @classmethod
-    def get_description(cls) -> str:
-        return "Description of what this protocol does."
-
-    @classmethod
-    def get_parameters(cls) -> list:
-        return [
-            IntParameter(
-                name="trial_count",
-                display_name="Number of Trials",
-                description="How many trials to run",
-                default=100,
-                min_value=1,
-                max_value=1000,
-            ),
-            FloatParameter(
-                name="delay",
-                display_name="Inter-trial Delay (s)",
-                description="Delay between trials",
-                default=2.0,
-                min_value=0.5,
-                max_value=10.0,
-            ),
-        ]
-
-    def _run_protocol(self) -> None:
-        """Main behaviour loop."""
-        for trial in range(self.parameters["trial_count"]):
-            if self._check_abort():
-                return
-
-            # Emit event for logging
-            self._emit_event(ProtocolEvent(
-                "trial_start",
-                data={"trial": trial + 1}
-            ))
-
-            # Your behaviour logic here
-            # self.hardware.led_set(0, 255)
-            # time.sleep(self.parameters["delay"])
-            # self.hardware.led_set(0, 0)
-
-            self._emit_event(ProtocolEvent(
-                "trial_end",
-                data={"trial": trial + 1}
-            ))
+```bash
+python main.py
 ```
 
-## Parameter Types
+Set `CONFIG_PATH` and `BOARD_REGISTRY_PATH` in `main.py` to point to your configuration files.
 
-The system supports the following parameter types:
+### Simulate Mode
 
-| Type | GUI Widget | Example |
-|------|------------|---------|
-| `IntParameter` | Spinbox | Trial counts, port numbers |
-| `FloatParameter` | Spinbox | Delays, durations, thresholds |
-| `BoolParameter` | Checkbox | Enable/disable options |
-| `ChoiceParameter` | Dropdown | Selection from fixed options |
+The launcher has a "Simulate" checkbox that runs the entire system with mock hardware — useful for testing protocols and GUI changes without physical rigs connected.
 
-### Parameter Attributes
+---
 
-All parameters support:
-- `name`: Internal identifier (used in code)
-- `display_name`: Human-readable label for GUI
-- `description`: Tooltip text
-- `default`: Default value
-- `group`: Group name for organising in GUI
-- `order`: Sorting order within group
+## External Dependencies
 
-Numeric parameters additionally support:
-- `min_value`, `max_value`: Validation constraints
-- `step`: Increment for spinbox
-
-## Hardware Interface
-
-The `HardwareInterface` class provides methods for controlling the rig:
-
-```python
-# LEDs (ports 0-5)
-hardware.led_set(port, brightness)  # brightness: 0-255
-hardware.led_off(port)
-hardware.led_all_off()
-
-# Spotlights (ports 0-5, or 255 for all)
-hardware.spotlight_set(port, brightness)
-
-# IR Illuminator
-hardware.ir_set(brightness)
-
-# Buzzers (ports 0-5, or 255 for all)
-hardware.buzzer_set(port, on)  # on: True/False
-
-# Speaker
-hardware.speaker_set(frequency, duration)
-
-# Valves (ports 0-5)
-hardware.valve_pulse(port, duration_ms)
-
-# GPIO (pins 0-5)
-hardware.gpio_configure(pin, mode)
-hardware.gpio_set(pin, high)
-
-# Sensors
-event = hardware.wait_for_sensor_event(timeout)
-```
-
-## Event System
-
-Protocols emit events for logging and monitoring:
-
-```python
-self._emit_event(ProtocolEvent(
-    "event_type",
-    data={"key": "value"}
-))
-```
-
-Events are displayed in the GUI event log with timestamps.
-
-## Future Development
-
-Planned features:
-- Live performance monitoring graphs
-- Parameter presets (save/load)
-- Session notes and metadata
-
-## License
-
-[Your license here]
-
-## Author
-
-[Your name/organisation]
+| Package | Purpose |
+|---------|---------|
+| `BehavLink` | Serial communication with Arduino behaviour rigs |
+| `DAQLink` | Arduino DAQ subprocess management |
+| `ScalesLink` | Scales server subprocess and TCP client |
+| `pyserial` | Serial port communication |
+| `PyYAML` | Configuration file parsing |
+| `matplotlib` | Live scales weight plot |
+| `tkinter` | GUI framework (included with Python) |

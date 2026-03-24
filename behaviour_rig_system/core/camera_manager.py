@@ -12,16 +12,13 @@ Usage:
         date_time="250219_120000",
         session_folder="/path/to/session",
         rig_number=1,
-        fps=30,
-        window_width=640,
-        window_height=512,
-        log_callback=print,
     )
-    
+    manager.on("log", lambda message: print(message))
+
     if manager.start():
         # Camera is recording
         ...
-    
+
     manager.stop()
 """
 
@@ -51,12 +48,11 @@ class CameraManager:
         fps: int = 30,
         window_width: int = 640,
         window_height: int = 512,
-        log_callback: Optional[Callable[[str], None]] = None,
         simulate: bool = False,
     ):
         """
         Initialise the camera manager.
-        
+
         Args:
             camera_executable: Path to the camera executable.
             camera_serial: Camera serial number.
@@ -67,17 +63,16 @@ class CameraManager:
             fps: Camera frame rate.
             window_width: Preview window width.
             window_height: Preview window height.
-            log_callback: Optional callback for log messages.
             simulate: If True, skip subprocess launch and return success.
         """
         self._simulate = simulate
-        
+
         if not simulate:
             if not camera_executable:
                 raise ValueError("camera_executable must be provided")
             if not camera_serial:
                 raise ValueError("camera_serial must be provided")
-        
+
         self.camera_executable = camera_executable
         self.camera_serial = camera_serial
         self.mouse_id = mouse_id
@@ -87,11 +82,23 @@ class CameraManager:
         self.fps = fps
         self.window_width = window_width
         self.window_height = window_height
-        self._log = log_callback or print
-        
+
+        self._listeners: dict[str, list[Callable]] = {}
         self._process: Optional[subprocess.Popen] = None
         self._started: bool = False
         self.last_error: Optional[str] = None
+
+    def on(self, event_name: str, callback: Callable) -> None:
+        """Register a callback for a named event."""
+        self._listeners.setdefault(event_name, []).append(callback)
+
+    def _emit(self, event_name: str, **kwargs) -> None:
+        """Fire an event to registered listeners."""
+        for cb in self._listeners.get(event_name, []):
+            try:
+                cb(**kwargs)
+            except Exception:
+                pass
     
     @property
     def is_running(self) -> bool:
@@ -108,13 +115,13 @@ class CameraManager:
             True if the camera process launched successfully.
         """
         if self._simulate:
-            self._log("Camera (simulated): skipping subprocess launch")
+            self._emit("log", message="Camera (simulated): skipping subprocess launch")
             self._started = True
             return True
 
         if not os.path.exists(self.camera_executable):
             self.last_error = f"Camera executable not found: {self.camera_executable}"
-            self._log(self.last_error)
+            self._emit("log", message=self.last_error)
             return False
         
         command = [
@@ -134,11 +141,11 @@ class CameraManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            self._log(f"Camera started (PID: {self._process.pid})")
+            self._emit("log", message=f"Camera started (PID: {self._process.pid})")
             return True
         except Exception as e:
             self.last_error = f"Failed to start camera: {e}"
-            self._log(self.last_error)
+            self._emit("log", message=self.last_error)
             return False
     
     def stop(self) -> None:
@@ -147,7 +154,7 @@ class CameraManager:
         """
         if self._simulate:
             if self._started:
-                self._log("Camera (simulated): stopping")
+                self._emit("log", message="Camera (simulated): stopping")
                 self._started = False
             return
 
@@ -170,7 +177,7 @@ class CameraManager:
             with open(stop_signal_file, 'w') as f:
                 f.write(f"Stop requested at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         except Exception as e:
-            self._log(f"Error creating camera stop signal: {e}")
+            self._emit("log", message=f"Error creating camera stop signal: {e}")
     
     def _cleanup_process(self) -> None:
         """Wait for the camera process to exit, terminating if necessary."""
@@ -179,16 +186,16 @@ class CameraManager:
         
         try:
             self._process.wait(timeout=15)
-            self._log(f"Camera stopped (exit code: {self._process.returncode})")
+            self._emit("log", message=f"Camera stopped (exit code: {self._process.returncode})")
         except subprocess.TimeoutExpired:
-            self._log("Camera timeout, terminating...")
+            self._emit("log", message="Camera timeout, terminating...")
             try:
                 self._process.terminate()
                 self._process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._process.kill()
         except Exception as e:
-            self._log(f"Error stopping camera: {e}")
+            self._emit("log", message=f"Error stopping camera: {e}")
         finally:
             self._process = None
     

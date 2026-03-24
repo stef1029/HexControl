@@ -630,7 +630,7 @@ class RigLauncher:
             window, btn, rig_window = self.open_windows[rig_name]
             
             # Check if a session is running
-            if rig_window.current_protocol is not None and rig_window.current_protocol.is_running:
+            if rig_window.controller.is_running:
                 messagebox.showwarning(
                     "Session Running",
                     f"A session is currently running on {rig_name}.\n\n"
@@ -639,7 +639,7 @@ class RigLauncher:
                 return
             
             # Clean up the rig window
-            rig_window._cleanup_session()
+            rig_window.controller.close()
             
             # Destroy the window
             try:
@@ -680,7 +680,7 @@ class RigLauncher:
         for rig_name in list(self.open_windows.keys()):
             window, _, rig_window = self.open_windows[rig_name]
             try:
-                rig_window._cleanup_session()
+                rig_window.controller.close()
                 window.destroy()
             except:
                 pass

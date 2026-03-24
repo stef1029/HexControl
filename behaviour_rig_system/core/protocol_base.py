@@ -13,11 +13,10 @@ Key things to know:
     - Access parameters via: self.parameters["name"]
     - Control rig via: self.link.led_set(), self.link.valve_pulse(), etc.
     - Check for abort: if self._check_abort(): return
-    - Log to GUI: self._emit_event(ProtocolEvent("status_update", data={"message": "..."}))
+    - Log to GUI: self.log("message")
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable
@@ -36,23 +35,6 @@ class ProtocolStatus(Enum):
     COMPLETED = auto()  # Finished successfully
     ABORTED = auto()    # User stopped it
     ERROR = auto()      # Something went wrong
-
-
-# =============================================================================
-# Protocol Event - For logging to GUI
-# =============================================================================
-
-@dataclass
-class ProtocolEvent:
-    """
-    Event sent to GUI for logging.
-    
-    Usage:
-        self._emit_event(ProtocolEvent("status_update", data={"message": "Hello"}))
-    """
-    event_type: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    data: dict[str, Any] = field(default_factory=dict)
 
 
 # =============================================================================
@@ -86,9 +68,9 @@ class BaseProtocol(ABC):
         self.scales = None
         self.perf_tracker = None
         self.rig_number: int | None = None
-        
+
         self._abort_requested = False
-        self._event_listeners: list[Callable[[ProtocolEvent], None]] = []
+        self._listeners: dict[str, list[Callable]] = {}
         self._start_time: datetime | None = None
 
     # =========================================================================
@@ -167,11 +149,11 @@ class BaseProtocol(ABC):
 
         try:
             self.status = ProtocolStatus.RUNNING
-            self._emit_event(ProtocolEvent("protocol_started"))
-            
+            self._emit("started")
+
             self._setup()
             self._run_protocol()
-            
+
             # Set final status
             if self._abort_requested:
                 self.status = ProtocolStatus.ABORTED
@@ -180,7 +162,7 @@ class BaseProtocol(ABC):
 
         except Exception as e:
             self.status = ProtocolStatus.ERROR
-            self._emit_event(ProtocolEvent("error", data={"error": str(e)}))
+            self._emit("error", error=str(e))
             error = e
 
         finally:
@@ -200,9 +182,9 @@ class BaseProtocol(ABC):
         except Exception:
             pass  # Ignore errors during abort (serial may be disconnected)
 
-    def add_event_listener(self, listener: Callable[[ProtocolEvent], None]) -> None:
-        """Register a callback to receive events (used by GUI)."""
-        self._event_listeners.append(listener)
+    def on(self, event_name: str, callback: Callable) -> None:
+        """Register a callback for a named event."""
+        self._listeners.setdefault(event_name, []).append(callback)
 
     def set_runtime_context(
         self,
@@ -220,26 +202,18 @@ class BaseProtocol(ABC):
     # Protected Methods - Use these in your protocol
     # =========================================================================
 
-    def _emit_event(self, event: ProtocolEvent) -> None:
-        """
-        Send an event to the GUI log.
-        
-        Usage:
-            self._emit_event(ProtocolEvent(
-                "status_update", 
-                data={"message": "Starting trial 1"}
-            ))
-        """
-        for listener in self._event_listeners:
+    def _emit(self, event_name: str, **kwargs) -> None:
+        """Fire an event to registered listeners."""
+        for cb in self._listeners.get(event_name, []):
             try:
-                listener(event)
+                cb(**kwargs)
             except Exception:
                 pass
 
     def _check_abort(self) -> bool:
         """
         Check if user wants to stop.
-        
+
         Call this regularly in your loop:
             if self._check_abort():
                 return
@@ -248,7 +222,7 @@ class BaseProtocol(ABC):
 
     def log(self, message: str) -> None:
         """Convenience helper for status messages in the GUI log."""
-        self._emit_event(ProtocolEvent("status_update", data={"message": message}))
+        self._emit("log", message=message)
 
     # =========================================================================
     # Properties

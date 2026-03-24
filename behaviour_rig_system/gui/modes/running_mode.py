@@ -17,7 +17,7 @@ from datetime import datetime
 from tkinter import scrolledtext, ttk
 from typing import Callable, TYPE_CHECKING
 
-from core.protocol_base import ProtocolEvent, ProtocolStatus
+from core.protocol_base import ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 from gui.scales_plot_widget import ScalesPlotWidget
 
@@ -256,13 +256,13 @@ class RunningMode(ttk.Frame):
     def log_stimulus(self, target_port: int) -> None:
         """
         Log a stimulus presentation to the trial log.
-        
-        Thread-safe: schedules update on main thread.
-        
+
+        Must be called on the main thread (marshalling is done by RigWindow).
+
         Args:
             target_port: The port that is the correct response.
         """
-        self.after(0, lambda: self._do_log_stimulus(target_port))
+        self._do_log_stimulus(target_port)
     
     def _do_log_stimulus(self, target_port: int) -> None:
         """Actually log the stimulus (must be called on main thread)."""
@@ -277,15 +277,13 @@ class RunningMode(ttk.Frame):
     def update_performance(self, tracker: "PerformanceTracker") -> None:
         """
         Update the performance display from a tracker.
-        
-        Called by the tracker's on_update callback.
-        Thread-safe: schedules update on main thread.
-        
+
+        Must be called on the main thread (marshalling is done by RigWindow).
+
         Args:
             tracker: The PerformanceTracker instance with current stats.
         """
-        # Schedule update on main thread (called from protocol thread)
-        self.after(0, lambda: self._update_performance_display(tracker))
+        self._update_performance_display(tracker)
     
     def _update_performance_display(self, tracker: "PerformanceTracker") -> None:
         """Actually update the performance display (must be called on main thread)."""
@@ -409,11 +407,6 @@ class RunningMode(ttk.Frame):
         self._log_text.insert(tk.END, log_line)
         self._log_text.see(tk.END)
         self._log_text.config(state="disabled")
-    
-    def log_event(self, event: ProtocolEvent) -> None:
-        """Log a protocol event."""
-        message = event.data.get("message", event.event_type)
-        self.log_message(message)
     
     def set_status(self, status: ProtocolStatus) -> None:
         """Update the status display (public interface)."""

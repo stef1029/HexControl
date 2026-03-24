@@ -195,27 +195,43 @@ class PeripheralManager:
     def __init__(
         self,
         config: PeripheralConfig,
-        log_callback: Optional[Callable[[str], None]] = None,
         simulate: bool = False,
         virtual_rig_state=None,
     ):
         self.config = config
-        self._log = log_callback or print
         self._simulate = simulate
         self._virtual_rig_state = virtual_rig_state
-        
+
+        self._listeners: dict[str, list[Callable]] = {}
+
         # Sub-managers (created during startup)
         self._daq_manager = None
         self._camera_manager = None
         self._scales_manager = None
-        
+
         # Scales client (for protocols to use) — proxied from scales manager
         self.scales_client = None
-        
+
         # State
         self.is_started = False
         self.session_folder_created = False
         self.last_error: Optional[str] = None
+
+    def on(self, event_name: str, callback: Callable) -> None:
+        """Register a callback for a named event."""
+        self._listeners.setdefault(event_name, []).append(callback)
+
+    def _emit(self, event_name: str, **kwargs) -> None:
+        """Fire an event to registered listeners."""
+        for cb in self._listeners.get(event_name, []):
+            try:
+                cb(**kwargs)
+            except Exception:
+                pass
+
+    def _log(self, message: str) -> None:
+        """Internal log helper — emits a 'log' event."""
+        self._emit("log", message=message)
     
     def start_daq(self) -> bool:
         """Start the Arduino DAQ process via DAQManager."""
@@ -258,9 +274,9 @@ class PeripheralManager:
             fps=self.config.camera_fps,
             window_width=self.config.camera_window_width,
             window_height=self.config.camera_window_height,
-            log_callback=self._log,
             simulate=self._simulate,
         )
+        self._camera_manager.on("log", lambda message: self._log(message))
         
         result = self._camera_manager.start()
         if not result:

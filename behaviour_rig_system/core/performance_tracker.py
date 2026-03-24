@@ -53,27 +53,27 @@ class PerformanceTracker:
     Emits events when trials are recorded so the GUI can update.
     """
     
-    def __init__(
-        self,
-        on_update: Optional[Callable[["PerformanceTracker"], None]] = None,
-        on_stimulus: Optional[Callable[[int], None]] = None,
-    ):
-        """
-        Args:
-            on_update: Callback called after each trial is recorded.
-                       Receives the tracker instance for querying stats.
-            on_stimulus: Callback called when stimulus() is called.
-                        Receives the target port number.
-        """
+    def __init__(self):
         self._trials: list[TrialRecord] = []
-        self._on_update = on_update
-        self._on_stimulus = on_stimulus
+        self._listeners: dict[str, list[Callable]] = {}
         self._start_time: Optional[float] = None
-        
+
         # Cached running counters — O(1) instead of O(n) list scans
         self._successes: int = 0
         self._failures: int = 0
         self._timeouts: int = 0
+
+    def on(self, event_name: str, callback: Callable) -> None:
+        """Register a callback for a named event."""
+        self._listeners.setdefault(event_name, []).append(callback)
+
+    def _emit(self, event_name: str, **kwargs) -> None:
+        """Fire an event to registered listeners."""
+        for cb in self._listeners.get(event_name, []):
+            try:
+                cb(**kwargs)
+            except Exception:
+                pass  # Don't let GUI errors crash the protocol
     
     def reset(self) -> None:
         """Clear all trial records."""
@@ -87,17 +87,13 @@ class PerformanceTracker:
     def stimulus(self, target_port: int) -> None:
         """
         Signal that a stimulus has been presented.
-        
+
         This is for display purposes only and is not saved to the trials log.
-        
+
         Args:
             target_port: The port that is the correct response for this trial.
         """
-        if self._on_stimulus:
-            try:
-                self._on_stimulus(target_port)
-            except Exception:
-                pass  # Don't let GUI errors crash the protocol
+        self._emit("stimulus", port=target_port)
     
     # -------------------------------------------------------------------------
     # Recording Outcomes
@@ -191,11 +187,7 @@ class PerformanceTracker:
     
     def _notify_update(self) -> None:
         """Notify listener of update."""
-        if self._on_update:
-            try:
-                self._on_update(self)
-            except Exception:
-                pass  # Don't let GUI errors crash the protocol
+        self._emit("update", tracker=self)
     
     # -------------------------------------------------------------------------
     # Statistics
