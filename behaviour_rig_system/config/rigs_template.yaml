@@ -1,0 +1,140 @@
+# Behaviour Rig System Configuration
+# ==================================
+#
+# This file defines the configuration for each behaviour rig in the system.
+# Add or modify entries as needed for your setup.
+#
+# Each rig entry should include:
+#   - name: Display name for the rig (must end in a number - keep to the format "Rig X" for consistency)
+#   - board_name: Human-readable key for the behaviour Arduino (resolved via board_registry.json)
+#   - board_type: Arduino board type - "giga" or "mega"
+#   - enabled: Whether the rig is available for use
+#   - description: Optional description of the rig
+#   - camera_serial: Serial number for the rig's camera
+#   - daq_board_name: Human-readable key for the DAQ Arduino (resolved via board_registry.json)
+#
+# COM ports are NO LONGER hardcoded here. Instead, use human-readable board
+# names that are resolved to COM ports at runtime via the board registry
+# (see config/board_registry.json and core/board_registry.py).
+
+rigs:
+  - name: "Rig 1"
+    board_name: "rig_1_behaviour"
+    board_type: "giga"
+    enabled: true
+    description: "Main behaviour rig"
+    camera_serial: "24243513"
+    daq_board_name: "rig_1_daq"
+    scales:
+      board_name: "rig_1_scales"
+      baud_rate: 115200
+      is_wired: True
+      calibration_scale: 0.22375971500351627
+      calibration_intercept: -5617.39
+
+  - name: "Rig 2"
+    board_name: "rig_2_behaviour"
+    board_type: "giga"
+    enabled: true
+    description: "Secondary rig"
+    camera_serial: "20530175"
+    daq_board_name: "rig_2_daq"
+    scales:
+      board_name: "rig_2_scales"
+      baud_rate: 115200
+      is_wired: true
+      calibration_scale: 0.27978473586250524
+      calibration_intercept: 475.86
+
+  - name: "Rig 3"
+    board_name: "rig_3_behaviour"
+    board_type: "giga"
+    enabled: true
+    description: "Third rig"
+    camera_serial: "24174008"
+    daq_board_name: "rig_3_daq"
+    scales:
+      board_name: "rig_3_scales"
+      baud_rate: 115200
+      is_wired: true
+      calibration_scale: 0.1725046376146776
+      calibration_intercept: -1327.66
+
+  - name: "Rig 4"
+    board_name: "rig_4_behaviour"
+    board_type: "giga"
+    enabled: true
+    description: "Fourth rig"
+    camera_serial: "24243513"
+    daq_board_name: "rig_4_daq"
+    scales:
+      board_name: "rig_4_scales"
+      baud_rate: 115200
+      is_wired: true
+      calibration_scale: 0.16461420192565693
+      calibration_intercept: -616.28
+
+
+# Global settings
+# ---------------
+
+global:
+  # Default baud rate for all rigs
+  baud_rate: 115200
+
+  # Whether to reset Arduino on connection
+  reset_on_connect: true
+
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  log_level: "INFO"
+
+
+# Cohort folders
+# --------------
+# List of cohort folders that can be selected in the GUI.
+# Sessions will be saved to the selected directory.
+# Add new cohort folders as needed.
+
+cohort_folders:
+  - name: "Test output"
+    directory: "D:\\behaviour_data\\default"
+    description: "Default folder for testing"
+  - name: "January 2025 cohort"
+    directory: "D:\\behaviour_data\\cohort_2025_01"
+    description: "January 2025 cohort"
+  - name: "February 2025 cohort"
+    directory: "D:\\behaviour_data\\cohort_2025_02"
+    description: "February 2025 cohort"
+
+
+# Mouse IDs
+# ---------
+# List of mouse IDs that can be selected in the GUI.
+# Add/remove mice as needed for your current experiments.
+
+mice:
+  - id: "T1"
+    description: "Photometry"
+  - id: "T2"
+    description: "Electrophysiology, SC plus chrmine opsin"
+  - id: "T3"
+    description: ""
+  - id: "T4"
+    description: ""
+
+
+# External processes
+# ------------------
+
+processes:
+  # Camera executable
+  camera_executable: "C:\\Dev\\projects\\Camera\\x64\\Release\\Camera_to_binary.exe"
+  
+  # Timeout for Arduino connection signal (seconds)
+  connection_timeout: 30
+  
+  # Camera settings
+  camera_fps: 30
+  camera_window_width: 640
+  camera_window_height: 512
+

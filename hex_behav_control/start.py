@@ -9,50 +9,44 @@ import json
 # Edit these values before running the script
 
 # Config path - location of the global configuration file
-# CONFIG_PATH = r"C:\dev\projects\config.json" # large behaviour room
-CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json" # small behaviour room
+CONFIG_PATH = r"C:\dev\projects\config.json" # large behaviour room
+# CONFIG_PATH = r"C:\dev\projects\hex_behav_config.json" # small behaviour room
 
 
 # # Rigs to use (comma-separated)
-RIGS_IN_USE = "3"
+# RIGS_IN_USE = "1,2"
+RIGS_IN_USE = "1"
 
 # Output directory where data will be saved
-OUTPUT_FOLDER = r"D:\Pitx2_Chemogenetics"
+# OUTPUT_FOLDER = r"D:\Pitx2_Inhib_DTx"
+# OUTPUT_FOLDER = r"E:\Anindita_Yuanxin_Fun_Day"
+# change to 14TB Drive on Monday
+
+OUTPUT_FOLDER = r"D:\test_output"
 
 # Mouse IDs for each rig (same order as rigs)
 
-# MICE = ["mtao107-2a", "mtao106-3a"]
-# MICE = ["mtao107-2a", "mtao101-3c"] 
+MICE = ["T1", "T2"]
+# MICE = ["T3", "T4"]
+# MICE = ["T5", "T6"]
+# MICE = ["T10", "T11"]
+# MICE = ["T13", "T14"]
 
-# MICE = ["mtao102-3e", "mtao102-3c"] # *
-MICE = ["mtao106-3b", "mtao101-3g"] # *1
-# MICE = ["mtao106-1e", "mtao108-3e"] # *1
 
-# MICE = ["mtao108-3e", "mtao101-3c"]
 
-# MICE = ["mtao106-1e", "mtao106-3b"]
-# MICE = ["mtao106-1e", "mtao101-3c"]
-# MICE = ["mtao102-3c", "mtao102-3e"]
-# MICE = ["mtao102-3e"]
+# MICE = ["T4", "T5"]
+# MICE = ["T7", "T8"]
+# MICE = ["T10", "T11"]
+# MICE = ["T13", "T14"]
 
-# MICE = ["mtao106-3a"]
-# MICE = ["mtao107-2a"]
-# MICE = ["mtao101-3b"]
-MICE = ["mtao101-3c"]
-# MICE = ["mtao108-3e"]
-# MICE = ["mtao101-3g"]
+# MICE = ["Test1", "Test2"]
 
-# MICE = ["mtao107-2a"]
-
-# MICE = ["test"]
-
-# Pairs for intensive training
+# Pairs for intensive training 
 # MICE = ["mtao106-3b", "mtao106-1e"]
 
 
 # Mouse weights (in grams) for each rig (same order as rigs)
-WEIGHTS = [15]
-
+WEIGHTS = [24, 21]
 # Common parameters for all rigs
 FPS = 30
 WINDOW_WIDTH = 1280

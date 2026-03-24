@@ -7,13 +7,13 @@ import cv2 as cv
 import struct
 import logging
 import sys
-import paramiko
+
 import json
 from datetime import datetime
 from typing import Dict, Union, List, Optional
 
-from hex_behav_analysis.utils.Cohort_folder import Cohort_folder 
-from hex_behav_analysis.utils.analysis_manager_arduinoDAQ import Process_Raw_Behaviour_Data  # Import your analysis manager function
+from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
+from hex_behav_analysis.utils.analysis_manager_v2 import Process_Raw_Behaviour_Data_V2  # Import V2 analysis manager for behaviour_rig_system
 from hex_behav_analysis.utils.recover_crashed_sessions import recover_crashed_sessions
 from hex_behav_analysis.ephys.post_processing import get_axona_events
 
@@ -27,92 +27,93 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
     """
     Process electrophysiology data by finding .inp files in the parent directories
     of all session directories within a cohort.
-    
+
     Args:
         cohort_directory (Path): The root directory containing cohort data.
         target_pin (int): The pin number to extract events for (default: 0).
         force (bool): Whether to reprocess files even if they already exist (default: False).
         generate_plots (bool): Whether to generate timing analysis plots (default: False).
-        
+
     Returns:
-        tuple: (processed_count, skipped_count, error_count, failed_sessions) 
+        tuple: (processed_count, skipped_count, error_count, failed_sessions)
                - Numbers of files processed, skipped, errors encountered, and list of failed sessions
     """
     from pathlib import Path
+    from hex_behav_analysis.ephys import get_axona_events
     import logging
     import time
-    
+
     start_time = time.time()
-    
+
     print(f"Processing ephys data in cohort: {cohort_directory}")
     print(f"Settings: target_pin={target_pin}, force={force}, generate_plots={generate_plots}")
-    
+
     # Setup logging
     logger = logging.getLogger(__name__)
-    
+
     # Load cohort directory information
-    directory_info = Cohort_folder(cohort_directory, 
-                                  multi=True, 
-                                  plot=False, 
+    directory_info = Cohort_folder(cohort_directory,
+                                  multi=True,
+                                  plot=False,
                                   OEAB_legacy=False,
                                   ignore_tests=False).cohort
-                                  
+
     processed_count = 0
     skipped_count = 0
     error_count = 0
-    
+
     # Track failed sessions with detailed error information
     failed_sessions = []
-    
+
     # Iterate over each mouse in the directory information
     for mouse in directory_info["mice"]:
         # Iterate over each session for the mouse
         for session in directory_info["mice"][mouse]["sessions"]:
             session_data = directory_info["mice"][mouse]["sessions"][session]
             session_directory = Path(session_data["directory"])
-            
+
             # Check if timestamp files already exist
             json_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.json"
             h5_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.h5"
-            
+
             # Check if we should skip this session
             if (json_timestamp_file.exists() or h5_timestamp_file.exists()) and not force:
                 print(f"Skipping {session}: timestamp files already exist (use force=True to reprocess)")
                 skipped_count += 1
                 continue
-            
+
             # Check for ephys data in parent folder
             parent_directory = session_directory.parent
             inp_files = list(parent_directory.glob('*.inp'))
-            
+
             if inp_files:
                 print(f"Found ephys data files for {session} in parent directory: {parent_directory}")
                 print(f"Ephys data files: {[f.name for f in inp_files]}")
-                
+
                 if len(inp_files) > 0:
                     inp_file = inp_files[0]
                     try:
                         # Process the ephys data
                         print(f"Processing {inp_file} for {session_directory.name}...")
-                        
+
                         # Use the enhanced version that includes timestamp analysis
                         get_axona_events.process_file(
-                            file_path=inp_file, 
-                            output_folder=session_directory, 
+                            file_path=inp_file,
+                            output_folder=session_directory,
                             target_pin=target_pin,
                             generate_plots=generate_plots,
                             verbose=True
                         )
-                        
+
                         print(f"Successfully processed ephys sync file from {inp_file} for session {session_directory.name}")
                         processed_count += 1
-                        
+
                     except Exception as e:
                         error_msg = str(e)
                         print(f"Error processing ephys data for {session_directory}: {error_msg}")
                         logger.error(f"Error processing ephys data for {session_directory}: {error_msg}", exc_info=True)
                         error_count += 1
-                        
+
                         # Store detailed failure information
                         failed_sessions.append({
                             'session': session,
@@ -124,12 +125,12 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                         })
             else:
                 print(f"No ephys data files found for {session} in parent directory: {parent_directory}")
-    
+
     # Calculate elapsed time
     elapsed_time = time.time() - start_time
     minutes = int(elapsed_time // 60)
     seconds = int(elapsed_time % 60)
-    
+
     # Print summary
     print("\n" + "="*80)
     print("EPHYS PROCESSING SUMMARY")
@@ -138,13 +139,13 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
     print(f"  Skipped (already exist): {skipped_count} files")
     print(f"  Errors: {error_count} files")
     print(f"  Time taken: {minutes} minutes, {seconds} seconds")
-    
+
     # Print detailed failure report
     if failed_sessions:
         print("\n" + "="*80)
         print(f"FAILED SESSIONS REPORT ({len(failed_sessions)} sessions)")
         print("="*80)
-        
+
         # Group by error type
         error_types = {}
         for failure in failed_sessions:
@@ -152,7 +153,7 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
             if error_type not in error_types:
                 error_types[error_type] = []
             error_types[error_type].append(failure)
-        
+
         # Print failures grouped by error type
         for error_type, failures in error_types.items():
             # print(f"\n{error_type} ({len(failures)} sessions):")
@@ -160,7 +161,7 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                 # print(f"{failure['session']}")
                 print(f"    File: {failure['inp_file']}")
 
-    
+
     return (processed_count, skipped_count, error_count, failed_sessions)
 
 def get_sessions_to_process(directory_info):
@@ -208,13 +209,13 @@ def get_sessions_to_process(directory_info):
 # def process_video_session(session_directory, fps, processing_method, num_processes=8):
 #     """
 #     Processes a video session by either processing BMP files or processing the binary file.
-
+#
 #     Args:
 #         session_directory (Path): The directory containing the data for this session.
 #         fps (int): The frames per second to use for the video (used for BMP method).
 #         processing_method (str): The method to use for processing ('bmp' or 'binary').
 #         num_processes (int): Number of processes to use for multiprocessing (for 'bmp' method).
-
+#
 #     Returns:
 #         None
 #     """
@@ -268,10 +269,10 @@ def process_video_session(session_directory, fps, processing_method, num_process
                 print(f"Successfully compressed: {binary_file_path} to AVI in {output_directory}.")
             else:
                 print(f"Failed to compress {binary_file_path}.")
-            
+
             # After successful conversion, delete the binary file if the AVI exists
             delete_binary_files(session_directory, binary_file_path)
-            
+
         except Exception as e:
             print(f"Error processing {session_directory}: {e}")
 
@@ -300,10 +301,10 @@ def process_cohort_directory(cohort_directory, num_processes=8, cleanup=True):
     """
     cohort_directory = Path(cohort_directory)
     # Load cohort directory information
-    directory_info = Cohort_folder(cohort_directory, 
-                                   multi=True, 
-                                   plot=False, 
-                                   system_type='v1',
+    directory_info = Cohort_folder(cohort_directory,
+                                   multi=True,
+                                   plot=False,
+                                   OEAB_legacy=False,
                                    ignore_tests=ignore_test_sessions).cohort
 
     # Optionally clean up binary files in sessions that already have AVI files
@@ -348,24 +349,25 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
     total_start_time = time.perf_counter()
 
     # ---- Logging setup -----
-    logger = logging.getLogger(__name__)        
+    logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    log_dir = cohort_directory / 'logs'        
+    log_dir = cohort_directory / 'logs'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     log_file = log_dir / 'error.log'
     file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.ERROR)     
-    console_handler = logging.StreamHandler()       
-    console_handler.setLevel(logging.DEBUG)  
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')        
+    file_handler.setLevel(logging.ERROR)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)     
+    logger.addHandler(file_handler)
     logger.addHandler(console_handler)
     # --------------------------
 
-    Cohort = Cohort_folder(cohort_directory, multi=True, system_type='v1', ignore_tests=ignore_test_sessions)
+    # Use system_type="v2" for behaviour_rig_system sessions
+    Cohort = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2")
     directory_info = Cohort.cohort
 
     sessions_to_process = []
@@ -380,9 +382,9 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
 
     for session in sessions_to_process:
         print(f"\n\nProcessing {session.get('directory')}...")
-        Process_Raw_Behaviour_Data(session, logger=logger, sync_with_ephys=ephys_data)
-   
-    directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy = False, ignore_tests=ignore_test_sessions).cohort
+        Process_Raw_Behaviour_Data_V2(session, logger=logger, sync_with_ephys=ephys_data)
+
+    directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2").cohort
 
     total_time_taken = time.perf_counter() - total_start_time
     hours, remainder = divmod(total_time_taken, 3600)
@@ -551,7 +553,7 @@ def main():
     #                 }
     # cohort_directories.append(cohort_directory)
 
-    cohort_directory = {'local': Path(r"/cephfs2/dwelch/Behaviour/pitx2_inhib_dtx"),
+    cohort_directory = {'local': Path(r"/cephfs2/srogers/Behaviour/Pitx2_Inhib_DTx"),
                     }
     cohort_directories.append(cohort_directory)
 
@@ -577,19 +579,19 @@ def main():
     # # wait_until_time(22)  # 22:00 is 10 PM
 
     # # Step 4: Run analysis on the local files
-    # print("\n===== STEP 4: RUNNING ANALYSIS =====")
-    # for cohort_directory in cohort_directories:
-    #     if cohort_directory.get('ephys_data', False):
-    #         run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
-    #     else:
-    #         run_analysis_on_local(cohort_directory['local'], refresh=False)
+    print("\n===== STEP 4: RUNNING ANALYSIS =====")
+    for cohort_directory in cohort_directories:
+        if cohort_directory.get('ephys_data', False):
+            run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
+        else:
+            run_analysis_on_local(cohort_directory['local'], refresh=False)
 
-    # Step 5: Sync files to cephfs 
+    # # Step 5: Sync files to cephfs
     # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")
     # for cohort_directory in cohort_directories:
     #     print(f"\nSyncing {cohort_directory['rsync_local']} with CephFS server...\n")
     #     sync_with_cephfs(cohort_directory['rsync_local'], cohort_directory['rsync_cephfs_mapped'])
-        
+
     # # Step 6: Run DeepLabCut analysis
     # print("\n===== STEP 6: RUNNING DEEPLABCUT ANALYSIS =====")
     # for cohort_directory in cohort_directories:
@@ -597,9 +599,9 @@ def main():
     #     slurm_script = r"/cephfs2/srogers/Behaviour code/2407_July_WT_cohort/Analysis/NAP/July_cohort_scripts/newSH.sh"
     #     remote_host = "hex"
     #     remote_user = "srogers"
-    #     remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa" 
+    #     remote_key_path = r"C:\Users\Tripodi Group\.ssh\id_rsa"
     #     run_deeplabcut_analysis(cohort_directory, make_vid_list_script, slurm_script, remote_host, remote_user, remote_key_path)
-        
+
     # Report time taken
     total_time_taken = time.perf_counter() - total_start_time
     hours, remainder = divmod(total_time_taken, 3600)

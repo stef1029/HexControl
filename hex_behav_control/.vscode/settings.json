@@ -4,6 +4,7 @@
     "python.analysis.autoSearchPaths": true,
     "python.analysis.extraPaths": [
         "${workspaceFolder}",
-        "C:\\Dev\\projects\\hex_behav_analysis\\hex_behav_analysis"
+        "C:\\Dev\\projects\\hex_behav_analysis\\hex_behav_analysis",
+        "C:\\Dev\\projects\\hex_behav_control\\BehavLink"
     ]
 }
