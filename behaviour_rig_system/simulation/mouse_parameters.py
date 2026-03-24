@@ -47,7 +47,7 @@ MOUSE_PARAMETERS = [
     FloatParameter(
         name="mount_delay",
         display_name="Mount Delay (s)",
-        default=2.0,
+        default=0.5,
         min_value=0.1,
         max_value=30.0,
         step=0.5,
@@ -149,7 +149,7 @@ MOUSE_PARAMETERS = [
     FloatParameter(
         name="v_accuracy_alpha",
         display_name="Learning Rate",
-        default=1.0,
+        default=0.05,
         min_value=0.0,
         max_value=1.0,
         step=0.01,
@@ -159,7 +159,7 @@ MOUSE_PARAMETERS = [
     FloatParameter(
         name="v_accuracy_initial",
         display_name="Initial Value",
-        default=0.1,
+        default=0.95,
         min_value=0.0,
         max_value=1.0,
         step=0.05,
