@@ -8,7 +8,7 @@ react without the controller knowing about widgets.
 Events emitted:
     "status_changed"      (status: SessionStatus)
     "startup_status"      (message: str)
-    "startup_complete"    (scales_client, virtual_rig_state, session_info: dict)
+    "startup_complete"    (scales_client, virtual_rig_state, session_info: dict, mouse_params: dict|None)
     "startup_error"       (message: str)
     "startup_cancelled"   ()
     "protocol_log"        (message: str)
@@ -331,6 +331,7 @@ class SessionController:
                 scales_client=scales_client,
                 virtual_rig_state=self._virtual_rig_state,
                 session_info=session_info,
+                mouse_params=config.get("mouse_params"),
             )
 
         except Exception as e:

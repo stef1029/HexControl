@@ -18,7 +18,8 @@ import yaml
 from core.protocol_base import BaseProtocol
 from protocols import get_available_protocols
 from gui.parameter_widget import ParameterFormBuilder
-from gui.theme import Theme
+from gui.theme import Theme, enable_mousewheel_scrolling
+from simulation.mouse_parameters import MOUSE_PARAMETERS
 
 
 class ProtocolTab(ttk.Frame):
@@ -72,7 +73,8 @@ class ProtocolTab(ttk.Frame):
         
         canvas.pack(side="left", fill="both", expand=True, padx=10)
         scrollbar.pack(side="right", fill="y")
-        
+        enable_mousewheel_scrolling(canvas)
+
         # Reset button
         button_frame = ttk.Frame(self)
         button_frame.pack(fill="x", padx=10, pady=8)
@@ -117,9 +119,11 @@ class SetupMode(ttk.Frame):
         super().__init__(parent)
         self._rig_config = rig_config
         self._on_start = on_start
+        self._simulate = rig_config.get("simulate", False)
         self._cohort_folders = []
         self._mice = []
-        
+        self._mouse_form: ParameterFormBuilder | None = None
+
         self._load_session_options()
         self._create_widgets()
     
@@ -252,6 +256,10 @@ class SetupMode(ttk.Frame):
         self.save_path_label.pack(side="left", padx=6)
         self._update_save_path_preview()
         
+        # Simulated mouse settings (only shown in simulate mode)
+        if self._simulate:
+            self._create_mouse_panel()
+
         # Start button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
         button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
@@ -274,6 +282,45 @@ class SetupMode(ttk.Frame):
             self.notebook.add(tab, text=protocol_name)
             self.protocol_tabs[protocol_name] = tab
     
+    def _create_mouse_panel(self) -> None:
+        """Create the simulated mouse settings panel (simulate mode only)."""
+        palette = Theme.palette
+
+        mouse_frame = ttk.LabelFrame(
+            self, text="Simulated Mouse", padding=(10, 4)
+        )
+        mouse_frame.pack(fill="x", padx=10, pady=4)
+
+        # Scrollable container with fixed max height
+        canvas = tk.Canvas(
+            mouse_frame, borderwidth=0, highlightthickness=0,
+            background=palette.bg_secondary, height=180,
+        )
+        scrollbar = ttk.Scrollbar(mouse_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style="Card.TFrame")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        # Make inner frame match canvas width
+        def _on_canvas_configure(e):
+            canvas.itemconfig(canvas_window, width=e.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        self._mouse_form = ParameterFormBuilder(scrollable_frame, MOUSE_PARAMETERS)
+        self._mouse_form.build()
+        self._mouse_form.pack(fill="both", expand=True)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        enable_mousewheel_scrolling(canvas)
+
     def _update_save_path_preview(self) -> None:
         """Update the save path preview label."""
         cohort_name = self.cohort_var.get()
@@ -334,6 +381,11 @@ class SetupMode(ttk.Frame):
         protocol_params["num_trials"] = num_trials
         protocol_params["mouse_id"] = self.mouse_id_var.get()
         
+        # Build mouse params if in simulate mode
+        mouse_params = None
+        if self._mouse_form is not None:
+            mouse_params = self._mouse_form.get_values()
+
         # Build session config and call callback
         session_config = {
             "mouse_id": self.mouse_id_var.get(),
@@ -341,8 +393,9 @@ class SetupMode(ttk.Frame):
             "protocol_name": tab.protocol_class.get_name(),
             "protocol_class": tab.protocol_class,
             "parameters": protocol_params,
+            "mouse_params": mouse_params,
         }
-        
+
         self._on_start(session_config)
     
     def get_current_tab(self) -> ProtocolTab:

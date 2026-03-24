@@ -20,7 +20,7 @@ from enum import Enum, auto
 import multiprocessing as mp
 import yaml
 
-from .theme import apply_theme, Theme, style_scrolled_text
+from .theme import apply_theme, Theme, style_scrolled_text, enable_mousewheel_scrolling
 
 
 class WindowMode(Enum):
@@ -313,6 +313,7 @@ class PostProcessingWindow:
 
         cohort_canvas.pack(side="left", fill="both", expand=True)
         cohort_scrollbar.pack(side="right", fill="y")
+        enable_mousewheel_scrolling(cohort_canvas)
 
         # Header row
         header_frame = ttk.Frame(cohort_inner_frame)

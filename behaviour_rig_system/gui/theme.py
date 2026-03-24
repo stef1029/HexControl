@@ -813,6 +813,20 @@ def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     root.option_add("*Canvas*HighlightThickness", 0)
 
 
+def enable_mousewheel_scrolling(canvas: tk.Canvas) -> None:
+    """
+    Bind mousewheel scrolling to a scrollable canvas.
+
+    Activates when the mouse enters the canvas area and deactivates
+    when it leaves, so only the hovered canvas scrolls.
+    """
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+
 def style_scrolled_text(widget, log_style: bool = False) -> None:
     """
     Apply theme styling to a ScrolledText widget.

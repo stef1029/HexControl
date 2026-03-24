@@ -20,6 +20,8 @@ from core.protocol_base import ProtocolStatus
 from core.session_controller import SessionController
 from core.session_state import SessionStatus
 
+from simulation.simulated_mouse import SimulatedMouse
+
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .startup_overlay import StartupOverlay
 from .theme import apply_theme
@@ -55,8 +57,15 @@ class RigWindow:
         self.parent = parent
         self.rig_config = rig_config
 
+        # Make simulate flag visible to SetupMode via rig_config
+        if simulate:
+            self.rig_config["simulate"] = True
+
         # Virtual rig window (GUI-only, managed here not in controller)
         self._virtual_rig_window: VirtualRigWindow | None = None
+
+        # Simulated mouse (created on startup_complete if enabled)
+        self._simulated_mouse: SimulatedMouse | None = None
 
         # Pending result for post-session (set by protocol_complete, used by cleanup_complete)
         self._pending_result = None
@@ -198,10 +207,20 @@ class RigWindow:
     def _on_startup_status(self, message: str) -> None:
         self.startup_overlay.update_status(message)
 
-    def _on_startup_complete(self, scales_client, virtual_rig_state, session_info: dict) -> None:
+    def _on_startup_complete(
+        self, scales_client, virtual_rig_state, session_info: dict,
+        mouse_params=None,
+    ) -> None:
         self.startup_overlay.hide()
 
-        if virtual_rig_state is not None:
+        # Determine if mouse is enabled and headless
+        mouse_enabled = (
+            mouse_params is not None and mouse_params.get("mouse_enabled", False)
+        )
+        mouse_headless = mouse_params.get("mouse_headless", False) if mouse_enabled else False
+
+        # Open VirtualRigWindow unless headless mouse is active
+        if virtual_rig_state is not None and not mouse_headless:
             self._virtual_rig_window = VirtualRigWindow(self.root, virtual_rig_state)
 
         if scales_client is not None:
@@ -213,6 +232,21 @@ class RigWindow:
         self.running_mode.start_timer()
         self.running_mode.log_message("Session started!")
         self.running_mode.log_message(f"Running {session_info['protocol_name']}...")
+
+        # Create and start simulated mouse if enabled
+        if mouse_enabled and virtual_rig_state is not None:
+            self._simulated_mouse = SimulatedMouse(mouse_params, virtual_rig_state)
+
+            # Wire mouse events to GUI via main thread
+            def on_main_thread(fn):
+                def wrapper(**kwargs):
+                    self.root.after(0, lambda: fn(**kwargs))
+                return wrapper
+
+            self._simulated_mouse.on(
+                "log", on_main_thread(lambda message: self.running_mode.log_message(message))
+            )
+            self._simulated_mouse.start()
 
         # Start protocol execution
         self.controller.run_protocol()
@@ -249,6 +283,11 @@ class RigWindow:
         self.running_mode.log_message(message)
 
     def _on_cleanup_complete(self) -> None:
+        # Stop simulated mouse
+        if self._simulated_mouse is not None:
+            self._simulated_mouse.stop()
+            self._simulated_mouse = None
+
         # Close virtual rig window
         if self._virtual_rig_window is not None:
             self._virtual_rig_window.close()
