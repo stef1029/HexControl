@@ -19,6 +19,7 @@ Key things to know:
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum, auto
+import time as _time
 from typing import Any, Callable
 
 from .parameter_types import Parameter
@@ -71,6 +72,7 @@ class BaseProtocol(ABC):
         self._stop_requested = False
         self._listeners: dict[str, list[Callable]] = {}
         self._start_time: datetime | None = None
+        self._clock = None  # Optional BehaviourClock for accelerated simulation
 
     # =========================================================================
     # Abstract Methods - YOU MUST IMPLEMENT THESE
@@ -178,11 +180,13 @@ class BaseProtocol(ABC):
         scales=None,
         perf_tracker=None,
         rig_number: int | None = None,
+        clock=None,
     ) -> None:
         """Attach runtime services provided by the GUI/orchestrator."""
         self.scales = scales
         self.perf_tracker = perf_tracker
         self.rig_number = rig_number
+        self._clock = clock
 
     # =========================================================================
     # Protected Methods - Use these in your protocol
@@ -209,6 +213,19 @@ class BaseProtocol(ABC):
     def log(self, message: str) -> None:
         """Convenience helper for status messages in the GUI log."""
         self._emit("log", message=message)
+
+    def sleep(self, seconds: float) -> None:
+        """Sleep for *seconds* (virtual time if a BehaviourClock is set)."""
+        if self._clock is not None:
+            self._clock.sleep(seconds)
+        else:
+            _time.sleep(seconds)
+
+    def now(self) -> float:
+        """Current time (virtual if a BehaviourClock is set, else wall clock)."""
+        if self._clock is not None:
+            return self._clock.time()
+        return _time.time()
 
     # =========================================================================
     # Properties

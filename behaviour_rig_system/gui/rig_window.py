@@ -209,7 +209,7 @@ class RigWindow:
 
     def _on_startup_complete(
         self, scales_client, virtual_rig_state, session_info: dict,
-        mouse_params=None,
+        mouse_params=None, clock=None,
     ) -> None:
         self.startup_overlay.hide()
 
@@ -235,7 +235,7 @@ class RigWindow:
 
         # Create and start simulated mouse if enabled
         if mouse_enabled and virtual_rig_state is not None:
-            self._simulated_mouse = SimulatedMouse(mouse_params, virtual_rig_state)
+            self._simulated_mouse = SimulatedMouse(mouse_params, virtual_rig_state, clock=clock)
 
             # Wire mouse events to GUI via main thread
             def on_main_thread(fn):

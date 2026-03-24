@@ -7,11 +7,10 @@ protocol parameters).
 
 Parameters are organised into groups:
     General          — enable/disable, headless, speed factor
-    V_platform       — "platform → things happen" learning
+    Mounting         — fixed mount delay
     V_patience       — "waiting → cue appears" learning
-    V_engagement     — "responding to cue → reward" learning
+    Responding       — fixed engagement / response time / inhibition
     V_accuracy       — "follow cue → reward" learning
-    V_inhibition     — "wrong port → punishment" learning
 """
 
 from core.parameter_types import BoolParameter, FloatParameter
@@ -33,48 +32,28 @@ MOUSE_PARAMETERS = [
         group="General",
         order=1,
     ),
-    # ── V_platform: "platform → things happen" ────────────────
     FloatParameter(
-        name="v_platform_alpha",
-        display_name="Learning Rate",
-        default=0.10,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.01,
-        group="Platform Learning (V_platform)",
-        order=10,
-    ),
-    FloatParameter(
-        name="v_platform_initial",
-        display_name="Initial Value",
-        default=0.1,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.05,
-        group="Platform Learning (V_platform)",
-        order=11,
-    ),
-    FloatParameter(
-        name="mount_delay_min",
-        display_name="Mount Delay Min (s)",
+        name="sim_speed",
+        display_name="Simulation Speed",
         default=1.0,
-        min_value=0.1,
-        max_value=10.0,
-        step=0.5,
-        description="Time to mount when V_platform is high (well-trained)",
-        group="Platform Learning (V_platform)",
-        order=12,
-    ),
-    FloatParameter(
-        name="mount_delay_max",
-        display_name="Mount Delay Max (s)",
-        default=6.0,
         min_value=1.0,
+        max_value=50.0,
+        step=1.0,
+        description="Time multiplier when mouse is enabled (e.g. 10 = 10× faster)",
+        group="General",
+        order=2,
+    ),
+    # ── Mounting ──────────────────────────────────────────────
+    FloatParameter(
+        name="mount_delay",
+        display_name="Mount Delay (s)",
+        default=2.0,
+        min_value=0.1,
         max_value=30.0,
         step=0.5,
-        description="Time to mount when V_platform is low (untrained)",
-        group="Platform Learning (V_platform)",
-        order=13,
+        description="Fixed delay before the mouse mounts the platform",
+        group="Mounting",
+        order=10,
     ),
 
     # ── V_patience: "waiting → cue appears" ───────────────────
@@ -121,59 +100,28 @@ MOUSE_PARAMETERS = [
         order=23,
     ),
 
-    # ── V_engagement: "responding to cue → reward" ────────────
+    # ── Responding ────────────────────────────────────────────
     FloatParameter(
-        name="v_engagement_alpha",
-        display_name="Learning Rate",
-        default=0.08,
+        name="timeout_probability",
+        display_name="Timeout Probability",
+        default=0.05,
         min_value=0.0,
         max_value=1.0,
-        step=0.01,
-        group="Engagement Learning (V_engagement)",
+        step=0.05,
+        description="Fixed probability the mouse ignores a cue",
+        group="Responding",
         order=30,
     ),
     FloatParameter(
-        name="v_engagement_initial",
-        display_name="Initial Value",
-        default=0.95,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.05,
-        group="Engagement Learning (V_engagement)",
-        order=31,
-    ),
-    FloatParameter(
-        name="timeout_prob_max",
-        display_name="Max Timeout Probability",
-        default=0.4,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.05,
-        description="P(timeout) when V_engagement is low",
-        group="Engagement Learning (V_engagement)",
-        order=32,
-    ),
-    FloatParameter(
-        name="response_time_min",
-        display_name="Response Time Min (s)",
-        default=0.8,
+        name="response_time",
+        display_name="Response Time (s)",
+        default=1.5,
         min_value=0.1,
-        max_value=10.0,
-        step=0.1,
-        description="Response speed when V_engagement is high (well-trained)",
-        group="Engagement Learning (V_engagement)",
-        order=33,
-    ),
-    FloatParameter(
-        name="response_time_max",
-        display_name="Response Time Max (s)",
-        default=5.0,
-        min_value=0.5,
         max_value=30.0,
-        step=0.5,
-        description="Response speed when V_engagement is low (untrained)",
-        group="Engagement Learning (V_engagement)",
-        order=34,
+        step=0.1,
+        description="Mean time to respond after cue appears",
+        group="Responding",
+        order=31,
     ),
     FloatParameter(
         name="response_time_std",
@@ -182,8 +130,19 @@ MOUSE_PARAMETERS = [
         min_value=0.0,
         max_value=5.0,
         step=0.1,
-        group="Engagement Learning (V_engagement)",
-        order=35,
+        group="Responding",
+        order=32,
+    ),
+    FloatParameter(
+        name="inhibition_probability",
+        display_name="Inhibition Probability",
+        default=0.3,
+        min_value=0.0,
+        max_value=1.0,
+        step=0.05,
+        description="P(withhold response) when the mouse would pick the wrong port",
+        group="Responding",
+        order=33,
     ),
 
     # ── V_accuracy: "follow cue → reward" ─────────────────────
@@ -208,26 +167,4 @@ MOUSE_PARAMETERS = [
         order=41,
     ),
 
-    # ── V_inhibition: "wrong port → punishment" ───────────────
-    FloatParameter(
-        name="v_inhibition_alpha",
-        display_name="Learning Rate",
-        default=0.05,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.01,
-        group="Inhibition Learning (V_inhibition)",
-        order=50,
-    ),
-    FloatParameter(
-        name="v_inhibition_initial",
-        display_name="Initial Value",
-        default=0.0,
-        min_value=0.0,
-        max_value=1.0,
-        step=0.05,
-        description="Starts at 0 — learned purely from punishment",
-        group="Inhibition Learning (V_inhibition)",
-        order=51,
-    ),
 ]

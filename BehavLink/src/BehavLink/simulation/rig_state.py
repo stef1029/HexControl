@@ -70,7 +70,8 @@ class VirtualRigState:
     NUM_GPIO_PINS = 6
     EVENT_BUFFER_SIZE = 1024
 
-    def __init__(self) -> None:
+    def __init__(self, clock=None) -> None:
+        self._clock = clock  # Optional BehaviourClock for accelerated simulation
         self._lock = threading.Lock()
 
         # Hardware state
@@ -104,6 +105,11 @@ class VirtualRigState:
 
         # Timers for auto-reset (valve pulses, speaker)
         self._active_timers: list[threading.Timer] = []
+
+        # Cue notification — set when any cue (LED, buzzer, speaker) activates.
+        # SimulatedMouse waits on this instead of polling, so it never misses
+        # brief cues at high simulation speeds.
+        self._cue_event = threading.Event()
 
     # ── Snapshot / dirty-flag API ───────────────────────────────────────
 
@@ -151,6 +157,8 @@ class VirtualRigState:
             else:
                 self._led_brightness[port] = brightness
             self._dirty = True
+        if brightness > 0:
+            self._cue_event.set()
 
     def set_spotlight(self, port: int, brightness: int) -> None:
         with self._lock:
@@ -172,6 +180,8 @@ class VirtualRigState:
             else:
                 self._buzzer_state[port] = state
             self._dirty = True
+        if state:
+            self._cue_event.set()
 
     def set_speaker(self, frequency: int, duration: int) -> None:
         """Activate the speaker. Auto-resets after the duration (if not CONTINUOUS)."""
@@ -197,11 +207,16 @@ class VirtualRigState:
                 self._speaker_frequency = frequency
                 self._speaker_duration = duration
             self._dirty = True
+        if frequency != 0 and duration != 0:
+            self._cue_event.set()
 
         # Auto-reset timer
         ms = duration_ms_map.get(duration)
         if ms is not None and ms > 0 and frequency != 0:
-            t = threading.Timer(ms / 1000.0, self._reset_speaker)
+            real_s = ms / 1000.0
+            if self._clock:
+                real_s = self._clock.real_timeout(real_s)
+            t = threading.Timer(real_s, self._reset_speaker)
             t.daemon = True
             t.start()
             with self._lock:
@@ -227,7 +242,10 @@ class VirtualRigState:
                 self._dirty = True
                 self._prune_timers()
 
-        t = threading.Timer(duration_ms / 1000.0, _reset)
+        real_s = duration_ms / 1000.0
+        if self._clock:
+            real_s = self._clock.real_timeout(real_s)
+        t = threading.Timer(real_s, _reset)
         t.daemon = True
         t.start()
         with self._lock:
@@ -273,11 +291,12 @@ class VirtualRigState:
         This wakes any protocol thread blocked in ``wait_for_event()``.
         """
         with self._sensor_event_condition:
+            ts = int(self._clock.time() * 1000) & 0xFFFFFFFF if self._clock else int(time.monotonic() * 1000) & 0xFFFFFFFF
             event = SensorEvent(
                 event_id=self._next_sensor_event_id,
                 port=port,
                 is_activation=is_activation,
-                timestamp_ms=int(time.monotonic() * 1000) & 0xFFFFFFFF,
+                timestamp_ms=ts,
                 received_time=time.monotonic(),
             )
             self._next_sensor_event_id += 1
@@ -293,11 +312,12 @@ class VirtualRigState:
         This wakes any protocol thread blocked in ``wait_for_gpio_event()``.
         """
         with self._gpio_event_condition:
+            ts = int(self._clock.time() * 1000) & 0xFFFFFFFF if self._clock else int(time.monotonic() * 1000) & 0xFFFFFFFF
             event = GPIOEvent(
                 event_id=self._next_gpio_event_id,
                 pin=pin,
                 is_activation=is_activation,
-                timestamp_ms=int(time.monotonic() * 1000) & 0xFFFFFFFF,
+                timestamp_ms=ts,
                 received_time=time.monotonic(),
             )
             self._next_gpio_event_id += 1
@@ -325,6 +345,7 @@ class VirtualRigState:
             self._gpio_modes = [None] * self.NUM_GPIO_PINS
             self._gpio_output_states = [False] * self.NUM_GPIO_PINS
             self._dirty = True
+        self._cue_event.set()  # Wake mouse thread so it can exit
 
         # Wake any threads blocked on event waits so they can exit
         with self._sensor_event_condition:

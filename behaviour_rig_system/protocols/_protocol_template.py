@@ -27,8 +27,6 @@ Minimum required protocol shape:
 Everything else in this template is optional quality-of-life.
 """
 
-import time
-
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter, StringParameter
 from core.protocol_base import BaseProtocol
 
@@ -97,6 +95,6 @@ class ProtocolTemplate(BaseProtocol):
                 self.log("Stopped by user")
                 return
 
-            time.sleep(0.1)
+            self.sleep(0.1)
 
         self.log("Template protocol complete")

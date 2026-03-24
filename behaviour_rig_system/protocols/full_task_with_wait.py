@@ -5,7 +5,6 @@ Class-based version of the original full task protocol.
 """
 
 import random
-import time
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter
 from core.protocol_base import BaseProtocol
@@ -203,29 +202,29 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             while not self.check_stop() and not platform_ready:
                 weight = scales.get_weight()
                 if weight is not None and weight > weight_threshold:
-                    settle_start = time.time()
+                    settle_start = self.now()
                     settled = True
 
-                    while time.time() - settle_start < platform_settle_time:
+                    while self.now() - settle_start < platform_settle_time:
                         if self.check_stop():
                             break
                         weight = scales.get_weight()
                         if weight is None or weight < weight_threshold:
                             settled = False
                             break
-                        time.sleep(0.02)
+                        self.sleep(0.02)
 
                     if settled and not self.check_stop():
                         weight = scales.get_weight()
                         if weight is not None and weight > weight_threshold:
                             platform_ready = True
                 else:
-                    time.sleep(0.05)
+                    self.sleep(0.05)
 
             if self.check_stop():
                 break
 
-            activation_time = time.time()
+            activation_time = self.now()
             trial_num += 1
 
             if trial_order is not None:
@@ -238,7 +237,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
 
             wait_complete = False
             while not self.check_stop():
-                elapsed = time.time() - activation_time
+                elapsed = self.now() - activation_time
                 weight = scales.get_weight()
 
                 if weight is None or weight < weight_threshold:
@@ -249,7 +248,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                     wait_complete = True
                     break
 
-                time.sleep(0.02)
+                self.sleep(0.02)
 
             if self.check_stop():
                 break
@@ -257,12 +256,12 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             if not wait_complete:
                 trial_num -= 1
                 if iti > 0:
-                    time.sleep(iti)
+                    self.sleep(iti)
                 continue
 
             if perf_tracker is not None:
                 perf_tracker.stimulus(target_port)
-            trial_start_time = time.time()
+            trial_start_time = self.now()
 
             if is_audio:
                 try:
@@ -279,7 +278,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 if self.check_stop():
                     break
 
-                elapsed = time.time() - trial_start_time
+                elapsed = self.now() - trial_start_time
 
                 if cue_on and cue_duration > 0 and elapsed >= cue_duration:
                     if not is_audio:
@@ -294,7 +293,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 if event is not None:
                     break
 
-            trial_duration = time.time() - trial_start_time
+            trial_duration = self.now() - trial_start_time
 
             if cue_on and not is_audio:
                 self.link.led_set(target_port, 0)
@@ -319,8 +318,8 @@ class FullTaskWithWaitProtocol(BaseProtocol):
 
                 if punishment_s > 0:
                     self.link.spotlight_set(255, 255)
-                    time.sleep(punishment_s)
+                    self.sleep(punishment_s)
                     self.link.spotlight_set(255, 0)
 
             if not self.check_stop() and iti > 0:
-                time.sleep(iti)
+                self.sleep(iti)

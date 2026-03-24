@@ -68,11 +68,13 @@ class SimulatedRig:
         virtual_state: VirtualRigState | None = None,
         *,
         receive_timeout: float = 0.1,
+        clock=None,
     ) -> None:
         self._state = virtual_state
         self._interactive = virtual_state is not None
         self._running = False
         self._gpio_modes: dict[int, GPIOMode] = {}
+        self._clock = clock  # Optional BehaviourClock for accelerated simulation
 
     # ── Lifecycle ───────────────────────────────────────────────────────
 
@@ -189,7 +191,8 @@ class SimulatedRig:
         """
         if not self._interactive:
             if timeout is not None:
-                time.sleep(timeout)
+                real_t = self._clock.real_timeout(timeout) if self._clock else timeout
+                time.sleep(real_t)
             return None
 
         cond = self._state._sensor_event_condition
@@ -199,7 +202,8 @@ class SimulatedRig:
             with cond:
                 buf.clear()
 
-        deadline = None if timeout is None else (time.monotonic() + timeout)
+        real_timeout = self._clock.real_timeout(timeout) if (self._clock and timeout is not None) else timeout
+        deadline = None if real_timeout is None else (time.monotonic() + real_timeout)
 
         with cond:
             while True:
@@ -261,13 +265,15 @@ class SimulatedRig:
         """
         if not self._interactive:
             if timeout is not None:
-                time.sleep(timeout)
+                real_t = self._clock.real_timeout(timeout) if self._clock else timeout
+                time.sleep(real_t)
             raise TimeoutError("SimulatedRig: no GPIO events in passive mode")
 
         cond = self._state._gpio_event_condition
         buf = self._state._gpio_event_buffer
 
-        deadline = None if timeout is None else (time.monotonic() + timeout)
+        real_timeout = self._clock.real_timeout(timeout) if (self._clock and timeout is not None) else timeout
+        deadline = None if real_timeout is None else (time.monotonic() + real_timeout)
 
         with cond:
             while True:

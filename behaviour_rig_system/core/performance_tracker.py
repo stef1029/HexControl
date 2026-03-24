@@ -53,10 +53,11 @@ class PerformanceTracker:
     Emits events when trials are recorded so the GUI can update.
     """
     
-    def __init__(self):
+    def __init__(self, clock=None):
         self._trials: list[TrialRecord] = []
         self._listeners: dict[str, list[Callable]] = {}
         self._start_time: Optional[float] = None
+        self._clock = clock  # Optional BehaviourClock for accelerated simulation
 
         # Cached running counters — O(1) instead of O(n) list scans
         self._successes: int = 0
@@ -81,7 +82,7 @@ class PerformanceTracker:
         self._successes = 0
         self._failures = 0
         self._timeouts = 0
-        self._start_time = datetime.now().timestamp()
+        self._start_time = self._clock.time() if self._clock else datetime.now().timestamp()
         self._notify_update()
     
     def stimulus(self, target_port: int) -> None:
@@ -160,7 +161,7 @@ class PerformanceTracker:
     ) -> None:
         """Record a trial with the given outcome."""
         trial_number = len(self._trials) + 1
-        current_time = datetime.now().timestamp()
+        current_time = self._clock.time() if self._clock else datetime.now().timestamp()
         time_since_start = current_time - self._start_time if self._start_time else 0.0
         
         record = TrialRecord(

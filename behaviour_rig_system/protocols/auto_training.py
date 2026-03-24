@@ -5,7 +5,6 @@ Adaptive protocol that progresses through training stages based on performance.
 """
 
 import random
-import time
 from datetime import datetime
 
 from autotraining.definitions.graph import TRANSITIONS
@@ -143,7 +142,7 @@ class AutoTrainingProtocol(BaseProtocol):
         if perf_tracker is not None:
             engine.initialise_session(perf_tracker, self.log)
 
-        session_start = time.time()
+        session_start = self.now()
         trial_num = 0
 
         try:
@@ -182,24 +181,24 @@ class AutoTrainingProtocol(BaseProtocol):
                 while not self.check_stop() and not platform_ready:
                     weight = scales.get_weight()
                     if weight is not None and weight > weight_threshold:
-                        settle_start = time.time()
+                        settle_start = self.now()
                         settled = True
 
-                        while time.time() - settle_start < platform_settle_time:
+                        while self.now() - settle_start < platform_settle_time:
                             if self.check_stop():
                                 break
                             weight = scales.get_weight()
                             if weight is None or weight < weight_threshold:
                                 settled = False
                                 break
-                            time.sleep(0.02)
+                            self.sleep(0.02)
 
                         if settled and not self.check_stop():
                             weight = scales.get_weight()
                             if weight is not None and weight > weight_threshold:
                                 platform_ready = True
                     else:
-                        time.sleep(0.05)
+                        self.sleep(0.05)
 
                 if self.check_stop():
                     break
@@ -208,9 +207,9 @@ class AutoTrainingProtocol(BaseProtocol):
                 target_port = random.choice(enabled_ports)
 
                 wait_complete = False
-                activation_time = time.time()
+                activation_time = self.now()
                 while not self.check_stop():
-                    elapsed = time.time() - activation_time
+                    elapsed = self.now() - activation_time
                     weight = scales.get_weight()
                     if weight is None or weight < weight_threshold:
                         self.log("  Mouse left platform during wait period")
@@ -218,19 +217,19 @@ class AutoTrainingProtocol(BaseProtocol):
                     if elapsed >= wait_duration:
                         wait_complete = True
                         break
-                    time.sleep(0.02)
+                    self.sleep(0.02)
 
                 if self.check_stop():
                     break
 
                 if not wait_complete:
                     trial_num -= 1
-                    time.sleep(iti)
+                    self.sleep(iti)
                     continue
 
                 if perf_tracker is not None:
                     perf_tracker.stimulus(target_port)
-                trial_start_time = time.time()
+                trial_start_time = self.now()
 
                 self.link.led_set(target_port, led_brightness)
 
@@ -240,7 +239,7 @@ class AutoTrainingProtocol(BaseProtocol):
                     if self.check_stop():
                         break
 
-                    elapsed = time.time() - trial_start_time
+                    elapsed = self.now() - trial_start_time
                     if cue_on and cue_duration > 0 and elapsed >= cue_duration:
                         self.link.led_set(target_port, 0)
                         cue_on = False
@@ -253,7 +252,7 @@ class AutoTrainingProtocol(BaseProtocol):
                     if event is not None:
                         break
 
-                trial_duration = time.time() - trial_start_time
+                trial_duration = self.now() - trial_start_time
                 if cue_on:
                     self.link.led_set(target_port, 0)
 
@@ -292,7 +291,7 @@ class AutoTrainingProtocol(BaseProtocol):
 
                     if punishment_enabled and punishment_s > 0:
                         self.link.spotlight_set(255, 255)
-                        time.sleep(punishment_s)
+                        self.sleep(punishment_s)
                         self.link.spotlight_set(255, 0)
 
                 new_stage = engine.on_trial_complete(
@@ -307,7 +306,7 @@ class AutoTrainingProtocol(BaseProtocol):
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:
-                    time.sleep(iti)
+                    self.sleep(iti)
 
         finally:
             end_state = engine.get_session_end_state()
@@ -333,5 +332,5 @@ class AutoTrainingProtocol(BaseProtocol):
                 append_transition_log(progress_folder, mouse_id, session_id, transition_log)
                 self.log(f"Logged {len(transition_log)} stage transition(s)")
 
-            session_duration = (time.time() - session_start) / 60.0
+            session_duration = (self.now() - session_start) / 60.0
             self.log(f"Session complete: {trial_num} trials in {session_duration:.1f} minutes")

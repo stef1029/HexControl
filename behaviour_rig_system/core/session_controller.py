@@ -27,6 +27,7 @@ from typing import Any, Callable
 import serial
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 from BehavLink import SimulatedRig, VirtualRigState
+from simulation import BehaviourClock
 from BehavLink.mock import MockSerial, mock_reset_arduino_via_dtr
 
 from .performance_tracker import PerformanceTracker
@@ -178,9 +179,17 @@ class SessionController:
             self._session_save_path = peripheral_config.session_folder
             self._emit("startup_status", message=f"Session folder: {peripheral_config.session_folder}")
 
+            # Create BehaviourClock for accelerated simulation (only when mouse enabled)
+            mouse_params = config.get("mouse_params")
+            clock = None
+            if mouse_params and mouse_params.get("mouse_enabled", False):
+                speed = mouse_params.get("sim_speed", 1.0)
+                if speed > 1.0:
+                    clock = BehaviourClock(speed=speed)
+
             # Create VirtualRigState for interactive simulation
             if self._simulate:
-                self._virtual_rig_state = VirtualRigState()
+                self._virtual_rig_state = VirtualRigState(clock=clock)
 
             self._peripheral_manager = PeripheralManager(
                 peripheral_config,
@@ -254,7 +263,7 @@ class SessionController:
             self._emit("startup_status", message="Creating BehaviourRigLink...")
             board_type = self._rig_config.get("board_type", "giga")
             if self._simulate:
-                self._link = SimulatedRig(self._serial, self._virtual_rig_state)
+                self._link = SimulatedRig(self._serial, self._virtual_rig_state, clock=clock)
             else:
                 self._link = BehaviourRigLink(self._serial, board_type=board_type)
             self._link.start()
@@ -288,7 +297,7 @@ class SessionController:
             )
 
             # Create performance tracker and wire events
-            self._perf_tracker = PerformanceTracker()
+            self._perf_tracker = PerformanceTracker(clock=clock)
             self._perf_tracker.on(
                 "update", lambda tracker: self._emit("performance_update", tracker=tracker)
             )
@@ -304,6 +313,7 @@ class SessionController:
                 scales=scales_client,
                 perf_tracker=self._perf_tracker,
                 rig_number=rig_number,
+                clock=clock,
             )
 
             # Wire protocol events
@@ -331,7 +341,8 @@ class SessionController:
                 scales_client=scales_client,
                 virtual_rig_state=self._virtual_rig_state,
                 session_info=session_info,
-                mouse_params=config.get("mouse_params"),
+                mouse_params=mouse_params,
+                clock=clock,
             )
 
         except Exception as e:
