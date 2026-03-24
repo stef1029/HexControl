@@ -1008,7 +1008,7 @@ def get_status_color(status: str) -> str:
         return "#1e8449"  # Darker green
     elif status_lower in ("stopped", "paused", "warning"):
         return palette.warning
-    elif status_lower in ("error", "failed", "aborted"):
+    elif status_lower in ("error", "failed"):
         return palette.error
     elif status_lower in ("idle", "waiting", "ready"):
         return palette.info

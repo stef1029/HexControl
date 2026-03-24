@@ -260,7 +260,7 @@ The protocol's `run()` method executes the lifecycle: `_setup()` → `_run_proto
 def _run_protocol(self):
     self.perf_tracker.reset()
     for trial in range(self.parameters["num_trials"]):
-        if self._check_abort():
+        if self._check_stop():
             return
         self.log(f"Trial {trial + 1}")
         # ... experiment logic using self.link ...
@@ -269,11 +269,11 @@ def _run_protocol(self):
 
 - `self.log("message")` → emits `"log"` → controller forwards as `"protocol_log"` → appears in session log
 - `self.perf_tracker.success(...)` → tracker emits `"update"` → controller forwards as `"performance_update"` → RunningMode updates accuracy display
-- `self._check_abort()` → returns True if the user clicked Stop
+- `self._check_stop()` → returns True if the user clicked Stop
 
 #### 4. Stopping (STOPPING phase)
 
-When the user clicks Stop, `controller.stop_session()` calls `protocol.request_abort()`, which sets `_abort_requested = True` and calls `_on_abort()` (turns off rig outputs). The protocol loop checks this flag via `_check_abort()` and returns early.
+When the user clicks Stop, `controller.stop_session()` calls `protocol.request_stop()`, which sets `_stop_requested = True` and calls `_on_stop()` (turns off rig outputs). The protocol loop checks this flag via `_check_stop()` and returns early.
 
 #### 5. Cleanup (CLEANING_UP phase)
 
@@ -434,7 +434,7 @@ class MyProtocol(BaseProtocol):
         return []
 
     def _run_protocol(self) -> None:
-        if self._check_abort():
+        if self._check_stop():
             return
         self.log("Done")
 ```
@@ -456,7 +456,7 @@ Key methods:
 | Method | Purpose |
 |--------|---------|
 | `self.log("message")` | Send a message to the session log |
-| `self._check_abort()` | Returns True if user clicked Stop — check this in your loop |
+| `self._check_stop()` | Returns True if user clicked Stop — check this in your loop |
 | `self.perf_tracker.reset()` | Clear tracker and start timing |
 | `self.perf_tracker.success(correct_port, trial_duration)` | Record a correct trial |
 | `self.perf_tracker.failure(correct_port, chosen_port, trial_duration)` | Record an incorrect trial |
@@ -475,7 +475,7 @@ def _cleanup(self) -> None:
     Default: calls link.shutdown() to turn off rig outputs."""
     pass
 
-def _on_abort(self) -> None:
+def _on_stop(self) -> None:
     """Called when user clicks Stop.
     Default: calls link.shutdown() to turn off rig outputs."""
     pass

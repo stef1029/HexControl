@@ -152,8 +152,8 @@ class AutoTrainingProtocol(BaseProtocol):
                     self.log(f"Completed {num_trials} trials")
                     break
 
-                if self._check_abort():
-                    self.log("Aborted by user")
+                if self._check_stop():
+                    self.log("Stopped by user")
                     break
 
                 stage_params = engine.get_active_params()
@@ -179,14 +179,14 @@ class AutoTrainingProtocol(BaseProtocol):
                     enabled_ports = [0]
 
                 platform_ready = False
-                while not self._check_abort() and not platform_ready:
+                while not self._check_stop() and not platform_ready:
                     weight = scales.get_weight()
                     if weight is not None and weight > weight_threshold:
                         settle_start = time.time()
                         settled = True
 
                         while time.time() - settle_start < platform_settle_time:
-                            if self._check_abort():
+                            if self._check_stop():
                                 break
                             weight = scales.get_weight()
                             if weight is None or weight < weight_threshold:
@@ -194,14 +194,14 @@ class AutoTrainingProtocol(BaseProtocol):
                                 break
                             time.sleep(0.02)
 
-                        if settled and not self._check_abort():
+                        if settled and not self._check_stop():
                             weight = scales.get_weight()
                             if weight is not None and weight > weight_threshold:
                                 platform_ready = True
                     else:
                         time.sleep(0.05)
 
-                if self._check_abort():
+                if self._check_stop():
                     break
 
                 trial_num += 1
@@ -209,7 +209,7 @@ class AutoTrainingProtocol(BaseProtocol):
 
                 wait_complete = False
                 activation_time = time.time()
-                while not self._check_abort():
+                while not self._check_stop():
                     elapsed = time.time() - activation_time
                     weight = scales.get_weight()
                     if weight is None or weight < weight_threshold:
@@ -220,7 +220,7 @@ class AutoTrainingProtocol(BaseProtocol):
                         break
                     time.sleep(0.02)
 
-                if self._check_abort():
+                if self._check_stop():
                     break
 
                 if not wait_complete:
@@ -237,7 +237,7 @@ class AutoTrainingProtocol(BaseProtocol):
                 cue_on = True
                 event = None
                 while True:
-                    if self._check_abort():
+                    if self._check_stop():
                         break
 
                     elapsed = time.time() - trial_start_time
@@ -260,7 +260,7 @@ class AutoTrainingProtocol(BaseProtocol):
                 outcome = "timeout"
                 chosen_port = None
 
-                if self._check_abort():
+                if self._check_stop():
                     break
 
                 if event is None:
@@ -306,7 +306,7 @@ class AutoTrainingProtocol(BaseProtocol):
                     self.log(f"    Rolling accuracy: {perf_tracker.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
-                if not self._check_abort() and iti > 0:
+                if not self._check_stop() and iti > 0:
                     time.sleep(iti)
 
         finally:

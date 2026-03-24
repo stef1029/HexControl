@@ -143,7 +143,7 @@ class SessionController:
         """Request the running protocol to stop."""
         if self._current_protocol is not None:
             self._set_phase(SessionPhase.STOPPING)
-            self._current_protocol.request_abort()
+            self._current_protocol.request_stop()
 
     def new_session(self) -> None:
         """Reset state for a new session."""
@@ -379,7 +379,7 @@ class SessionController:
 
         status_map = {
             ProtocolStatus.COMPLETED: "Completed",
-            ProtocolStatus.ABORTED: "Stopped",
+            ProtocolStatus.STOPPED: "Stopped",
             ProtocolStatus.ERROR: "Error",
         }
         status_str = status_map.get(final_status, "Unknown")

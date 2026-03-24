@@ -5,7 +5,7 @@ A simple system for tracking trial outcomes (success/failure/timeout) during
 behaviour protocols. Provides rolling statistics and emits events for GUI updates.
 
 Usage in protocols:
-    def run(link, params, log, check_abort, scales, tracker):
+    def run(link, params, log, check_stop, scales, tracker):
         for trial in range(num_trials):
             # ... run trial ...
             if correct:

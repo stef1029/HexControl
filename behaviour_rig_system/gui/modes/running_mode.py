@@ -404,7 +404,7 @@ class RunningMode(ttk.Frame):
             ProtocolStatus.IDLE: ("IDLE", palette.text_secondary),
             ProtocolStatus.RUNNING: ("RUNNING", palette.success),
             ProtocolStatus.COMPLETED: ("COMPLETED", "#1e8449"),  # Darker green
-            ProtocolStatus.ABORTED: ("STOPPED", palette.warning),
+            ProtocolStatus.STOPPED: ("STOPPED", palette.warning),
             ProtocolStatus.ERROR: ("ERROR", palette.error),
         }
         text, color = status_config.get(status, ("UNKNOWN", palette.text_primary))

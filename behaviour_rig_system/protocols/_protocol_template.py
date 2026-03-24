@@ -21,7 +21,7 @@ Minimum required protocol shape:
             return []
 
         def _run_protocol(self) -> None:
-            if self._check_abort():
+            if self._check_stop():
                 return
 
 Everything else in this template is optional quality-of-life.
@@ -93,8 +93,8 @@ class ProtocolTemplate(BaseProtocol):
                 self.log(f"Current weight: {weight:.2f} g")
 
         for trial in range(self.parameters["example_int"]):
-            if self._check_abort():
-                self.log("Aborted by user")
+            if self._check_stop():
+                self.log("Stopped by user")
                 return
 
             time.sleep(0.1)

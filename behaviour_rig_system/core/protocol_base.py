@@ -4,7 +4,7 @@ Base Protocol Class for Behaviour Experiments.
 Simplified protocol system. A protocol must:
     1. Inherit from BaseProtocol
     2. Implement: get_name(), get_description(), get_parameters(), _run_protocol()
-    3. Optionally implement: _setup(), _cleanup(), _on_abort()
+    3. Optionally implement: _setup(), _cleanup(), _on_stop()
 
 The protocol lifecycle:
     _setup() -> _run_protocol() -> _cleanup()
@@ -12,7 +12,7 @@ The protocol lifecycle:
 Key things to know:
     - Access parameters via: self.parameters["name"]
     - Control rig via: self.link.led_set(), self.link.valve_pulse(), etc.
-    - Check for abort: if self._check_abort(): return
+    - Check for stop: if self._check_stop(): return
     - Log to GUI: self.log("message")
 """
 
@@ -29,11 +29,11 @@ from .parameter_types import Parameter
 # =============================================================================
 
 class ProtocolStatus(Enum):
-    """Protocol states: IDLE -> RUNNING -> COMPLETED/ABORTED/ERROR"""
+    """Protocol states: IDLE -> RUNNING -> COMPLETED/STOPPED/ERROR"""
     IDLE = auto()       # Not started
     RUNNING = auto()    # Currently executing
     COMPLETED = auto()  # Finished successfully
-    ABORTED = auto()    # User stopped it
+    STOPPED = auto()    # User stopped it
     ERROR = auto()      # Something went wrong
 
 
@@ -54,7 +54,7 @@ class BaseProtocol(ABC):
     CAN implement:
         _setup() - Called before _run_protocol
         _cleanup() - Called after (always runs, even on error)
-        _on_abort() - Called when user clicks Stop
+        _on_stop() - Called when user clicks Stop
     """
 
     def __init__(
@@ -69,7 +69,7 @@ class BaseProtocol(ABC):
         self.perf_tracker = None
         self.rig_number: int | None = None
 
-        self._abort_requested = False
+        self._stop_requested = False
         self._listeners: dict[str, list[Callable]] = {}
         self._start_time: datetime | None = None
 
@@ -101,7 +101,7 @@ class BaseProtocol(ABC):
         Main protocol loop. This is where your experiment runs!
         
         Important:
-            - Check self._check_abort() regularly and return early if True
+            - Check self._check_stop() regularly and return early if True
             - Use self.link to control the rig (BehavLink functions)
             - Use self.parameters["name"] to access parameter values
         """
@@ -123,7 +123,7 @@ class BaseProtocol(ABC):
             except Exception:
                 pass
 
-    def _on_abort(self) -> None:
+    def _on_stop(self) -> None:
         """Called when user clicks Stop. Default behavior turns rig outputs off."""
         if self.link:
             try:
@@ -155,8 +155,8 @@ class BaseProtocol(ABC):
             self._run_protocol()
 
             # Set final status
-            if self._abort_requested:
-                self.status = ProtocolStatus.ABORTED
+            if self._stop_requested:
+                self.status = ProtocolStatus.STOPPED
             else:
                 self.status = ProtocolStatus.COMPLETED
 
@@ -174,13 +174,13 @@ class BaseProtocol(ABC):
         if error is not None:
             raise error
 
-    def request_abort(self) -> None:
+    def request_stop(self) -> None:
         """Called when user clicks Stop."""
-        self._abort_requested = True
+        self._stop_requested = True
         try:
-            self._on_abort()
+            self._on_stop()
         except Exception:
-            pass  # Ignore errors during abort (serial may be disconnected)
+            pass  # Ignore errors during stop (serial may be disconnected)
 
     def on(self, event_name: str, callback: Callable) -> None:
         """Register a callback for a named event."""
@@ -210,15 +210,15 @@ class BaseProtocol(ABC):
             except Exception:
                 pass
 
-    def _check_abort(self) -> bool:
+    def _check_stop(self) -> bool:
         """
         Check if user wants to stop.
 
         Call this regularly in your loop:
-            if self._check_abort():
+            if self._check_stop():
                 return
         """
-        return self._abort_requested
+        return self._stop_requested
 
     def log(self, message: str) -> None:
         """Convenience helper for status messages in the GUI log."""

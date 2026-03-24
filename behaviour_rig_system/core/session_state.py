@@ -16,7 +16,7 @@ class SessionPhase(Enum):
     IDLE = auto()          # Setup mode, nothing running
     STARTING = auto()      # Hardware init in progress
     RUNNING = auto()       # Protocol executing
-    STOPPING = auto()      # Abort requested, waiting for protocol to finish
+    STOPPING = auto()      # Stop requested, waiting for protocol to finish
     CLEANING_UP = auto()   # Hardware shutdown in progress
     COMPLETED = auto()     # Post-session results displayed
 
