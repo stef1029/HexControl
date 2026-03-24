@@ -54,20 +54,24 @@ class Condition:
     A single condition that can be evaluated against performance metrics.
 
     Examples:
-        Condition("rolling_accuracy", Operator.GTE, 80, window=10)
-        Condition("trials_in_stage", Operator.GTE, 20)
-        Condition("consecutive_correct", Operator.GTE, 5)
+        Condition("rolling_accuracy", ">=", 80, window=10)
+        Condition("trials_in_stage", ">=", 20)
+        Condition("consecutive_correct", ">=", 5)
 
     Attributes:
         metric:   Name of the metric to evaluate (see METRIC_DESCRIPTIONS)
-        operator: Comparison operator
+        operator: Comparison operator (e.g. ">=", "<=", ">", "<", "==", "!=")
         value:    Threshold value to compare against
         window:   Rolling window size (only used for rolling_accuracy)
     """
     metric: str
-    operator: Operator
+    operator: str | Operator
     value: float
     window: int = 10
+
+    def __post_init__(self) -> None:
+        if isinstance(self.operator, str):
+            self.operator = Operator(self.operator)
 
     def evaluate(self, context: "TransitionContext") -> bool:
         """

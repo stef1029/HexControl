@@ -13,7 +13,7 @@ Transition priorities:
     10-19: Forward progression rules (the main training path)
 """
 
-from ...transitions import Transition, Condition, Operator
+from ...transitions import Transition, Condition
 
 
 # =============================================================================
@@ -30,8 +30,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="warm_up",
         to_stage="$saved",
         conditions=[
-            Condition("consecutive_correct", Operator.GTE, 5),
-            Condition("trials_in_stage", Operator.GTE, 10),
+            Condition("consecutive_correct", ">=", 5),
+            Condition("trials_in_stage", ">=", 10),
         ],
         priority=1,
         description="Warm-up complete (5 consecutive correct, 10+ trials)",
@@ -45,8 +45,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_1_platform_reward",
         to_stage="phase_1_rearing",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 50),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=20),
+            Condition("trials_in_stage", ">=", 50),
+            Condition("rolling_accuracy", ">=", 80, window=20),
         ],
         priority=10,
         description="Reliable platform-port alternation (80% over 20, 50+ trials)",
@@ -56,8 +56,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_1_rearing",
         to_stage="phase_2_cue_no_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=10),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", ">=", 80, window=10),
         ],
         priority=10,
         description="Rearing acquired (80% over 10, 20+ trials)",
@@ -71,8 +71,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_2_cue_no_punish",
         to_stage="phase_2_cue_with_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.GTE, 70, window=10),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", ">=", 70, window=10),
         ],
         priority=10,
         description="Evidence of understanding cue (70% over 10, 20+ trials)",
@@ -82,8 +82,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_2_cue_with_punish",
         to_stage="phase_3_port3_no_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 30),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=20),
+            Condition("trials_in_stage", ">=", 30),
+            Condition("rolling_accuracy", ">=", 80, window=20),
         ],
         priority=10,
         description="Reliable cue-response at port 0 (80% over 20, 30+ trials)",
@@ -94,8 +94,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_2_cue_with_punish",
         to_stage="phase_2_cue_no_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 15),
-            Condition("rolling_accuracy", Operator.LT, 30, window=10),
+            Condition("trials_in_stage", ">=", 15),
+            Condition("rolling_accuracy", "<", 30, window=10),
         ],
         priority=5,
         description="Performance regression -- removing punishment temporarily",
@@ -109,8 +109,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_3_port3_no_punish",
         to_stage="phase_3_port3_with_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 15),
-            Condition("rolling_accuracy", Operator.GTE, 70, window=10),
+            Condition("trials_in_stage", ">=", 15),
+            Condition("rolling_accuracy", ">=", 70, window=10),
         ],
         priority=10,
         description="Learning port 3 (70% over 10, 15+ trials)",
@@ -120,8 +120,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_3_port3_with_punish",
         to_stage="phase_3_two_ports",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=10),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", ">=", 80, window=10),
         ],
         priority=10,
         description="Reliable port 3 responding (80% over 10, 20+ trials)",
@@ -132,8 +132,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_3_port3_with_punish",
         to_stage="phase_3_port3_no_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 15),
-            Condition("rolling_accuracy", Operator.LT, 30, window=10),
+            Condition("trials_in_stage", ">=", 15),
+            Condition("rolling_accuracy", "<", 30, window=10),
         ],
         priority=5,
         description="Performance regression at port 3 -- removing punishment",
@@ -143,8 +143,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_3_two_ports",
         to_stage="phase_4_three_ports",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 30),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=20),
+            Condition("trials_in_stage", ">=", 30),
+            Condition("rolling_accuracy", ">=", 80, window=20),
         ],
         priority=10,
         description="Cue-following confirmed with 2 ports (80% over 20, 30+ trials)",
@@ -155,8 +155,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_3_two_ports",
         to_stage="phase_3_port3_with_punish",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.LT, 40, window=20),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", "<", 40, window=20),
         ],
         priority=5,
         description="Struggling with 2-port alternation -- reverting to single port",
@@ -170,8 +170,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_4_three_ports",
         to_stage="phase_4_all_ports",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 30),
-            Condition("rolling_accuracy", Operator.GTE, 80, window=20),
+            Condition("trials_in_stage", ">=", 30),
+            Condition("rolling_accuracy", ">=", 80, window=20),
         ],
         priority=10,
         description="3-port generalisation achieved (80% over 20, 30+ trials)",
@@ -182,8 +182,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_4_three_ports",
         to_stage="phase_3_two_ports",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.LT, 40, window=20),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", "<", 40, window=20),
         ],
         priority=5,
         description="Struggling with 3 ports -- reverting to 2 ports",
@@ -194,8 +194,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="phase_4_all_ports",
         to_stage="phase_4_three_ports",
         conditions=[
-            Condition("trials_in_stage", Operator.GTE, 20),
-            Condition("rolling_accuracy", Operator.LT, 40, window=20),
+            Condition("trials_in_stage", ">=", 20),
+            Condition("rolling_accuracy", "<", 40, window=20),
         ],
         priority=5,
         description="Struggling with 6 ports -- reverting to 3 ports",

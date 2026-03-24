@@ -13,7 +13,7 @@ Transition priorities:
     10-19: Forward progression rules (the main training path)
 """
 
-from ...transitions import Transition, Condition, Operator
+from ...transitions import Transition, Condition
 
 
 # =============================================================================
@@ -30,8 +30,8 @@ TRANSITIONS: list[Transition] = [
         from_stage="warm_up",
         to_stage="$saved",
         conditions=[
-            Condition("consecutive_correct", Operator.GTE, 5),
-            Condition("trials_in_stage", Operator.GTE, 10),
+            Condition("consecutive_correct", ">=", 5),
+            Condition("trials_in_stage", ">=", 10),
         ],
         priority=1,
         description="Warm-up complete (5 consecutive correct, 10+ trials)",
@@ -45,7 +45,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="introduce_1_led",
         to_stage="introduce_another_led",
         conditions=[
-            Condition("rolling_accuracy", Operator.GTE, 90, window=30),
+            Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
         description="Single LED mastered (>90% over 30 trials)",
@@ -55,7 +55,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="introduce_another_led",
         to_stage="multiple_leds_2x",
         conditions=[
-            Condition("rolling_accuracy", Operator.GTE, 90, window=30),
+            Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
         description="Second LED mastered (>90% over 30 trials)",
@@ -65,7 +65,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="multiple_leds_2x",
         to_stage="multiple_leds_6x",
         conditions=[
-            Condition("rolling_accuracy", Operator.GTE, 90, window=40),
+            Condition("rolling_accuracy", ">=", 90, window=40),
         ],
         priority=10,
         description="2-port discrimination mastered (>90% over 40 trials)",
@@ -79,7 +79,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="introduce_another_led",
         to_stage="introduce_1_led",
         conditions=[
-            Condition("rolling_accuracy", Operator.LT, 30, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
         description="Performance regression at second LED (<30% over 20 trials)",
@@ -89,7 +89,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="multiple_leds_2x",
         to_stage="introduce_another_led",
         conditions=[
-            Condition("rolling_accuracy", Operator.LT, 30, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
         description="Performance regression at 2-port (<30% over 20 trials)",
@@ -99,7 +99,7 @@ TRANSITIONS: list[Transition] = [
         from_stage="multiple_leds_6x",
         to_stage="multiple_leds_2x",
         conditions=[
-            Condition("rolling_accuracy", Operator.LT, 30, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
         description="Performance regression at 6-port (<30% over 20 trials)",
