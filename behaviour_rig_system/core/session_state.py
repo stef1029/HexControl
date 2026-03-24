@@ -39,4 +39,4 @@ class SessionResult:
     mouse_id: str
     elapsed_time: float
     save_path: str
-    performance_report: dict | None
+    performance_reports: dict[str, dict] | None  # One report per named tracker

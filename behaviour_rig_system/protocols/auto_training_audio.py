@@ -18,6 +18,7 @@ from autotraining.persistence import (
     save_training_state,
 )
 from core.parameter_types import StringParameter
+from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
 
 
@@ -37,6 +38,10 @@ class AudioAutoTrainingProtocol(BaseProtocol):
         )
 
     @classmethod
+    def get_tracker_definitions(cls) -> list:
+        return [TrackerDefinition(name="trials", display_name="Trials")]
+
+    @classmethod
     def get_parameters(cls) -> list:
         return [
             StringParameter(
@@ -54,7 +59,7 @@ class AudioAutoTrainingProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_tracker
+        perf_tracker = self.perf_trackers.get("trials")
 
         if scales is None:
             self.log("ERROR: Scales not available!")

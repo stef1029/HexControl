@@ -66,7 +66,8 @@ class SessionController:
         self._link: BehaviourRigLink | None = None
         self._peripheral_manager: PeripheralManager | None = None
         self._current_protocol: BaseProtocol | None = None
-        self._perf_tracker: PerformanceTracker | None = None
+        self._perf_trackers: dict[str, PerformanceTracker] = {}
+        self._tracker_definitions: list = []
         self._virtual_rig_state: VirtualRigState | None = None
 
         # Session metadata
@@ -296,14 +297,22 @@ class SessionController:
                 link=self._link,
             )
 
-            # Create performance tracker and wire events
-            self._perf_tracker = PerformanceTracker(clock=clock)
-            self._perf_tracker.on(
-                "update", lambda tracker: self._emit("performance_update", tracker=tracker)
-            )
-            self._perf_tracker.on(
-                "stimulus", lambda port: self._emit("stimulus", port=port)
-            )
+            # Create named performance trackers from protocol definitions
+            tracker_defs = config["protocol_class"].get_tracker_definitions()
+            self._perf_trackers: dict[str, PerformanceTracker] = {}
+            self._tracker_definitions = tracker_defs
+            for tdef in tracker_defs:
+                tracker = PerformanceTracker(clock=clock)
+                self._perf_trackers[tdef.name] = tracker
+                tracker.on(
+                    "update",
+                    lambda tracker, _name=tdef.name: self._emit(
+                        "performance_update", trackers=self._perf_trackers, updated=_name
+                    ),
+                )
+                tracker.on(
+                    "stimulus", lambda port: self._emit("stimulus", port=port)
+                )
 
             scales_client = None
             if self._peripheral_manager.scales_client is not None:
@@ -311,7 +320,7 @@ class SessionController:
 
             self._current_protocol.set_runtime_context(
                 scales=scales_client,
-                perf_tracker=self._perf_tracker,
+                perf_trackers=self._perf_trackers,
                 rig_number=rig_number,
                 clock=clock,
             )
@@ -343,6 +352,7 @@ class SessionController:
                 session_info=session_info,
                 mouse_params=mouse_params,
                 clock=clock,
+                tracker_definitions=tracker_defs,
             )
 
         except Exception as e:
@@ -395,17 +405,23 @@ class SessionController:
         }
         status_str = status_map.get(final_status, "Unknown")
 
-        # Get performance report before cleanup
-        performance_report = None
-        if self._perf_tracker is not None:
-            performance_report = self._perf_tracker.get_report()
+        # Get performance reports and save merged trial data
+        performance_reports: dict[str, dict] | None = None
+        if self._perf_trackers:
+            performance_reports = {
+                name: tracker.get_report()
+                for name, tracker in self._perf_trackers.items()
+            }
 
-            # Save trial data to file
+            # Save merged trial data to file
             if self._session_save_path:
                 try:
+                    from .performance_tracker import save_merged_trials
                     session_id = Path(self._session_save_path).name
-                    saved_path = self._perf_tracker.save_trials_to_file(
-                        self._session_save_path, session_id=session_id
+                    saved_path = save_merged_trials(
+                        self._perf_trackers,
+                        self._session_save_path,
+                        session_id=session_id,
                     )
                     if saved_path:
                         self._emit("protocol_log", message=f"Trial data saved: {saved_path.name}")
@@ -418,7 +434,7 @@ class SessionController:
             mouse_id=self._session_mouse_id,
             elapsed_time=0.0,  # GUI owns the timer, will be filled by RigWindow
             save_path=self._session_save_path,
-            performance_report=performance_report,
+            performance_reports=performance_reports,
         )
 
         self._emit("protocol_complete", result=result, final_status=final_status)

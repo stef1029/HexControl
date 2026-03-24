@@ -7,6 +7,7 @@ Class-based version of the original full task protocol.
 import random
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter
+from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
 
 
@@ -31,6 +32,10 @@ class FullTaskWithWaitProtocol(BaseProtocol):
     @classmethod
     def get_description(cls) -> str:
         return "Complete task: mouse waits on platform, then responds to visual/audio cue for reward."
+
+    @classmethod
+    def get_tracker_definitions(cls) -> list:
+        return [TrackerDefinition(name="trials", display_name="Trials")]
 
     @classmethod
     def get_parameters(cls) -> list:
@@ -117,7 +122,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_tracker
+        perf_tracker = self.perf_trackers.get("trials")
 
         if scales is None:
             self.log("ERROR: Scales not available!")

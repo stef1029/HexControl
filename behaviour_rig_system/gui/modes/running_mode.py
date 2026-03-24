@@ -15,14 +15,12 @@ Shows:
 import tkinter as tk
 from datetime import datetime
 from tkinter import scrolledtext, ttk
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
 
 from core.protocol_base import ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 from gui.scales_plot_widget import ScalesPlotWidget
 
-if TYPE_CHECKING:
-    from core.performance_tracker import PerformanceTracker
 
 
 class RunningMode(ttk.Frame):
@@ -40,8 +38,10 @@ class RunningMode(ttk.Frame):
         self._on_stop = on_stop
         self._start_time: datetime | None = None
         self._timer_id: str | None = None
-        self._last_logged_trial: int = 0
-        
+        self._tracker_widgets: dict[str, dict] = {}  # Per-tracker widget refs
+        self._tracker_definitions: list = []
+        self._last_logged_trials: dict[str, int] = {}  # Per-tracker log index
+
         self._create_widgets()
     
     def _create_widgets(self) -> None:
@@ -61,78 +61,9 @@ class RunningMode(ttk.Frame):
             value_label.pack(side="left", padx=6)
             self._summary_labels[key] = value_label
         
-        # Performance stats (non-resizable)
-        perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
-        perf_frame.pack(fill="x", padx=10, pady=5)
-        
-        # Main stats row
-        stats_row = ttk.Frame(perf_frame)
-        stats_row.pack(fill="x", pady=3)
-        
-        # Trials counter
-        ttk.Label(stats_row, text="Trials:", style="Subheading.TLabel").pack(side="left")
-        self._trials_label = ttk.Label(
-            stats_row, text="0", 
-            font=Theme.font_mono(size=12),
-            foreground=palette.accent_primary
-        )
-        self._trials_label.pack(side="left", padx=(6, 16))
-        
-        # Overall accuracy
-        ttk.Label(stats_row, text="Accuracy:", style="Subheading.TLabel").pack(side="left")
-        self._accuracy_label = ttk.Label(
-            stats_row, text="--", 
-            font=Theme.font_mono(size=12, weight="bold"),
-            foreground=palette.info
-        )
-        self._accuracy_label.pack(side="left", padx=(6, 16))
-        
-        # Rolling accuracy with selectable window
-        ttk.Label(stats_row, text="Last", style="Subheading.TLabel").pack(side="left")
-        self._rolling_n_var = tk.StringVar(value="20")
-        self._rolling_n_combo = ttk.Combobox(
-            stats_row, 
-            textvariable=self._rolling_n_var,
-            values=["5", "10", "20", "50", "100"],
-            width=4,
-            state="readonly"
-        )
-        self._rolling_n_combo.pack(side="left", padx=(4, 2))
-        ttk.Label(stats_row, text=":", style="Subheading.TLabel").pack(side="left")
-        self._rolling_label = ttk.Label(
-            stats_row, text="--", 
-            font=Theme.font_mono(size=12),
-            foreground=palette.accent_secondary
-        )
-        self._rolling_label.pack(side="left", padx=(6, 0))
-        
-        # Breakdown row
-        breakdown_row = ttk.Frame(perf_frame)
-        breakdown_row.pack(fill="x", pady=3)
-        
-        ttk.Label(breakdown_row, text="Correct:").pack(side="left")
-        self._correct_label = ttk.Label(
-            breakdown_row, text="0", 
-            font=Theme.font_mono(size=10),
-            foreground=palette.success
-        )
-        self._correct_label.pack(side="left", padx=(4, 14))
-        
-        ttk.Label(breakdown_row, text="Incorrect:").pack(side="left")
-        self._incorrect_label = ttk.Label(
-            breakdown_row, text="0", 
-            font=Theme.font_mono(size=10),
-            foreground=palette.error
-        )
-        self._incorrect_label.pack(side="left", padx=(4, 14))
-        
-        ttk.Label(breakdown_row, text="Timeouts:").pack(side="left")
-        self._timeout_label = ttk.Label(
-            breakdown_row, text="0", 
-            font=Theme.font_mono(size=10),
-            foreground=palette.warning
-        )
-        self._timeout_label.pack(side="left", padx=(4, 0))
+        # Performance stats container (populated dynamically in activate())
+        self._perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
+        self._perf_frame.pack(fill="x", padx=10, pady=5)
         
         # Stop button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
@@ -212,46 +143,147 @@ class RunningMode(ttk.Frame):
         """
         self._scales_plot.set_scales_client(client)
     
-    def activate(self, session_config: dict) -> None:
+    def activate(self, session_config: dict, tracker_definitions: list | None = None) -> None:
         """
         Called when this mode becomes active.
-        
+
         Args:
             session_config: Dict with protocol_name, mouse_id, save_path
+            tracker_definitions: List of TrackerDefinition from the protocol
         """
         # Reset UI state
         self._clear_log()
         self._stop_button.config(state="normal", text="Stop Session")
-        
+
         # Set session info
         self._summary_labels["protocol"].config(text=session_config.get("protocol_name", ""))
         self._summary_labels["mouse"].config(text=session_config.get("mouse_id", ""))
         self._summary_labels["save_path"].config(text=session_config.get("save_path", ""))
-        
-        # Reset performance stats
-        self._reset_performance_display()
-        
+
+        # Build performance tabs from tracker definitions
+        self._tracker_definitions = tracker_definitions or []
+        self._build_performance_tabs()
+
         # Reset timer state
         self._start_time = None
         self._timer_label.config(text="00:00:00")
-        
+
         # Start the live scales plot
         self._scales_plot.start()
     
-    def _reset_performance_display(self) -> None:
-        """Reset all performance stats to initial state."""
-        self._trials_label.config(text="0")
-        self._accuracy_label.config(text="--")
-        self._rolling_label.config(text="--")
-        self._correct_label.config(text="0")
-        self._incorrect_label.config(text="0")
-        self._timeout_label.config(text="0")
-        self._last_logged_trial = 0
-        
+    def _build_performance_tabs(self) -> None:
+        """Build (or rebuild) the performance display from tracker definitions."""
+        palette = Theme.palette
+
+        # Clear existing content
+        for child in self._perf_frame.winfo_children():
+            child.destroy()
+        self._tracker_widgets.clear()
+        self._last_logged_trials.clear()
+
         # Clear trial log
         self._trial_log.config(state="normal")
         self._trial_log.delete("1.0", tk.END)
         self._trial_log.config(state="disabled")
+
+        if not self._tracker_definitions:
+            ttk.Label(
+                self._perf_frame,
+                text="No performance trackers defined",
+                foreground=palette.text_secondary,
+            ).pack(pady=10)
+            return
+
+        # Always use a notebook, even for a single tracker
+        notebook = ttk.Notebook(self._perf_frame)
+        notebook.pack(fill="x", expand=True)
+
+        for tdef in self._tracker_definitions:
+            tab = ttk.Frame(notebook, padding=(6, 4))
+            notebook.add(tab, text=tdef.display_name)
+            widgets = self._create_tracker_tab(tab)
+            self._tracker_widgets[tdef.name] = widgets
+            self._last_logged_trials[tdef.name] = 0
+
+    def _create_tracker_tab(self, parent: ttk.Frame) -> dict:
+        """Create the standard stats widgets inside a tracker tab. Returns widget refs."""
+        palette = Theme.palette
+
+        # Stats row
+        stats_row = ttk.Frame(parent)
+        stats_row.pack(fill="x", pady=3)
+
+        ttk.Label(stats_row, text="Trials:", style="Subheading.TLabel").pack(side="left")
+        trials_label = ttk.Label(
+            stats_row, text="0",
+            font=Theme.font_mono(size=12),
+            foreground=palette.accent_primary,
+        )
+        trials_label.pack(side="left", padx=(6, 16))
+
+        ttk.Label(stats_row, text="Accuracy:", style="Subheading.TLabel").pack(side="left")
+        accuracy_label = ttk.Label(
+            stats_row, text="--",
+            font=Theme.font_mono(size=12, weight="bold"),
+            foreground=palette.info,
+        )
+        accuracy_label.pack(side="left", padx=(6, 16))
+
+        ttk.Label(stats_row, text="Last", style="Subheading.TLabel").pack(side="left")
+        rolling_n_var = tk.StringVar(value="20")
+        rolling_n_combo = ttk.Combobox(
+            stats_row,
+            textvariable=rolling_n_var,
+            values=["5", "10", "20", "50", "100"],
+            width=4,
+            state="readonly",
+        )
+        rolling_n_combo.pack(side="left", padx=(4, 2))
+        ttk.Label(stats_row, text=":", style="Subheading.TLabel").pack(side="left")
+        rolling_label = ttk.Label(
+            stats_row, text="--",
+            font=Theme.font_mono(size=12),
+            foreground=palette.accent_secondary,
+        )
+        rolling_label.pack(side="left", padx=(6, 0))
+
+        # Breakdown row
+        breakdown_row = ttk.Frame(parent)
+        breakdown_row.pack(fill="x", pady=3)
+
+        ttk.Label(breakdown_row, text="Correct:").pack(side="left")
+        correct_label = ttk.Label(
+            breakdown_row, text="0",
+            font=Theme.font_mono(size=10),
+            foreground=palette.success,
+        )
+        correct_label.pack(side="left", padx=(4, 14))
+
+        ttk.Label(breakdown_row, text="Incorrect:").pack(side="left")
+        incorrect_label = ttk.Label(
+            breakdown_row, text="0",
+            font=Theme.font_mono(size=10),
+            foreground=palette.error,
+        )
+        incorrect_label.pack(side="left", padx=(4, 14))
+
+        ttk.Label(breakdown_row, text="Timeouts:").pack(side="left")
+        timeout_label = ttk.Label(
+            breakdown_row, text="0",
+            font=Theme.font_mono(size=10),
+            foreground=palette.warning,
+        )
+        timeout_label.pack(side="left", padx=(4, 0))
+
+        return {
+            "trials": trials_label,
+            "accuracy": accuracy_label,
+            "rolling_n_var": rolling_n_var,
+            "rolling": rolling_label,
+            "correct": correct_label,
+            "incorrect": incorrect_label,
+            "timeout": timeout_label,
+        }
     
     def log_stimulus(self, target_port: int) -> None:
         """
@@ -262,79 +294,88 @@ class RunningMode(ttk.Frame):
         Args:
             target_port: The port that is the correct response.
         """
-        trial_num = self._last_logged_trial + 1
-        line = f"Trial {trial_num}: → Stimulus ON - Target port {target_port}\n"
-        
+        line = f"→ Stimulus ON - Target port {target_port}\n"
+
         self._trial_log.config(state="normal")
         self._trial_log.insert(tk.END, line, "stimulus")
         self._trial_log.see(tk.END)
         self._trial_log.config(state="disabled")
-    
-    def update_performance(self, tracker: "PerformanceTracker") -> None:
+
+    def update_performance(self, trackers: dict, updated: str) -> None:
         """
-        Update the performance display from a tracker.
+        Update the performance display for the tracker that changed.
 
         Must be called on the main thread (marshalling is done by RigWindow).
 
         Args:
-            tracker: The PerformanceTracker instance with current stats.
+            trackers: Dict of tracker_name -> PerformanceTracker.
+            updated:  Name of the tracker that just changed.
         """
+        if updated not in self._tracker_widgets or updated not in trackers:
+            return
+
+        tracker = trackers[updated]
+        w = self._tracker_widgets[updated]
         palette = Theme.palette
-        
-        self._trials_label.config(text=str(tracker.total_trials))
-        self._correct_label.config(text=str(tracker.successes))
-        self._incorrect_label.config(text=str(tracker.failures))
-        self._timeout_label.config(text=str(tracker.timeouts))
-        
+
+        w["trials"].config(text=str(tracker.total_trials))
+        w["correct"].config(text=str(tracker.successes))
+        w["incorrect"].config(text=str(tracker.failures))
+        w["timeout"].config(text=str(tracker.timeouts))
+
         # Overall accuracy
         if tracker.responses > 0:
             acc = tracker.accuracy
-            self._accuracy_label.config(text=f"{acc:.0f}%")
-            # Color based on performance using theme
-            self._accuracy_label.config(foreground=get_accuracy_color(acc))
+            w["accuracy"].config(text=f"{acc:.0f}%", foreground=get_accuracy_color(acc))
         else:
-            self._accuracy_label.config(text="--", foreground=palette.info)
-        
-        # Rolling accuracy (last N trials, user-selectable)
+            w["accuracy"].config(text="--", foreground=palette.info)
+
+        # Rolling accuracy
         if tracker.total_trials > 0:
             try:
-                n = int(self._rolling_n_var.get())
+                n = int(w["rolling_n_var"].get())
             except ValueError:
                 n = 20
             rolling = tracker.rolling_accuracy(n)
-            self._rolling_label.config(text=f"{rolling:.0f}%")
+            w["rolling"].config(text=f"{rolling:.0f}%")
         else:
-            self._rolling_label.config(text="--")
-        
-        # Log new trials to the trial log (only fetch new ones)
-        new_trials = tracker.get_trials_since(self._last_logged_trial)
+            w["rolling"].config(text="--")
+
+        # Log new trials to the shared trial log
+        last = self._last_logged_trials.get(updated, 0)
+        new_trials = tracker.get_trials_since(last)
+        multi = len(self._tracker_definitions) > 1
+        # Find display name for prefix
+        display_name = updated
+        for tdef in self._tracker_definitions:
+            if tdef.name == updated:
+                display_name = tdef.display_name
+                break
         for trial in new_trials:
-            self._log_trial(trial)
-            self._last_logged_trial += 1
-    
-    def _log_trial(self, trial) -> None:
+            self._log_trial(trial, prefix=f"[{display_name}] " if multi else "")
+            self._last_logged_trials[updated] = last + 1
+            last += 1
+
+    def _log_trial(self, trial, prefix: str = "") -> None:
         """Log a single trial to the trial log with colored output."""
         from core.performance_tracker import TrialOutcome
-        
-        # Build trial description
+
         trial_num = trial.trial_number
         outcome = trial.outcome
         correct_port = trial.correct_port
         chosen_port = trial.chosen_port
         duration = trial.trial_duration
-        
-        # Format the log line based on outcome
+
         if outcome == TrialOutcome.SUCCESS:
-            line = f"Trial {trial_num}: ✓ CORRECT - Port {correct_port} ({duration:.2f}s)\n"
+            line = f"{prefix}Trial {trial_num}: ✓ CORRECT - Port {correct_port} ({duration:.2f}s)\n"
             tag = "success"
         elif outcome == TrialOutcome.FAILURE:
-            line = f"Trial {trial_num}: ✗ WRONG - Chose port {chosen_port}, correct was {correct_port} ({duration:.2f}s)\n"
+            line = f"{prefix}Trial {trial_num}: ✗ WRONG - Chose port {chosen_port}, correct was {correct_port} ({duration:.2f}s)\n"
             tag = "failure"
         else:  # TIMEOUT
-            line = f"Trial {trial_num}: ⏱ TIMEOUT - Correct was port {correct_port} ({duration:.2f}s)\n"
+            line = f"{prefix}Trial {trial_num}: ⏱ TIMEOUT - Correct was port {correct_port} ({duration:.2f}s)\n"
             tag = "timeout"
-        
-        # Add to trial log
+
         self._trial_log.config(state="normal")
         self._trial_log.insert(tk.END, line, tag)
         self._trial_log.see(tk.END)

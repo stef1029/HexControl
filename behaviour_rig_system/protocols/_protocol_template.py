@@ -77,7 +77,7 @@ class ProtocolTemplate(BaseProtocol):
     def _run_protocol(self) -> None:
         """REQUIRED: main protocol body."""
         scales = self.scales
-        perf_tracker = self.perf_tracker
+        perf_tracker = self.perf_trackers.get("trials")
 
         if perf_tracker is not None:
             perf_tracker.reset()

@@ -209,7 +209,7 @@ class RigWindow:
 
     def _on_startup_complete(
         self, scales_client, virtual_rig_state, session_info: dict,
-        mouse_params=None, clock=None,
+        mouse_params=None, clock=None, tracker_definitions=None,
     ) -> None:
         self.startup_overlay.hide()
 
@@ -226,7 +226,7 @@ class RigWindow:
         if scales_client is not None:
             self.running_mode.set_scales_client(scales_client)
 
-        self.running_mode.activate(session_info)
+        self.running_mode.activate(session_info, tracker_definitions=tracker_definitions or [])
         self.running_mode.set_status(ProtocolStatus.RUNNING)
         self._show_mode(WindowMode.RUNNING)
         self.running_mode.start_timer()
@@ -261,8 +261,8 @@ class RigWindow:
     def _on_protocol_log(self, message: str) -> None:
         self.running_mode.log_message(message)
 
-    def _on_performance_update(self, tracker) -> None:
-        self.running_mode.update_performance(tracker)
+    def _on_performance_update(self, trackers, updated) -> None:
+        self.running_mode.update_performance(trackers, updated)
 
     def _on_stimulus(self, port: int) -> None:
         self.running_mode.log_stimulus(port)
@@ -300,7 +300,7 @@ class RigWindow:
                 "mouse_id": self._pending_result.mouse_id,
                 "elapsed_time": self._pending_result.elapsed_time,
                 "save_path": self._pending_result.save_path,
-                "performance_report": self._pending_result.performance_report,
+                "performance_reports": self._pending_result.performance_reports,
             })
             self._show_mode(WindowMode.POST_SESSION)
             self._pending_result = None

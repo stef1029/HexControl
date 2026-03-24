@@ -66,7 +66,7 @@ class BaseProtocol(ABC):
         self.link = link              # BehaviourRigLink (direct hardware access)
         self.status = ProtocolStatus.IDLE
         self.scales = None
-        self.perf_tracker = None
+        self.perf_trackers: dict[str, Any] = {}  # Named performance trackers
         self.rig_number: int | None = None
 
         self._stop_requested = False
@@ -95,6 +95,15 @@ class BaseProtocol(ABC):
     def get_parameters(cls) -> list[Parameter]:
         """Return list of configurable parameters."""
         pass
+
+    @classmethod
+    def get_tracker_definitions(cls) -> list:
+        """Optional: declare named performance trackers for this protocol.
+
+        Returns a list of TrackerDefinition. If empty, no trackers are created
+        and the GUI shows a placeholder message.
+        """
+        return []
 
     @abstractmethod
     def _run_protocol(self) -> None:
@@ -178,13 +187,13 @@ class BaseProtocol(ABC):
         self,
         *,
         scales=None,
-        perf_tracker=None,
+        perf_trackers: dict | None = None,
         rig_number: int | None = None,
         clock=None,
     ) -> None:
         """Attach runtime services provided by the GUI/orchestrator."""
         self.scales = scales
-        self.perf_tracker = perf_tracker
+        self.perf_trackers = perf_trackers or {}
         self.rig_number = rig_number
         self._clock = clock
 

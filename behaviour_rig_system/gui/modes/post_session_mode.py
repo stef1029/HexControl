@@ -76,101 +76,9 @@ class PostSessionMode(ttk.Frame):
             value_label.pack(side="left", padx=8)
             self._summary_labels[key] = value_label
         
-        # Performance Report Section
+        # Performance Report Section (populated dynamically in activate())
         self._perf_frame = ttk.LabelFrame(self, text="Performance Report", padding=(14, 10))
         self._perf_frame.pack(fill="x", padx=18, pady=8)
-        
-        # Create two-column grid layout for performance stats
-        perf_container = ttk.Frame(self._perf_frame)
-        perf_container.pack(fill="x")
-        
-        # Configure grid columns to expand properly
-        perf_container.columnconfigure(0, weight=0)  # Left label
-        perf_container.columnconfigure(1, weight=1)  # Left value
-        perf_container.columnconfigure(2, weight=0, minsize=25)  # Spacer
-        perf_container.columnconfigure(3, weight=0)  # Right label
-        perf_container.columnconfigure(4, weight=1)  # Right value
-        
-        self._perf_labels = {}
-        
-        # Left column: Trial counts
-        left_items = [
-            ("total_trials", "Total Trials:"),
-            ("successes", "Successes:"),
-            ("failures", "Failures:"),
-            ("timeouts", "Timeouts:"),
-        ]
-        
-        # Right column: Accuracy stats
-        right_items = [
-            ("accuracy", "Success (excl. TO):"),
-            ("accuracy_with_to", "Success (incl. TO):"),
-            ("timeout_rate", "Timeout Rate:"),
-        ]
-        
-        # Create rows with left and right items
-        max_rows = max(len(left_items), len(right_items))
-        for row_idx in range(max_rows):
-            # Left side
-            if row_idx < len(left_items):
-                key, label_text = left_items[row_idx]
-                ttk.Label(
-                    perf_container, text=label_text,
-                    style="Subheading.TLabel", anchor="e"
-                ).grid(row=row_idx, column=0, sticky="e", pady=2)
-                value_label = ttk.Label(
-                    perf_container, text="-", 
-                    font=Theme.font_body()
-                )
-                value_label.grid(row=row_idx, column=1, sticky="w", padx=(6, 0), pady=2)
-                self._perf_labels[key] = value_label
-            
-            # Right side
-            if row_idx < len(right_items):
-                key, label_text = right_items[row_idx]
-                ttk.Label(
-                    perf_container, text=label_text,
-                    style="Subheading.TLabel", anchor="e"
-                ).grid(row=row_idx, column=3, sticky="e", pady=2)
-                value_label = ttk.Label(
-                    perf_container, text="-", 
-                    font=Theme.font_body()
-                )
-                value_label.grid(row=row_idx, column=4, sticky="w", padx=(6, 0), pady=2)
-                self._perf_labels[key] = value_label
-        
-        # Additional stats row
-        extra_row = ttk.Frame(self._perf_frame)
-        extra_row.pack(fill="x", pady=(8, 0))
-        extra_row.columnconfigure(1, weight=1)
-        extra_row.columnconfigure(4, weight=1)
-        
-        ttk.Label(
-            extra_row, text="Trial Rate:",
-            style="Subheading.TLabel", anchor="e"
-        ).grid(row=0, column=0, sticky="e")
-        self._perf_labels["trial_rate"] = ttk.Label(
-            extra_row, text="-", 
-            font=Theme.font_body()
-        )
-        self._perf_labels["trial_rate"].grid(row=0, column=1, sticky="w", padx=(8, 0))
-        
-        ttk.Label(
-            extra_row, text="Last 20 Accuracy:",
-            style="Subheading.TLabel", anchor="e"
-        ).grid(row=0, column=3, sticky="e", padx=(18, 0))
-        self._perf_labels["rolling_20"] = ttk.Label(
-            extra_row, text="-", 
-            font=Theme.font_body()
-        )
-        self._perf_labels["rolling_20"].grid(row=0, column=4, sticky="w", padx=(6, 0))
-        
-        # No trials message (hidden by default)
-        self._no_trials_label = ttk.Label(
-            self._perf_frame, 
-            text="No trials were recorded during this session.",
-            style="Muted.TLabel"
-        )
         
         # New session button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
@@ -189,10 +97,10 @@ class PostSessionMode(ttk.Frame):
     def activate(self, session_result: dict) -> None:
         """
         Called when this mode becomes active.
-        
+
         Args:
-            session_result: Dict with status, protocol_name, mouse_id, 
-                          elapsed_time, save_path, and optionally performance_report
+            session_result: Dict with status, protocol_name, mouse_id,
+                          elapsed_time, save_path, and performance_reports
         """
         # Format duration
         elapsed = session_result.get("elapsed_time", 0)
@@ -200,7 +108,7 @@ class PostSessionMode(ttk.Frame):
         minutes = int((elapsed % 3600) // 60)
         seconds = int(elapsed % 60)
         duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
+
         # Set summary values
         status = session_result.get("status", "Unknown")
         self._summary_labels["status"].config(text=status)
@@ -208,7 +116,7 @@ class PostSessionMode(ttk.Frame):
         self._summary_labels["mouse"].config(text=session_result.get("mouse_id", ""))
         self._summary_labels["duration"].config(text=duration_str)
         self._summary_labels["save_path"].config(text=session_result.get("save_path", ""))
-        
+
         # Color-code status
         palette = Theme.palette
         status_colors = {
@@ -218,86 +126,101 @@ class PostSessionMode(ttk.Frame):
         }
         color = status_colors.get(status, "black")
         self._summary_labels["status"].config(foreground=color)
-        
-        # Update performance report
-        self._update_performance_report(session_result.get("performance_report"))
-        
+
+        # Update performance report(s)
+        self._update_performance_reports(session_result.get("performance_reports"))
+
         # Update performance plot from trials.csv
         save_path = session_result.get("save_path", "")
         if save_path:
             self._update_performance_plot(Path(save_path))
-    
-    def _update_performance_report(self, report: dict | None) -> None:
-        """
-        Update the performance report section with session statistics.
-        
-        Args:
-            report: Performance report dict from PerformanceTracker.get_report(),
-                   or None if no trials were recorded
-        """
-        palette = Theme.palette
-        
-        # Hide/show the no trials message based on whether we have data
-        if report is None or report.get("total_trials", 0) == 0:
-            # No trials - show message, hide stats
-            self._no_trials_label.pack(pady=10)
-            for label in self._perf_labels.values():
-                label.config(text="-")
+
+    def _update_performance_reports(self, reports: dict[str, dict] | None) -> None:
+        """Build the performance report section from per-tracker reports."""
+        # Clear existing content
+        for child in self._perf_frame.winfo_children():
+            child.destroy()
+
+        if not reports:
+            ttk.Label(
+                self._perf_frame,
+                text="No performance data recorded.",
+                style="Muted.TLabel",
+            ).pack(pady=10)
             return
-        
-        # Hide no trials message
-        self._no_trials_label.pack_forget()
-        
-        # Update trial counts
-        self._perf_labels["total_trials"].config(text=str(report.get("total_trials", 0)))
-        self._perf_labels["successes"].config(
-            text=str(report.get("successes", 0)),
-            foreground=palette.success
-        )
-        self._perf_labels["failures"].config(
-            text=str(report.get("failures", 0)),
-            foreground=palette.error
-        )
-        self._perf_labels["timeouts"].config(
-            text=str(report.get("timeouts", 0)),
-            foreground=palette.warning
-        )
-        
-        # Update accuracy stats
-        accuracy = report.get("accuracy", 0)
-        self._perf_labels["accuracy"].config(
-            text=f"{accuracy:.1f}%",
-            foreground=palette.text_primary
-        )
-        
-        accuracy_with_to = report.get("accuracy_with_timeouts", 0)
-        self._perf_labels["accuracy_with_to"].config(
-            text=f"{accuracy_with_to:.1f}%",
-            foreground=palette.text_primary
-        )
-        
-        timeout_rate = report.get("timeout_rate", 0)
-        self._perf_labels["timeout_rate"].config(
-            text=f"{timeout_rate:.1f}%",
-            foreground=palette.warning if timeout_rate > 20 else palette.text_primary
-        )
-        
-        # Update trial rate
-        trials_per_min = report.get("trials_per_minute", 0)
-        self._perf_labels["trial_rate"].config(
-            text=f"{trials_per_min:.1f} trials/min" if trials_per_min > 0 else "-"
-        )
-        
-        # Update rolling accuracy
-        rolling_20 = report.get("rolling_accuracy_20", 0)
-        self._perf_labels["rolling_20"].config(
-            text=f"{rolling_20:.1f}%",
-            foreground=get_accuracy_color(rolling_20)
-        )
-    
-    def _get_accuracy_color(self, accuracy: float) -> str:
-        """Get color for accuracy value (green=good, orange=ok, red=poor)."""
-        return get_accuracy_color(accuracy)
+
+        # Always use tabs (even for a single tracker)
+        notebook = ttk.Notebook(self._perf_frame)
+        notebook.pack(fill="x", expand=True)
+
+        for name, report in reports.items():
+            tab = ttk.Frame(notebook, padding=(10, 6))
+            notebook.add(tab, text=name)
+            self._fill_report_tab(tab, report)
+
+    def _fill_report_tab(self, parent: ttk.Frame, report: dict) -> None:
+        """Populate a single report tab with stats from a tracker report."""
+        palette = Theme.palette
+
+        if report.get("total_trials", 0) == 0:
+            ttk.Label(parent, text="No trials recorded.", style="Muted.TLabel").pack(pady=10)
+            return
+
+        container = ttk.Frame(parent)
+        container.pack(fill="x")
+        container.columnconfigure(1, weight=1)
+        container.columnconfigure(4, weight=1)
+
+        left_items = [
+            ("Total Trials:", str(report.get("total_trials", 0)), None),
+            ("Successes:", str(report.get("successes", 0)), palette.success),
+            ("Failures:", str(report.get("failures", 0)), palette.error),
+            ("Timeouts:", str(report.get("timeouts", 0)), palette.warning),
+        ]
+        right_items = [
+            ("Success (excl. TO):", f"{report.get('accuracy', 0):.1f}%", None),
+            ("Success (incl. TO):", f"{report.get('accuracy_with_timeouts', 0):.1f}%", None),
+            ("Timeout Rate:", f"{report.get('timeout_rate', 0):.1f}%",
+             palette.warning if report.get("timeout_rate", 0) > 20 else None),
+        ]
+
+        max_rows = max(len(left_items), len(right_items))
+        for row_idx in range(max_rows):
+            if row_idx < len(left_items):
+                label_text, value, fg = left_items[row_idx]
+                ttk.Label(container, text=label_text, style="Subheading.TLabel", anchor="e").grid(
+                    row=row_idx, column=0, sticky="e", pady=2)
+                lbl = ttk.Label(container, text=value, font=Theme.font_body())
+                if fg:
+                    lbl.config(foreground=fg)
+                lbl.grid(row=row_idx, column=1, sticky="w", padx=(6, 0), pady=2)
+
+            if row_idx < len(right_items):
+                label_text, value, fg = right_items[row_idx]
+                ttk.Label(container, text=label_text, style="Subheading.TLabel", anchor="e").grid(
+                    row=row_idx, column=3, sticky="e", pady=2)
+                lbl = ttk.Label(container, text=value, font=Theme.font_body())
+                if fg:
+                    lbl.config(foreground=fg)
+                lbl.grid(row=row_idx, column=4, sticky="w", padx=(6, 0), pady=2)
+
+        # Extra row
+        extra = ttk.Frame(parent)
+        extra.pack(fill="x", pady=(8, 0))
+        extra.columnconfigure(1, weight=1)
+        extra.columnconfigure(4, weight=1)
+
+        tpm = report.get("trials_per_minute", 0)
+        ttk.Label(extra, text="Trial Rate:", style="Subheading.TLabel", anchor="e").grid(
+            row=0, column=0, sticky="e")
+        ttk.Label(extra, text=f"{tpm:.1f} trials/min" if tpm > 0 else "-",
+                  font=Theme.font_body()).grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+        r20 = report.get("rolling_accuracy_20", 0)
+        ttk.Label(extra, text="Last 20 Accuracy:", style="Subheading.TLabel", anchor="e").grid(
+            row=0, column=3, sticky="e", padx=(18, 0))
+        ttk.Label(extra, text=f"{r20:.1f}%", font=Theme.font_body(),
+                  foreground=get_accuracy_color(r20)).grid(row=0, column=4, sticky="w", padx=(6, 0))
     
     def _create_performance_plot(self) -> None:
         """Create the performance plot section (initially empty)."""
@@ -334,92 +257,91 @@ class PostSessionMode(ttk.Frame):
     
     def _update_performance_plot(self, save_path: Path) -> None:
         """
-        Update the performance plot with data from the trials.csv file.
-        
-        Calculates average accuracy in 2-minute time bins across the session.
-        
-        Args:
-            save_path: Path to the session data folder containing trials.csv
+        Update the performance plot with data from the trials CSV.
+
+        Reads the merged CSV (with ``tracker`` column) and plots each tracker
+        as a separate line. Falls back to a single line if no tracker column.
         """
         # Find the trials.csv file
         trials_files = list(save_path.glob("*-trials.csv"))
         if not trials_files:
-            # Try without prefix
             trials_file = save_path / "trials.csv"
             if not trials_file.exists():
                 return
         else:
             trials_file = trials_files[0]
-        
-        # Load trial data
-        trials = []
+
+        # Load trial data grouped by tracker
+        tracker_trials: dict[str, list[dict]] = {}
         try:
-            with open(trials_file, 'r', encoding='utf-8') as f:
+            with open(trials_file, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    trials.append({
-                        'time': float(row['time_since_start_s']),
-                        'outcome': row['outcome']
+                    tracker_name = row.get("tracker", "all")
+                    tracker_trials.setdefault(tracker_name, []).append({
+                        "time": float(row["time_since_start_s"]),
+                        "outcome": row["outcome"],
                     })
         except (FileNotFoundError, KeyError, ValueError) as e:
             print(f"Error loading trials data: {e}")
             return
-        
-        if not trials:
+
+        if not tracker_trials:
             return
-        
-        # Calculate accuracy in 2-minute (120 second) bins
-        bin_size_seconds = 120
-        max_time = max(t['time'] for t in trials)
-        
-        time_bins = []  # Center of each bin in minutes
-        accuracy_bins = []  # Accuracy for each bin
-        
-        bin_start = 0
-        while bin_start < max_time:
-            bin_end = bin_start + bin_size_seconds
-            
-            # Get trials in this bin
-            bin_trials = [t for t in trials if bin_start <= t['time'] < bin_end]
-            
-            if bin_trials:
-                # Count successes and responses (exclude timeouts for accuracy calc)
-                successes = sum(1 for t in bin_trials if t['outcome'] == 'success')
-                responses = sum(1 for t in bin_trials if t['outcome'] in ('success', 'failure'))
-                
-                if responses > 0:
-                    accuracy = (successes / responses) * 100
-                    # Use center of bin for x-axis (convert to minutes)
-                    bin_center_minutes = (bin_start + bin_size_seconds / 2) / 60
-                    time_bins.append(bin_center_minutes)
-                    accuracy_bins.append(accuracy)
-            
-            bin_start = bin_end
-        
-        if not time_bins:
-            return
-        
-        # Clear and update plot
+
         palette = Theme.palette
         self._ax.clear()
-        
-        # Plot the data with themed colors
-        self._ax.plot(time_bins, accuracy_bins, color=palette.accent_primary, 
-                     linewidth=2, marker='o', markersize=6,
-                     label='Accuracy (2-min bins)')
-        
-        # Configure axes with themed styling
-        self._ax.set_xlabel('Time (minutes)', fontsize=10, color=palette.text_secondary)
-        self._ax.set_ylabel('Accuracy (%)', fontsize=10, color=palette.text_secondary)
-        self._ax.set_title('Performance Over Session', fontsize=11, fontweight='bold', color=palette.text_primary)
+
+        # Color cycle for multiple trackers
+        colors = [palette.accent_primary, palette.accent_secondary,
+                  palette.success, palette.warning, palette.error, palette.info]
+
+        max_time_all = 0
+        for idx, (name, trials) in enumerate(tracker_trials.items()):
+            if not trials:
+                continue
+
+            bin_size_seconds = 120
+            max_time = max(t["time"] for t in trials)
+            max_time_all = max(max_time_all, max_time)
+
+            time_bins = []
+            accuracy_bins = []
+            bin_start = 0
+            while bin_start < max_time:
+                bin_end = bin_start + bin_size_seconds
+                bin_trials = [t for t in trials if bin_start <= t["time"] < bin_end]
+                if bin_trials:
+                    successes = sum(1 for t in bin_trials if t["outcome"] == "success")
+                    responses = sum(1 for t in bin_trials if t["outcome"] in ("success", "failure"))
+                    if responses > 0:
+                        accuracy = (successes / responses) * 100
+                        bin_center_minutes = (bin_start + bin_size_seconds / 2) / 60
+                        time_bins.append(bin_center_minutes)
+                        accuracy_bins.append(accuracy)
+                bin_start = bin_end
+
+            if time_bins:
+                color = colors[idx % len(colors)]
+                self._ax.plot(
+                    time_bins, accuracy_bins, color=color,
+                    linewidth=2, marker="o", markersize=5,
+                    label=f"{name} (2-min bins)",
+                )
+
+        # Style axes
+        self._ax.set_xlabel("Time (minutes)", fontsize=10, color=palette.text_secondary)
+        self._ax.set_ylabel("Accuracy (%)", fontsize=10, color=palette.text_secondary)
+        self._ax.set_title("Performance Over Session", fontsize=11, fontweight="bold", color=palette.text_primary)
         self._ax.set_ylim(0, 100)
-        self._ax.set_xlim(0, max(time_bins) + 1)
+        if max_time_all > 0:
+            self._ax.set_xlim(0, (max_time_all / 60) + 1)
         self._ax.grid(True, alpha=0.3, color=palette.border_medium)
         self._ax.tick_params(colors=palette.text_secondary)
         for spine in self._ax.spines.values():
             spine.set_color(palette.border_light)
-        self._ax.legend(loc='lower right', fontsize=9)
-        
+        self._ax.legend(loc="lower right", fontsize=9)
+
         self._figure.tight_layout()
         self._canvas.draw()
     

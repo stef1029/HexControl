@@ -34,6 +34,13 @@ class TrialOutcome(Enum):
 
 
 @dataclass
+class TrackerDefinition:
+    """Declaration of a named performance tracker for a protocol."""
+    name: str          # Internal key, e.g. "visual_trials"
+    display_name: str  # GUI label, e.g. "Visual Trials"
+
+
+@dataclass
 class TrialRecord:
     """Record of a single trial."""
     trial_number: int
@@ -391,3 +398,70 @@ class PerformanceTracker:
                 writer.writerow(row)
         
         return file_path
+
+
+# =============================================================================
+# Multi-tracker helpers
+# =============================================================================
+
+def save_merged_trials(
+    trackers: dict[str, "PerformanceTracker"],
+    save_path: str | Path,
+    session_id: str = "",
+) -> Path | None:
+    """
+    Merge trials from multiple trackers into a single CSV sorted by timestamp.
+
+    Each row includes a ``tracker`` column identifying which tracker recorded it.
+    The ``trial_number`` column is the global order after sorting, not per-tracker.
+
+    Returns:
+        Path to the saved file, or None if no trials across all trackers.
+    """
+    # Collect (tracker_name, trial) pairs
+    all_trials: list[tuple[str, TrialRecord]] = []
+    for name, tracker in trackers.items():
+        for trial in tracker.get_trials():
+            all_trials.append((name, trial))
+
+    if not all_trials:
+        return None
+
+    # Sort by timestamp for true chronological order
+    all_trials.sort(key=lambda pair: pair[1].timestamp)
+
+    save_dir = Path(save_path)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{session_id}-trials.csv" if session_id else "trials.csv"
+    file_path = save_dir / filename
+
+    fieldnames = [
+        "tracker",
+        "trial_number",
+        "outcome",
+        "time_since_start_s",
+        "trial_duration_s",
+        "correct_port",
+        "chosen_port",
+        "timestamp",
+    ]
+
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for global_num, (tracker_name, trial) in enumerate(all_trials, start=1):
+            row = {
+                "tracker": tracker_name,
+                "trial_number": global_num,
+                "outcome": trial.outcome.value,
+                "time_since_start_s": f"{trial.time_since_start:.3f}",
+                "trial_duration_s": f"{trial.trial_duration:.3f}",
+                "correct_port": trial.correct_port if trial.correct_port is not None else "",
+                "chosen_port": trial.chosen_port if trial.chosen_port is not None else "",
+                "timestamp": f"{trial.timestamp:.3f}",
+            }
+            writer.writerow(row)
+
+    return file_path
