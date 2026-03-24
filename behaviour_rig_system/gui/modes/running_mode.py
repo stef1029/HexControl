@@ -262,10 +262,6 @@ class RunningMode(ttk.Frame):
         Args:
             target_port: The port that is the correct response.
         """
-        self._do_log_stimulus(target_port)
-    
-    def _do_log_stimulus(self, target_port: int) -> None:
-        """Actually log the stimulus (must be called on main thread)."""
         trial_num = self._last_logged_trial + 1
         line = f"Trial {trial_num}: → Stimulus ON - Target port {target_port}\n"
         
@@ -283,10 +279,6 @@ class RunningMode(ttk.Frame):
         Args:
             tracker: The PerformanceTracker instance with current stats.
         """
-        self._update_performance_display(tracker)
-    
-    def _update_performance_display(self, tracker: "PerformanceTracker") -> None:
-        """Actually update the performance display (must be called on main thread)."""
         palette = Theme.palette
         
         self._trials_label.config(text=str(tracker.total_trials))
@@ -355,7 +347,7 @@ class RunningMode(ttk.Frame):
         Returns:
             Context dict with elapsed_time and final log
         """
-        self._stop_timer()
+        self.stop_timer()
         self._scales_plot.stop()
         
         return {
@@ -373,20 +365,16 @@ class RunningMode(ttk.Frame):
             self._timer_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             self._timer_id = self.after(1000, self._update_timer)
     
-    def _stop_timer(self) -> None:
-        """Stop the elapsed time timer."""
-        if self._timer_id:
-            self.after_cancel(self._timer_id)
-            self._timer_id = None
-    
     def start_timer(self) -> None:
         """Start the elapsed time timer (public interface)."""
         self._start_time = datetime.now()
         self._update_timer()
-    
+
     def stop_timer(self) -> None:
-        """Stop the elapsed time timer (public interface)."""
-        self._stop_timer()
+        """Stop the elapsed time timer."""
+        if self._timer_id:
+            self.after_cancel(self._timer_id)
+            self._timer_id = None
     
     def stop_scales_plot(self) -> None:
         """Stop the scales poll loop (public interface)."""
@@ -409,10 +397,6 @@ class RunningMode(ttk.Frame):
         self._log_text.config(state="disabled")
     
     def set_status(self, status: ProtocolStatus) -> None:
-        """Update the status display (public interface)."""
-        self._set_status(status)
-    
-    def _set_status(self, status: ProtocolStatus) -> None:
         """Update the status display."""
         palette = Theme.palette
         

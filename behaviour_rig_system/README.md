@@ -71,12 +71,62 @@ Think of `.on()` as giving someone your phone number, and `._emit()` as dialling
 
 This is how the GUI "listens" without polling. There's no loop checking for new messages. The GUI handed the controller a set of functions during setup, and the controller calls them directly whenever something happens.
 
-Components that use this pattern:
-- **SessionController** — emits startup progress, protocol logs, cleanup status
-- **BaseProtocol** — emits `"log"`, `"started"`, `"error"`
-- **PerformanceTracker** — emits `"update"` (new trial recorded), `"stimulus"` (stimulus presented)
-- **PeripheralManager** — emits `"log"` (status during peripheral startup/shutdown)
-- **CameraManager** — emits `"log"` (camera process status)
+### Event hierarchy
+
+Events don't go directly from hardware to GUI. They flow upward through a chain, where each layer translates and forwards to the one above it. Each hop adds context — a generic `"log"` from deep in the system becomes a specific `"protocol_log"` or `"startup_status"` by the time it reaches the GUI.
+
+```
+RigWindow (GUI)
+│
+│ listens to controller via .on()
+│ receives: "startup_status", "protocol_log", "performance_update",
+│           "stimulus", "protocol_complete", "cleanup_log", etc.
+│
+└── SessionController
+    │
+    │ listens to protocol, tracker, and peripheral manager via .on()
+    │ translates and forwards their events as its own
+    │
+    ├── BaseProtocol
+    │   │ emits: "log", "started", "error"
+    │   │
+    │   │ controller wires these at protocol creation time:
+    │   │   protocol.on("log", ...)    → controller emits "protocol_log"
+    │   │   protocol.on("error", ...)  → controller emits "protocol_log"
+    │   │   protocol.on("started", ...) → controller emits "protocol_log"
+    │   │
+    │   │ Protocol authors just call self.log("message") — they never
+    │   │ touch .on() or ._emit() directly. The wiring is invisible to them.
+    │   │
+    │   └── PerformanceTracker
+    │       emits: "update", "stimulus"
+    │
+    │       controller wires these at tracker creation time:
+    │         tracker.on("update", ...)   → controller emits "performance_update"
+    │         tracker.on("stimulus", ...) → controller emits "stimulus"
+    │
+    │       Protocol authors call tracker.success() / tracker.stimulus() —
+    │       the tracker emits events, the controller forwards them.
+    │
+    └── PeripheralManager
+        │ emits: "log"
+        │
+        │ controller wires this at manager creation time:
+        │   pm.on("log", ...) → controller emits "startup_status"
+        │
+        └── CameraManager
+            emits: "log"
+
+            PeripheralManager wires this when it creates the camera:
+              camera.on("log", ...) → peripheral manager emits "log"
+
+            So a camera log message travels:
+              CameraManager → PeripheralManager → Controller → GUI
+```
+
+The controller is the middleman. It creates the lower-level components, wires their events into its own, and the GUI only ever talks to the controller. The protocol doesn't know the controller exists. The camera doesn't know the peripheral manager exists. Each component just calls `_emit()` and whoever created it decided what happens.
+
+This also means the two-hop chain (e.g. protocol → controller → GUI) isn't redundant. The protocol emits `"log"` — a generic name that makes sense inside any protocol. The controller re-emits it as `"protocol_log"` — a specific name that the GUI can distinguish from `"startup_status"` or `"cleanup_log"`, which are also log messages but from different phases of the session.
 
 ### How the GUI registers its functions
 
