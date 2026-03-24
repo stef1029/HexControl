@@ -373,6 +373,10 @@ class SimulatedMouse:
         response_time += random.gauss(0, self._params.get("response_time_std", 0.8))
         response_time = max(0.2, response_time)
 
+        # Leave the platform before going to a port — the mouse can't
+        # be on the scales and at a reward port simultaneously.
+        self._state.set_weight(0.0)
+
         if not self._sleep(response_time):
             return "stopped"
 

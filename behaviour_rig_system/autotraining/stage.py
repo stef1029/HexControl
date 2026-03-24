@@ -8,7 +8,7 @@ from the default parameter set.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 
 # =============================================================================
@@ -33,7 +33,7 @@ BASE_DEFAULTS: dict[str, Any] = {
     "platform_settle_time": 1.0,
 
     # Trial timing
-    "response_timeout": 10.0,
+    "response_timeout": 5.0,
     "wait_duration": 0.0,
     "iti": 1.0,
 
@@ -63,12 +63,16 @@ class Stage:
         description: What this stage trains the mouse to do
         overrides:   Dict of parameter values that differ from BASE_DEFAULTS
         is_warmup:   If True, this stage is used as the session-start warm-up
+        warmup_after: If set, warmup is only used when the mouse's saved stage
+                      is at or past this stage in the stage ordering. If the
+                      mouse hasn't reached this stage yet, warmup is skipped.
     """
     name: str
     display_name: str
     description: str = ""
     overrides: dict[str, Any] = field(default_factory=dict)
     is_warmup: bool = False
+    warmup_after: Optional[str] = None
 
     def get_params(self) -> dict[str, Any]:
         """

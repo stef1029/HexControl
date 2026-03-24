@@ -1,36 +1,38 @@
 """
-Training Autotraining Protocol (Class-based)
+Audio Autotraining Protocol
 
 Adaptive protocol that progresses through training stages based on performance.
+Uses LED cues paired with audio from Phase 2 onwards.
 """
 
 import random
 from datetime import datetime
 
-from autotraining.definitions.graph import TRANSITIONS
-from autotraining.definitions.stages import STAGES
+from autotraining.definitions.audio.graph import TRANSITIONS
+from autotraining.definitions.audio.stages import STAGES
 from autotraining.engine import AutotrainingEngine
 from autotraining.persistence import (
     append_transition_log,
     load_training_state,
     save_training_state,
 )
-from core.parameter_types import FloatParameter, IntParameter, StringParameter
+from core.parameter_types import StringParameter
 from core.protocol_base import BaseProtocol
 
 
-class AutoTrainingProtocol(BaseProtocol):
-    """Adaptive training protocol with persistent stage progression."""
+class AudioAutoTrainingProtocol(BaseProtocol):
+    """Adaptive audio training protocol with persistent stage progression."""
 
     @classmethod
     def get_name(cls) -> str:
-        return "Autotraining"
+        return "Autotraining (Audio)"
 
     @classmethod
     def get_description(cls) -> str:
         return (
-            "Adaptive training protocol. Automatically progresses through training "
-            "stages based on mouse performance. Saves progress between sessions."
+            "Audio autotraining protocol. Automatically progresses through training "
+            "stages based on mouse performance using LED cues paired with audio. "
+            "Saves progress between sessions."
         )
 
     @classmethod
@@ -46,41 +48,6 @@ class AutoTrainingProtocol(BaseProtocol):
                 display_name="Override Start Stage (blank = use saved)",
                 default="",
             ),
-            FloatParameter(
-                name="weight_offset",
-                display_name="Weight Threshold Offset (g)",
-                default=3.0,
-                min_value=0.0,
-                max_value=10.0,
-            ),
-            IntParameter(
-                name="platform_settle_time",
-                display_name="Platform Settle Time (s)",
-                default=1,
-                min_value=0,
-                max_value=5,
-            ),
-            IntParameter(
-                name="led_brightness",
-                display_name="LED Brightness (0-255)",
-                default=255,
-                min_value=0,
-                max_value=255,
-            ),
-            IntParameter(
-                name="reward_duration",
-                display_name="Reward Duration (ms)",
-                default=500,
-                min_value=50,
-                max_value=5000,
-            ),
-            FloatParameter(
-                name="iti",
-                display_name="Inter-Trial Interval (s)",
-                default=1.0,
-                min_value=0.0,
-                max_value=10.0,
-            ),
         ]
 
     def _run_protocol(self) -> None:
@@ -95,22 +62,11 @@ class AutoTrainingProtocol(BaseProtocol):
         if perf_tracker is not None:
             perf_tracker.reset()
 
-        mouse_weight = params["mouse_weight"]
         num_trials = params["num_trials"]
         mouse_id = params.get("mouse_id", "unknown")
 
         progress_folder = params.get("progress_folder", "D:\\behaviour_data\\autotraining_progress")
         start_override = params.get("start_stage_override", "").strip()
-
-        session_overrides = {
-            "weight_offset": params["weight_offset"],
-            "platform_settle_time": params["platform_settle_time"],
-            "led_brightness": params["led_brightness"],
-            "reward_duration": params["reward_duration"],
-            "iti": params["iti"],
-        }
-
-        weight_threshold = mouse_weight - session_overrides["weight_offset"]
 
         default_first_stage = ""
         for stage in STAGES.values():
@@ -156,8 +112,8 @@ class AutoTrainingProtocol(BaseProtocol):
                     break
 
                 stage_params = engine.get_active_params()
-                stage_params.update(session_overrides)
 
+                weight_threshold = params["mouse_weight"] - stage_params["weight_offset"]
                 response_timeout = stage_params["response_timeout"]
                 wait_duration = stage_params["wait_duration"]
                 iti = stage_params["iti"]

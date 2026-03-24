@@ -8,8 +8,8 @@ if str(_PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(_PROJECT_DIR))
 
 from autotraining.engine import AutotrainingEngine
-from autotraining.definitions.stages import STAGES
-from autotraining.definitions.graph import TRANSITIONS
+from autotraining.definitions.visual.stages import STAGES
+from autotraining.definitions.visual.graph import TRANSITIONS
 from core.performance_tracker import PerformanceTracker
 
 # Create a tracker and engine (fresh mouse, no saved state)

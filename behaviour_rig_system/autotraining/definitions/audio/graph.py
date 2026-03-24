@@ -1,5 +1,5 @@
 """
-Training Transition Graph
+Audio Autotraining Transition Graph
 
 Defines the edges and conditions for moving between training stages.
 Transitions are evaluated after every trial, in priority order (lowest first).
@@ -13,7 +13,7 @@ Transition priorities:
     10-19: Forward progression rules (the main training path)
 """
 
-from ..transitions import Transition, Condition, Operator
+from ...transitions import Transition, Condition, Operator
 
 
 # =============================================================================

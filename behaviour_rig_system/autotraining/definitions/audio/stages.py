@@ -1,9 +1,12 @@
 """
-Training Stage Definitions
+Audio Autotraining Stage Definitions
 
-Defines all stages in the standard mouse training autotraining sequence.
+Defines all stages in the audio mouse training autotraining sequence.
 Each stage is a named set of parameter overrides applied on top of
 the BASE_DEFAULTS from stage.py.
+
+Identical to the visual sequence but with audio cues enabled from Phase 2
+onwards, where the mouse must learn to associate audio with port identity.
 
 Training progression (based on the 4-phase shaping procedure):
 
@@ -14,21 +17,21 @@ Training progression (based on the 4-phase shaping procedure):
     phase_1_platform_reward   - Mount platform -> immediate reward at port 0
     phase_1_rearing           - Mount + rear -> reward at port 0
 
-  Phase 2: Cue-response training
-    phase_2_cue_no_punish     - Rear -> LED at port 0 -> go to port 0 (no punishment)
+  Phase 2: Cue-response training (audio enabled)
+    phase_2_cue_no_punish     - Rear -> LED+audio at port 0 -> go to port 0 (no punishment)
     phase_2_cue_with_punish   - Same but errors trigger punishment
 
-  Phase 3: Spatial flexibility
-    phase_3_port3_no_punish   - LED at port 2 only (no punishment)
-    phase_3_port3_with_punish - LED at port 2 (with punishment)
+  Phase 3: Spatial flexibility (audio enabled)
+    phase_3_port3_no_punish   - LED+audio at port 2 only (no punishment)
+    phase_3_port3_with_punish - LED+audio at port 2 (with punishment)
     phase_3_two_ports         - Alternating ports 0 and 2
 
-  Phase 4: Generalisation
+  Phase 4: Generalisation (audio enabled)
     phase_4_three_ports       - Randomised across ports 0, 2, 4
     phase_4_all_ports         - Full 6-port randomisation (final stage)
 """
 
-from ..stage import Stage
+from ...stage import Stage
 
 
 # =============================================================================
@@ -107,14 +110,14 @@ _register(Stage(
 
 
 # -----------------------------------------------------------------------------
-# Phase 2: Cue-response training
+# Phase 2: Cue-response training (audio enabled)
 # -----------------------------------------------------------------------------
 
 _register(Stage(
     name="phase_2_cue_no_punish",
     display_name="Phase 2a: Cue-Response (No Punishment)",
     description=(
-        "Rear on platform -> LED at port 0 -> go to port 0 for reward. "
+        "Rear on platform -> LED+audio at port 0 -> go to port 0 for reward. "
         "No punishment for incorrect responses yet."
     ),
     overrides={
@@ -124,6 +127,7 @@ _register(Stage(
         "punishment_enabled": False,
         "wait_duration": 1.0,
         "response_timeout": 20.0,
+        "audio_enabled": True,
     },
 ))
 
@@ -141,19 +145,20 @@ _register(Stage(
         "punishment_enabled": True,
         "wait_duration": 1.0,
         "response_timeout": 15.0,
+        "audio_enabled": True,
     },
 ))
 
 
 # -----------------------------------------------------------------------------
-# Phase 3: Spatial flexibility
+# Phase 3: Spatial flexibility (audio enabled)
 # -----------------------------------------------------------------------------
 
 _register(Stage(
     name="phase_3_port3_no_punish",
     display_name="Phase 3a: Port 3 Only (No Punishment)",
     description=(
-        "LED switches to port 2 (physical port 3). "
+        "LED+audio switches to port 2 (physical port 3). "
         "No punishment to allow exploratory learning."
     ),
     overrides={
@@ -163,6 +168,7 @@ _register(Stage(
         "punishment_enabled": False,
         "wait_duration": 1.0,
         "response_timeout": 20.0,
+        "audio_enabled": True,
     },
 ))
 
@@ -179,6 +185,7 @@ _register(Stage(
         "punishment_enabled": True,
         "wait_duration": 1.0,
         "response_timeout": 15.0,
+        "audio_enabled": True,
     },
 ))
 
@@ -186,7 +193,7 @@ _register(Stage(
     name="phase_3_two_ports",
     display_name="Phase 3c: Ports 1 & 3 Alternating",
     description=(
-        "LED alternates between ports 0 and 2 within the session. "
+        "LED+audio alternates between ports 0 and 2 within the session. "
         "Mouse must follow the cue rather than using spatial strategy."
     ),
     overrides={
@@ -197,12 +204,13 @@ _register(Stage(
         "punishment_enabled": True,
         "wait_duration": 1.0,
         "response_timeout": 15.0,
+        "audio_enabled": True,
     },
 ))
 
 
 # -----------------------------------------------------------------------------
-# Phase 4: Generalisation
+# Phase 4: Generalisation (audio enabled)
 # -----------------------------------------------------------------------------
 
 _register(Stage(
@@ -221,6 +229,7 @@ _register(Stage(
         "punishment_enabled": True,
         "wait_duration": 1.0,
         "response_timeout": 12.0,
+        "audio_enabled": True,
     },
 ))
 
@@ -244,5 +253,6 @@ _register(Stage(
         "punishment_enabled": True,
         "wait_duration": 1.0,
         "response_timeout": 10.0,
+        "audio_enabled": True,
     },
 ))

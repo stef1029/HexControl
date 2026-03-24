@@ -111,7 +111,7 @@ class AutotrainingEngine:
         self._log = log
         self._session_start_time = time.time()
 
-        if self._warmup_stage is not None:
+        if self._warmup_stage is not None and self._should_warmup():
             self._set_stage(self._warmup_stage, is_warmup_entry=True)
             self._log(f"Starting warm-up stage: {self._warmup_stage.display_name}")
             self._log(f"  After warm-up, will resume: {self._saved_stage_name}")
@@ -119,6 +119,37 @@ class AutotrainingEngine:
             stage = self._stages[self._saved_stage_name]
             self._set_stage(stage)
             self._log(f"Starting at saved stage: {stage.display_name}")
+
+    def _should_warmup(self) -> bool:
+        """
+        Check whether warmup should run this session.
+
+        If the warmup stage has a ``warmup_after`` stage set, warmup is
+        only used when the mouse's saved stage is at or past that stage
+        in the stage ordering.  Otherwise warmup always runs.
+        """
+        if self._warmup_stage is None:
+            return False
+
+        gate = self._warmup_stage.warmup_after
+        if gate is None:
+            return True  # no gate — always warm up
+
+        stage_names = list(self._stages.keys())
+        if gate not in stage_names:
+            self._log(f"WARNING: warmup_after stage '{gate}' not found, skipping warm-up")
+            return False
+
+        gate_idx = stage_names.index(gate)
+        saved_idx = stage_names.index(self._saved_stage_name)
+        if saved_idx < gate_idx:
+            self._log(
+                f"Skipping warm-up: mouse is on '{self._saved_stage_name}' "
+                f"which is before warmup gate '{gate}'"
+            )
+            return False
+
+        return True
 
     def _set_stage(self, stage: Stage, is_warmup_entry: bool = False) -> None:
         """
