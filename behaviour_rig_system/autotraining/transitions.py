@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from core.performance_tracker import TrialOutcome
+
 
 # =============================================================================
 # Condition operators
@@ -170,6 +172,7 @@ class TransitionContext:
         consecutive_correct: int = 0,
         consecutive_timeout: int = 0,
         session_time_minutes: float = 0.0,
+        stage_start_trial_index: int = 0,
     ):
         self._perf_tracker = perf_tracker
         self._trials_in_stage = trials_in_stage
@@ -177,6 +180,7 @@ class TransitionContext:
         self._consecutive_correct = consecutive_correct
         self._consecutive_timeout = consecutive_timeout
         self._session_time_minutes = session_time_minutes
+        self._stage_start_trial_index = stage_start_trial_index
 
     def get_metric(self, metric: str, window: int = 10) -> float | None:
         """
@@ -185,7 +189,7 @@ class TransitionContext:
         Returns None if the metric is unknown (condition will not fire).
         """
         if metric == "rolling_accuracy":
-            return self._perf_tracker.rolling_accuracy(window)
+            return self._rolling_accuracy_in_stage(window)
         elif metric == "trials_in_stage":
             return float(self._trials_in_stage)
         elif metric == "total_trials_in_stage":
@@ -199,3 +203,17 @@ class TransitionContext:
         elif metric == "session_time_minutes":
             return self._session_time_minutes
         return None
+
+    def _rolling_accuracy_in_stage(self, window: int) -> float:
+        """
+        Compute rolling accuracy using only trials from the current stage.
+
+        This prevents trials from a previous stage bleeding into the window
+        and causing premature transitions.
+        """
+        stage_trials = self._perf_tracker.get_trials_since(self._stage_start_trial_index)
+        recent = [t for t in stage_trials if t.outcome != TrialOutcome.TIMEOUT][-window:]
+        if not recent:
+            return 0.0
+        successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
+        return (successes / len(recent)) * 100

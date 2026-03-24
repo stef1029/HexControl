@@ -380,6 +380,7 @@ class SetupMode(ttk.Frame):
         protocol_params["mouse_weight"] = mouse_weight
         protocol_params["num_trials"] = num_trials
         protocol_params["mouse_id"] = self.mouse_id_var.get()
+        protocol_params["save_directory"] = self._get_selected_cohort_directory()
         
         # Build mouse params if in simulate mode
         mouse_params = None

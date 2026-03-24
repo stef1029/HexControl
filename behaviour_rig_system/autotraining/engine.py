@@ -80,6 +80,7 @@ class AutotrainingEngine:
         self._consecutive_timeout: int = 0
         self._in_warmup: bool = False
         self._session_start_time: float = 0.0
+        self._stage_start_trial_index: int = 0         # perf_tracker index when stage started
 
         # Callbacks
         self._perf_tracker: Any = None
@@ -164,6 +165,13 @@ class AutotrainingEngine:
         self._consecutive_correct = 0
         self._consecutive_timeout = 0
         self._in_warmup = is_warmup_entry
+
+        # Record the perf_tracker trial index so rolling_accuracy
+        # only considers trials from this stage onwards
+        if self._perf_tracker is not None:
+            self._stage_start_trial_index = self._perf_tracker.total_trials
+        else:
+            self._stage_start_trial_index = 0
 
         # Restore cumulative trial count if resuming saved stage
         if not is_warmup_entry and stage.name == self._saved_stage_name:
@@ -274,6 +282,7 @@ class AutotrainingEngine:
             consecutive_correct=self._consecutive_correct,
             consecutive_timeout=self._consecutive_timeout,
             session_time_minutes=session_minutes,
+            stage_start_trial_index=self._stage_start_trial_index,
         )
 
         for transition in self._transitions:

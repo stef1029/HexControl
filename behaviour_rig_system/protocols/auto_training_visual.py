@@ -5,6 +5,7 @@ Adaptive protocol that progresses through training stages based on performance.
 Uses LED-only cues (no audio).
 """
 
+import os
 import random
 from datetime import datetime
 
@@ -39,13 +40,13 @@ class VisualAutoTrainingProtocol(BaseProtocol):
     def get_parameters(cls) -> list:
         return [
             StringParameter(
-                name="progress_folder",
-                display_name="Autotraining Progress Folder",
-                default="D:\\behaviour_data\\autotraining_progress",
-            ),
-            StringParameter(
                 name="start_stage_override",
                 display_name="Override Start Stage (blank = use saved)",
+                default="",
+            ),
+            StringParameter(
+                name="progress_folder_override",
+                display_name="Progress Folder Override (blank = use cohort folder)",
                 default="",
             ),
         ]
@@ -65,7 +66,9 @@ class VisualAutoTrainingProtocol(BaseProtocol):
         num_trials = params["num_trials"]
         mouse_id = params.get("mouse_id", "unknown")
 
-        progress_folder = params.get("progress_folder", "D:\\behaviour_data\\autotraining_progress")
+        save_directory = params.get("save_directory", "D:\\behaviour_data\\default")
+        progress_override = params.get("progress_folder_override", "").strip()
+        progress_folder = progress_override if progress_override else os.path.join(save_directory, "autotraining_progress")
         start_override = params.get("start_stage_override", "").strip()
 
         default_first_stage = ""
