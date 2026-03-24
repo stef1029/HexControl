@@ -21,7 +21,6 @@ Events emitted:
 
 import json
 import threading
-import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -433,13 +432,13 @@ class SessionController:
         self._serial = None
         self._peripheral_manager = None
 
-        def _log_cleanup(msg: str) -> None:
-            print(f"[cleanup] {msg}")
-            self._emit("cleanup_log", message=msg)
-
         if link or ser or pm:
+            # Re-wire peripheral manager logs to cleanup_log during cleanup
+            if pm is not None:
+                pm.on("log", lambda message: self._emit("cleanup_log", message=message))
+
             def _bg_cleanup():
-                self._cleanup_hardware_blocking(pm, ser, link, _log_cleanup)
+                self._cleanup_hardware_blocking(pm, ser, link)
                 self._emit("cleanup_complete")
                 if on_done is not None:
                     on_done()
@@ -466,55 +465,35 @@ class SessionController:
                 daemon=True,
             ).start()
 
-    @staticmethod
-    def _cleanup_hardware_blocking(pm, ser, link, log=None) -> None:
+    def _cleanup_hardware_blocking(self, pm, ser, link) -> None:
         """
         Blocking hardware cleanup — runs on a background thread.
 
         Shuts down the BehaviourRigLink, closes the serial port, and stops
         peripheral processes.
         """
-        def _log(msg: str) -> None:
-            if log is not None:
-                log(msg)
-            else:
-                print(f"[cleanup] {msg}")
-
-        _log("Starting hardware cleanup...")
-
         if link is not None:
             try:
-                _log("Sending shutdown command to rig...")
+                self._emit("cleanup_log", message="Shutting down rig link...")
                 link.shutdown()
-                _log("Shutdown command sent")
-            except Exception as e:
-                _log(f"Link shutdown error (non-fatal): {e}")
+            except Exception:
+                pass
             try:
-                _log("Stopping link receive thread...")
                 link.stop()
-                _log("Link receive thread stopped")
-            except Exception as e:
-                _log(f"Link stop error (non-fatal): {e}")
+            except Exception:
+                pass
 
         if ser is not None:
             try:
-                _log("Closing serial port...")
                 ser.close()
-                _log("Serial port closed")
-            except Exception as e:
-                _log(f"Serial close error (non-fatal): {e}")
+            except Exception:
+                pass
 
         if pm is not None:
             try:
-                _log("Stopping peripherals (camera, DAQ, scales)...")
-                t0 = time.perf_counter()
                 pm.stop()
-                elapsed = time.perf_counter() - t0
-                _log(f"Peripherals stopped ({elapsed:.1f}s)")
-            except Exception as e:
-                _log(f"Peripheral stop error (non-fatal): {e}")
-
-        _log("Hardware cleanup complete")
+            except Exception:
+                pass
 
     # =========================================================================
     # Metadata
