@@ -4,7 +4,7 @@ Base Protocol Class for Behaviour Experiments.
 Simplified protocol system. A protocol must:
     1. Inherit from BaseProtocol
     2. Implement: get_name(), get_description(), get_parameters(), _run_protocol()
-    3. Optionally implement: _setup(), _cleanup(), _on_stop()
+    3. Optionally implement: _setup(), _cleanup()
 
 The protocol lifecycle:
     _setup() -> _run_protocol() -> _cleanup()
@@ -12,7 +12,7 @@ The protocol lifecycle:
 Key things to know:
     - Access parameters via: self.parameters["name"]
     - Control rig via: self.link.led_set(), self.link.valve_pulse(), etc.
-    - Check for stop: if self._check_stop(): return
+    - Check for stop: if self.check_stop(): return
     - Log to GUI: self.log("message")
 """
 
@@ -53,8 +53,7 @@ class BaseProtocol(ABC):
     
     CAN implement:
         _setup() - Called before _run_protocol
-        _cleanup() - Called after (always runs, even on error)
-        _on_stop() - Called when user clicks Stop
+        _cleanup() - Called after (always runs, even on error/stop)
     """
 
     def __init__(
@@ -101,7 +100,7 @@ class BaseProtocol(ABC):
         Main protocol loop. This is where your experiment runs!
         
         Important:
-            - Check self._check_stop() regularly and return early if True
+            - Check self.check_stop() regularly and return early if True
             - Use self.link to control the rig (BehavLink functions)
             - Use self.parameters["name"] to access parameter values
         """
@@ -116,20 +115,10 @@ class BaseProtocol(ABC):
         pass
 
     def _cleanup(self) -> None:
-        """Called after _run_protocol. Default behavior turns rig outputs off."""
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
-
-    def _on_stop(self) -> None:
-        """Called when user clicks Stop. Default behavior turns rig outputs off."""
-        if self.link:
-            try:
-                self.link.shutdown()
-            except Exception:
-                pass
+        """Called after _run_protocol (always runs, even on error/stop).
+        Override for any protocol-specific teardown. Hardware shutdown
+        is handled by the session controller."""
+        pass
 
     # =========================================================================
     # Public Methods
@@ -175,12 +164,9 @@ class BaseProtocol(ABC):
             raise error
 
     def request_stop(self) -> None:
-        """Called when user clicks Stop."""
+        """Called when user clicks Stop. Hardware shutdown is handled
+        by the session controller after the protocol exits."""
         self._stop_requested = True
-        try:
-            self._on_stop()
-        except Exception:
-            pass  # Ignore errors during stop (serial may be disconnected)
 
     def on(self, event_name: str, callback: Callable) -> None:
         """Register a callback for a named event."""
@@ -210,12 +196,12 @@ class BaseProtocol(ABC):
             except Exception:
                 pass
 
-    def _check_stop(self) -> bool:
+    def check_stop(self) -> bool:
         """
         Check if user wants to stop.
 
         Call this regularly in your loop:
-            if self._check_stop():
+            if self.check_stop():
                 return
         """
         return self._stop_requested

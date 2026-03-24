@@ -1,7 +1,7 @@
 """
 Session State - Data containers for session lifecycle.
 
-SessionPhase tracks where we are in the session lifecycle.
+SessionStatus tracks where we are in the session lifecycle.
 SessionConfig captures the user's choices at session start.
 SessionResult holds the final outcomes for the post-session screen.
 """
@@ -11,7 +11,7 @@ from enum import Enum, auto
 from typing import Any
 
 
-class SessionPhase(Enum):
+class SessionStatus(Enum):
     """Where we are in the session lifecycle."""
     IDLE = auto()          # Setup mode, nothing running
     STARTING = auto()      # Hardware init in progress

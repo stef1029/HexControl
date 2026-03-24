@@ -6,7 +6,7 @@ with no tkinter dependency. Emits named events so the GUI layer can
 react without the controller knowing about widgets.
 
 Events emitted:
-    "phase_changed"       (phase: SessionPhase)
+    "status_changed"      (status: SessionStatus)
     "startup_status"      (message: str)
     "startup_complete"    (scales_client, virtual_rig_state, session_info: dict)
     "startup_error"       (message: str)
@@ -33,7 +33,7 @@ from BehavLink.mock import MockSerial, mock_reset_arduino_via_dtr
 from .performance_tracker import PerformanceTracker
 from .peripheral_manager import PeripheralManager, load_peripheral_config
 from .protocol_base import BaseProtocol, ProtocolStatus
-from .session_state import SessionPhase, SessionConfig, SessionResult
+from .session_state import SessionStatus, SessionConfig, SessionResult
 
 
 class SessionController:
@@ -59,7 +59,7 @@ class SessionController:
         self._listeners: dict[str, list[Callable]] = {}
 
         # Session phase
-        self._phase = SessionPhase.IDLE
+        self._status = SessionStatus.IDLE
 
         # Hardware resources
         self._serial: serial.Serial | None = None
@@ -99,17 +99,17 @@ class SessionController:
     # Phase management
     # =========================================================================
 
-    def _set_phase(self, phase: SessionPhase) -> None:
-        self._phase = phase
-        self._emit("phase_changed", phase=phase)
+    def _set_status(self, status: SessionStatus) -> None:
+        self._status = status
+        self._emit("status_changed", status=status)
 
     @property
-    def phase(self) -> SessionPhase:
-        return self._phase
+    def status(self) -> SessionStatus:
+        return self._status
 
     @property
     def is_running(self) -> bool:
-        return self._phase in (SessionPhase.RUNNING, SessionPhase.STOPPING)
+        return self._status in (SessionStatus.RUNNING, SessionStatus.STOPPING)
 
     @property
     def virtual_rig_state(self) -> VirtualRigState | None:
@@ -125,7 +125,7 @@ class SessionController:
         self._session_protocol_name = session_config["protocol_class"].get_name()
         self._startup_cancelled = False
 
-        self._set_phase(SessionPhase.STARTING)
+        self._set_status(SessionStatus.STARTING)
 
         self._startup_thread = threading.Thread(
             target=self._startup_sequence,
@@ -142,12 +142,12 @@ class SessionController:
     def stop_session(self) -> None:
         """Request the running protocol to stop."""
         if self._current_protocol is not None:
-            self._set_phase(SessionPhase.STOPPING)
+            self._set_status(SessionStatus.STOPPING)
             self._current_protocol.request_stop()
 
     def new_session(self) -> None:
         """Reset state for a new session."""
-        self._set_phase(SessionPhase.IDLE)
+        self._set_status(SessionStatus.IDLE)
 
     def close(self) -> None:
         """Clean up all resources (window closing)."""
@@ -343,7 +343,7 @@ class SessionController:
     def _on_startup_cancelled(self) -> None:
         """Handle startup cancellation — clean up and notify."""
         self._cleanup_hardware_async()
-        self._set_phase(SessionPhase.IDLE)
+        self._set_status(SessionStatus.IDLE)
         self._emit("startup_cancelled")
 
     # =========================================================================
@@ -352,7 +352,7 @@ class SessionController:
 
     def run_protocol(self) -> None:
         """Start the protocol in a background thread. Called by GUI after startup_complete."""
-        self._set_phase(SessionPhase.RUNNING)
+        self._set_status(SessionStatus.RUNNING)
         self._protocol_thread = threading.Thread(
             target=self._run_protocol_thread, daemon=True
         )
@@ -370,7 +370,7 @@ class SessionController:
 
     def _on_protocol_complete(self) -> None:
         """Gather results and start cleanup after protocol finishes."""
-        self._set_phase(SessionPhase.CLEANING_UP)
+        self._set_status(SessionStatus.CLEANING_UP)
 
         # Get final status
         final_status = ProtocolStatus.COMPLETED
@@ -483,20 +483,12 @@ class SessionController:
         _log("Starting hardware cleanup...")
 
         if link is not None:
-            thread_alive = (
-                hasattr(link, '_receive_thread')
-                and link._receive_thread is not None
-                and link._receive_thread.is_alive()
-            )
-            if thread_alive:
-                try:
-                    _log("Sending shutdown command to rig...")
-                    link.shutdown()
-                    _log("Shutdown command sent")
-                except Exception as e:
-                    _log(f"Link shutdown error (non-fatal): {e}")
-            else:
-                _log("Rig already shut down by protocol cleanup, skipping")
+            try:
+                _log("Sending shutdown command to rig...")
+                link.shutdown()
+                _log("Shutdown command sent")
+            except Exception as e:
+                _log(f"Link shutdown error (non-fatal): {e}")
             try:
                 _log("Stopping link receive thread...")
                 link.stop()

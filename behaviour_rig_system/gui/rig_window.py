@@ -18,7 +18,7 @@ from tkinter import messagebox, ttk
 
 from core.protocol_base import ProtocolStatus
 from core.session_controller import SessionController
-from core.session_state import SessionPhase
+from core.session_state import SessionStatus
 
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .startup_overlay import StartupOverlay
@@ -139,7 +139,7 @@ class RigWindow:
         c.on("protocol_complete",  on_main_thread(self._on_protocol_complete))
         c.on("cleanup_log",        on_main_thread(self._on_cleanup_log))
         c.on("cleanup_complete",   on_main_thread(self._on_cleanup_complete))
-        c.on("phase_changed",      on_main_thread(self._on_phase_changed))
+        c.on("status_changed",     on_main_thread(self._on_status_changed))
 
     # =========================================================================
     # Mode Management
@@ -266,8 +266,8 @@ class RigWindow:
             self._show_mode(WindowMode.POST_SESSION)
             self._pending_result = None
 
-    def _on_phase_changed(self, phase: SessionPhase) -> None:
-        pass  # Available for future use (e.g. disabling buttons based on phase)
+    def _on_status_changed(self, status: SessionStatus) -> None:
+        pass  # Available for future use (e.g. disabling buttons based on status)
 
     # =========================================================================
     # Window Management

@@ -195,19 +195,19 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 self.log(f"Completed {num_trials} trials")
                 break
 
-            if self._check_stop():
+            if self.check_stop():
                 self.log("Stopped by user")
                 break
 
             platform_ready = False
-            while not self._check_stop() and not platform_ready:
+            while not self.check_stop() and not platform_ready:
                 weight = scales.get_weight()
                 if weight is not None and weight > weight_threshold:
                     settle_start = time.time()
                     settled = True
 
                     while time.time() - settle_start < platform_settle_time:
-                        if self._check_stop():
+                        if self.check_stop():
                             break
                         weight = scales.get_weight()
                         if weight is None or weight < weight_threshold:
@@ -215,14 +215,14 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                             break
                         time.sleep(0.02)
 
-                    if settled and not self._check_stop():
+                    if settled and not self.check_stop():
                         weight = scales.get_weight()
                         if weight is not None and weight > weight_threshold:
                             platform_ready = True
                 else:
                     time.sleep(0.05)
 
-            if self._check_stop():
+            if self.check_stop():
                 break
 
             activation_time = time.time()
@@ -237,7 +237,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             target_port = 0 if is_audio else port
 
             wait_complete = False
-            while not self._check_stop():
+            while not self.check_stop():
                 elapsed = time.time() - activation_time
                 weight = scales.get_weight()
 
@@ -251,7 +251,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
 
                 time.sleep(0.02)
 
-            if self._check_stop():
+            if self.check_stop():
                 break
 
             if not wait_complete:
@@ -276,7 +276,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             event = None
 
             while True:
-                if self._check_stop():
+                if self.check_stop():
                     break
 
                 elapsed = time.time() - trial_start_time
@@ -322,5 +322,5 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                     time.sleep(punishment_s)
                     self.link.spotlight_set(255, 0)
 
-            if not self._check_stop() and iti > 0:
+            if not self.check_stop() and iti > 0:
                 time.sleep(iti)

@@ -195,7 +195,7 @@ IDLE ──→ STARTING ──→ RUNNING ──→ CLEANING_UP ──→ COMPLE
          IDLE
 ```
 
-These phases are tracked by `SessionPhase` in `core/session_state.py`.
+These phases are tracked by `SessionStatus` in `core/session_state.py`.
 
 ### Detailed Flow
 
@@ -260,7 +260,7 @@ The protocol's `run()` method executes the lifecycle: `_setup()` → `_run_proto
 def _run_protocol(self):
     self.perf_tracker.reset()
     for trial in range(self.parameters["num_trials"]):
-        if self._check_stop():
+        if self.check_stop():
             return
         self.log(f"Trial {trial + 1}")
         # ... experiment logic using self.link ...
@@ -269,11 +269,11 @@ def _run_protocol(self):
 
 - `self.log("message")` → emits `"log"` → controller forwards as `"protocol_log"` → appears in session log
 - `self.perf_tracker.success(...)` → tracker emits `"update"` → controller forwards as `"performance_update"` → RunningMode updates accuracy display
-- `self._check_stop()` → returns True if the user clicked Stop
+- `self.check_stop()` → returns True if the user clicked Stop
 
 #### 4. Stopping (STOPPING phase)
 
-When the user clicks Stop, `controller.stop_session()` calls `protocol.request_stop()`, which sets `_stop_requested = True` and calls `_on_stop()` (turns off rig outputs). The protocol loop checks this flag via `_check_stop()` and returns early.
+When the user clicks Stop, `controller.stop_session()` calls `protocol.request_stop()`, which sets `_stop_requested = True` and immediately shuts down rig outputs. The protocol loop checks this flag via `_check_stop()` and returns early, then `_cleanup()` runs.
 
 #### 5. Cleanup (CLEANING_UP phase)
 
@@ -343,7 +343,7 @@ behaviour_rig_system/
 │
 ├── core/                            # Business logic (no GUI dependency)
 │   ├── session_controller.py        # Session lifecycle — startup, run, cleanup
-│   ├── session_state.py             # SessionPhase, SessionConfig, SessionResult
+│   ├── session_state.py             # SessionStatus, SessionConfig, SessionResult
 │   ├── protocol_base.py             # BaseProtocol — abstract class for all protocols
 │   ├── performance_tracker.py       # Trial outcome tracking and statistics
 │   ├── peripheral_manager.py        # Orchestrates DAQ, camera, scales managers
@@ -434,7 +434,7 @@ class MyProtocol(BaseProtocol):
         return []
 
     def _run_protocol(self) -> None:
-        if self._check_stop():
+        if self.check_stop():
             return
         self.log("Done")
 ```
@@ -456,7 +456,7 @@ Key methods:
 | Method | Purpose |
 |--------|---------|
 | `self.log("message")` | Send a message to the session log |
-| `self._check_stop()` | Returns True if user clicked Stop — check this in your loop |
+| `self.check_stop()` | Returns True if user clicked Stop — check this in your loop |
 | `self.perf_tracker.reset()` | Clear tracker and start timing |
 | `self.perf_tracker.success(correct_port, trial_duration)` | Record a correct trial |
 | `self.perf_tracker.failure(correct_port, chosen_port, trial_duration)` | Record an incorrect trial |
@@ -471,14 +471,11 @@ def _setup(self) -> None:
     pass
 
 def _cleanup(self) -> None:
-    """Called after _run_protocol() (always runs, even on error).
-    Default: calls link.shutdown() to turn off rig outputs."""
+    """Called after _run_protocol() (always runs, even on error/stop).
+    Use for protocol-specific teardown. Hardware shutdown is handled
+    by the session controller."""
     pass
 
-def _on_stop(self) -> None:
-    """Called when user clicks Stop.
-    Default: calls link.shutdown() to turn off rig outputs."""
-    pass
 ```
 
 ### Parameter Types

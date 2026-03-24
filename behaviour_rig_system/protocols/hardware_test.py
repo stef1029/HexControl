@@ -108,27 +108,27 @@ class HardwareTestProtocol(BaseProtocol):
         num_ports = 6
 
         for cycle in range(1, num_cycles + 1):
-            if self._check_stop():
+            if self.check_stop():
                 return
 
             self.log(f"{'=' * 40}")
             self.log(f"  TEST CYCLE {cycle} / {num_cycles}")
             self.log(f"{'=' * 40}")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- LED Test ---")
             if led_enabled:
                 for port in range(num_ports):
-                    if self._check_stop():
+                    if self.check_stop():
                         return
                     self.log(f"  LED port {port} ON  (brightness {led_brightness})")
                     self.link.led_set(port, led_brightness)
                     time.sleep(step)
                     self.link.led_set(port, 0)
 
-                if not self._check_stop():
+                if not self.check_stop():
                     self.log("  All LEDs ON")
                     for port in range(num_ports):
                         self.link.led_set(port, led_brightness)
@@ -139,20 +139,20 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - LED test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Spotlight Test ---")
             if spotlight_enabled:
                 for port in range(num_ports):
-                    if self._check_stop():
+                    if self.check_stop():
                         return
                     self.log(f"  Spotlight port {port} ON  (brightness {spotlight_brightness})")
                     self.link.spotlight_set(port, spotlight_brightness)
                     time.sleep(step)
                     self.link.spotlight_set(port, 0)
 
-                if not self._check_stop():
+                if not self.check_stop():
                     self.log("  All spotlights ON")
                     self.link.spotlight_set(255, spotlight_brightness)
                     time.sleep(step)
@@ -161,14 +161,14 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - spotlight test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- IR Illuminator Test ---")
             if ir_enabled:
                 self.log("  Ramping IR up...")
                 for brightness in range(0, 256, 32):
-                    if self._check_stop():
+                    if self.check_stop():
                         self.link.ir_set(0)
                         return
                     self.link.ir_set(min(brightness, 255))
@@ -176,7 +176,7 @@ class HardwareTestProtocol(BaseProtocol):
                 time.sleep(step)
                 self.log("  Ramping IR down...")
                 for brightness in range(255, -1, -32):
-                    if self._check_stop():
+                    if self.check_stop():
                         self.link.ir_set(0)
                         return
                     self.link.ir_set(max(brightness, 0))
@@ -186,13 +186,13 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - IR test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Buzzer Test ---")
             if buzzer_enabled:
                 for port in range(num_ports):
-                    if self._check_stop():
+                    if self.check_stop():
                         return
                     self.log(f"  Buzzer port {port} ON")
                     self.link.buzzer_set(port, True)
@@ -202,7 +202,7 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - buzzer test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Speaker Test ---")
@@ -217,7 +217,7 @@ class HardwareTestProtocol(BaseProtocol):
                         (SpeakerFrequency.FREQ_7000_HZ, "7000 Hz"),
                     ]
                     for freq, label in frequencies:
-                        if self._check_stop():
+                        if self.check_stop():
                             self.link.speaker_set(SpeakerFrequency.OFF, SpeakerDuration.OFF)
                             return
                         self.log(f"  Playing {label}")
@@ -229,13 +229,13 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - speaker test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Valve Test ---")
             if valve_enabled:
                 for port in range(num_ports):
-                    if self._check_stop():
+                    if self.check_stop():
                         return
                     self.log(f"  Valve port {port} pulse ({valve_ms} ms)")
                     self.link.valve_pulse(port, valve_ms)
@@ -243,7 +243,7 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - valve test disabled (enable in parameters)")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Sensor Test ---")
@@ -256,7 +256,7 @@ class HardwareTestProtocol(BaseProtocol):
                 self.link.drain_events()
 
                 while time.time() - start < sensor_duration:
-                    if self._check_stop():
+                    if self.check_stop():
                         return
                     event = self.link.wait_for_event(timeout=0.2)
                     if event is not None:
@@ -277,7 +277,7 @@ class HardwareTestProtocol(BaseProtocol):
             else:
                 self.log("  SKIPPED - sensor test disabled")
 
-            if self._check_stop():
+            if self.check_stop():
                 return
             self.log("")
             self.log("--- Scales Test ---")
