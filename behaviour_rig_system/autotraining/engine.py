@@ -27,7 +27,7 @@ class AutotrainingEngine:
     Usage in a protocol's run() function:
 
         engine = AutotrainingEngine(stages, transitions, persistence_state)
-        engine.initialise_session(perf_tracker, log)
+        engine.initialise_session(perf_trackers, log)
 
         while running:
             params = engine.get_active_params()
@@ -84,6 +84,7 @@ class AutotrainingEngine:
 
         # Callbacks
         self._perf_tracker: Any = None
+        self._perf_trackers: dict[str, Any] = {}  # stage_name -> tracker (optional)
         self._log: Callable[[str], None] = lambda msg: None
 
         # Transition history for this session
@@ -95,8 +96,9 @@ class AutotrainingEngine:
 
     def initialise_session(
         self,
-        perf_tracker: Any,
+        perf_trackers: dict[str, Any],
         log: Callable[[str], None],
+        skip_warmup: bool = False,
     ) -> None:
         """
         Set up the engine for a new session.
@@ -105,18 +107,25 @@ class AutotrainingEngine:
         to the saved/first stage.
 
         Args:
-            perf_tracker: PerformanceTracker instance from the protocol framework
+            perf_trackers: Dict of stage_name -> PerformanceTracker.
+                          The engine automatically selects the tracker
+                          matching the current stage name.
             log:          Logging function (prints to GUI)
+            skip_warmup:  If True, skip warm-up and go directly to the
+                         saved/first stage.
         """
-        self._perf_tracker = perf_tracker
+        self._perf_trackers = perf_trackers
+        self._perf_tracker = next(iter(perf_trackers.values()), None)
         self._log = log
         self._session_start_time = time.time()
 
-        if self._warmup_stage is not None and self._should_warmup():
+        if not skip_warmup and self._warmup_stage is not None and self._should_warmup():
             self._set_stage(self._warmup_stage, is_warmup_entry=True)
             self._log(f"Starting warm-up stage: {self._warmup_stage.display_name}")
             self._log(f"  After warm-up, will resume: {self._saved_stage_name}")
         else:
+            if skip_warmup:
+                self._log("Warm-up skipped")
             stage = self._stages[self._saved_stage_name]
             self._set_stage(stage)
             self._log(f"Starting at saved stage: {stage.display_name}")
@@ -158,6 +167,7 @@ class AutotrainingEngine:
 
         Resets session-level counters. If entering a non-warmup stage that
         matches the saved stage, restores the cumulative trial count.
+        If per-stage trackers are available, switches to the matching tracker.
         """
         self._current_stage = stage
         self._active_params = stage.get_params()
@@ -165,6 +175,10 @@ class AutotrainingEngine:
         self._consecutive_correct = 0
         self._consecutive_timeout = 0
         self._in_warmup = is_warmup_entry
+
+        # Switch to per-stage tracker if available
+        if stage.name in self._perf_trackers:
+            self._perf_tracker = self._perf_trackers[stage.name]
 
         # Record the perf_tracker trial index so rolling_accuracy
         # only considers trials from this stage onwards

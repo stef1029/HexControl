@@ -18,7 +18,7 @@ tracker.reset()
 
 engine = AutotrainingEngine(STAGES, TRANSITIONS)
 logs = []
-engine.initialise_session(tracker, lambda msg: logs.append(msg))
+engine.initialise_session({"warm_up": tracker}, lambda msg: logs.append(msg))
 
 print(f"Started in: {engine.current_stage_name} (warmup={engine.in_warmup})")
 

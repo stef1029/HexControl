@@ -40,7 +40,10 @@ class RunningMode(ttk.Frame):
         self._timer_id: str | None = None
         self._tracker_widgets: dict[str, dict] = {}  # Per-tracker widget refs
         self._tracker_definitions: list = []
+        self._tracker_tab_indices: dict[str, int] = {}  # tracker name -> tab index
         self._last_logged_trials: dict[str, int] = {}  # Per-tracker log index
+        self._perf_notebook: ttk.Notebook | None = None
+        self._lock_tracker_view = tk.BooleanVar(value=False)
 
         self._create_widgets()
     
@@ -179,7 +182,10 @@ class RunningMode(ttk.Frame):
         for child in self._perf_frame.winfo_children():
             child.destroy()
         self._tracker_widgets.clear()
+        self._tracker_tab_indices.clear()
         self._last_logged_trials.clear()
+        self._perf_notebook = None
+        self._lock_tracker_view.set(False)
 
         # Clear trial log
         self._trial_log.config(state="normal")
@@ -194,15 +200,24 @@ class RunningMode(ttk.Frame):
             ).pack(pady=10)
             return
 
-        # Always use a notebook, even for a single tracker
-        notebook = ttk.Notebook(self._perf_frame)
-        notebook.pack(fill="x", expand=True)
+        # Lock view checkbox
+        controls_row = ttk.Frame(self._perf_frame)
+        controls_row.pack(fill="x")
+        ttk.Checkbutton(
+            controls_row, text="Lock view",
+            variable=self._lock_tracker_view,
+        ).pack(side="right")
 
-        for tdef in self._tracker_definitions:
-            tab = ttk.Frame(notebook, padding=(6, 4))
-            notebook.add(tab, text=tdef.display_name)
+        # Notebook with one tab per tracker
+        self._perf_notebook = ttk.Notebook(self._perf_frame)
+        self._perf_notebook.pack(fill="x", expand=True)
+
+        for idx, tdef in enumerate(self._tracker_definitions):
+            tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
+            self._perf_notebook.add(tab, text=tdef.display_name)
             widgets = self._create_tracker_tab(tab)
             self._tracker_widgets[tdef.name] = widgets
+            self._tracker_tab_indices[tdef.name] = idx
             self._last_logged_trials[tdef.name] = 0
 
     def _create_tracker_tab(self, parent: ttk.Frame) -> dict:
@@ -355,6 +370,14 @@ class RunningMode(ttk.Frame):
             self._log_trial(trial, prefix=f"[{display_name}] " if multi else "")
             self._last_logged_trials[updated] = last + 1
             last += 1
+
+        # Auto-switch to the updated tracker's tab (unless locked)
+        if (
+            not self._lock_tracker_view.get()
+            and self._perf_notebook is not None
+            and updated in self._tracker_tab_indices
+        ):
+            self._perf_notebook.select(self._tracker_tab_indices[updated])
 
     def _log_trial(self, trial, prefix: str = "") -> None:
         """Log a single trial to the trial log with colored output."""

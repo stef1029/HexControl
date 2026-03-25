@@ -17,7 +17,7 @@ from autotraining.persistence import (
     load_training_state,
     save_training_state,
 )
-from core.parameter_types import StringParameter
+from core.parameter_types import BoolParameter, StringParameter
 from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
 
@@ -39,11 +39,19 @@ class AudioAutoTrainingProtocol(BaseProtocol):
 
     @classmethod
     def get_tracker_definitions(cls) -> list:
-        return [TrackerDefinition(name="trials", display_name="Trials")]
+        return [
+            TrackerDefinition(name=stage.name, display_name=stage.display_name)
+            for stage in STAGES.values()
+        ]
 
     @classmethod
     def get_parameters(cls) -> list:
         return [
+            BoolParameter(
+                name="skip_warmup",
+                display_name="Skip Warm-Up",
+                default=False,
+            ),
             StringParameter(
                 name="start_stage_override",
                 display_name="Override Start Stage (blank = use saved)",
@@ -59,14 +67,15 @@ class AudioAutoTrainingProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_trackers.get("trials")
+        perf_trackers = self.perf_trackers
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        if perf_tracker is not None:
-            perf_tracker.reset()
+        # Reset all trackers
+        for tracker in perf_trackers.values():
+            tracker.reset()
 
         num_trials = params["num_trials"]
         mouse_id = params.get("mouse_id", "unknown")
@@ -103,8 +112,11 @@ class AudioAutoTrainingProtocol(BaseProtocol):
             saved_trials_in_stage=saved_trials,
         )
 
-        if perf_tracker is not None:
-            engine.initialise_session(perf_tracker, self.log)
+        engine.initialise_session(
+            perf_trackers=perf_trackers,
+            log=self.log,
+            skip_warmup=params.get("skip_warmup", False),
+        )
 
         session_start = self.now()
         trial_num = 0
@@ -191,8 +203,9 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                     self.sleep(iti)
                     continue
 
-                if perf_tracker is not None:
-                    perf_tracker.stimulus(target_port)
+                tracker = perf_trackers.get(engine.current_stage_name)
+                if tracker is not None:
+                    tracker.stimulus(target_port)
                 trial_start_time = self.now()
 
                 self.link.led_set(target_port, led_brightness)
@@ -227,13 +240,13 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                     break
 
                 if event is None:
-                    if perf_tracker is not None:
-                        perf_tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
+                    if tracker is not None:
+                        tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
                     outcome = "timeout"
                     self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
                 elif event.port == target_port:
-                    if perf_tracker is not None:
-                        perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
+                    if tracker is not None:
+                        tracker.success(correct_port=target_port, trial_duration=trial_duration)
                     self.link.valve_pulse(target_port, reward_ms)
                     outcome = "success"
                     chosen_port = event.port
@@ -241,8 +254,8 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                         f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
                     )
                 else:
-                    if perf_tracker is not None:
-                        perf_tracker.failure(
+                    if tracker is not None:
+                        tracker.failure(
                             correct_port=target_port,
                             chosen_port=event.port,
                             trial_duration=trial_duration,
@@ -265,8 +278,8 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                     trial_duration=trial_duration,
                 )
 
-                if new_stage is not None and perf_tracker is not None:
-                    self.log(f"    Rolling accuracy: {perf_tracker.rolling_accuracy(10):.0f}% (last 10)")
+                if new_stage is not None and tracker is not None:
+                    self.log(f"    Rolling accuracy: {tracker.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:
@@ -274,6 +287,7 @@ class AudioAutoTrainingProtocol(BaseProtocol):
 
         finally:
             end_state = engine.get_session_end_state()
+            transition_log = engine.get_transition_log()
 
             if not end_state.get("in_warmup", False):
                 save_training_state(
@@ -282,6 +296,7 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                     current_stage=end_state["current_stage"],
                     trials_in_stage=end_state["trials_in_stage"],
                     previous_state=saved_state,
+                    transition_log=transition_log,
                 )
                 self.log(
                     f"Training state saved: stage={end_state['current_stage']}, "
@@ -291,7 +306,6 @@ class AudioAutoTrainingProtocol(BaseProtocol):
                 self.log("Session ended during warm-up — training state NOT updated")
 
             session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-            transition_log = engine.get_transition_log()
             if transition_log:
                 append_transition_log(progress_folder, mouse_id, session_id, transition_log)
                 self.log(f"Logged {len(transition_log)} stage transition(s)")

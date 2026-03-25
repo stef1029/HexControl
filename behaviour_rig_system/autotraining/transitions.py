@@ -204,16 +204,19 @@ class TransitionContext:
             return self._session_time_minutes
         return None
 
-    def _rolling_accuracy_in_stage(self, window: int) -> float:
+    def _rolling_accuracy_in_stage(self, window: int) -> float | None:
         """
         Compute rolling accuracy using only trials from the current stage.
 
         This prevents trials from a previous stage bleeding into the window
-        and causing premature transitions.
+        and causing premature transitions. Returns None if there are fewer
+        non-timeout trials than the window size, which causes the condition
+        to evaluate as not-met (neither forward nor regression can fire
+        without sufficient data).
         """
         stage_trials = self._perf_tracker.get_trials_since(self._stage_start_trial_index)
         recent = [t for t in stage_trials if t.outcome != TrialOutcome.TIMEOUT][-window:]
-        if not recent:
-            return 0.0
+        if len(recent) < window:
+            return None
         successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
         return (successes / len(recent)) * 100

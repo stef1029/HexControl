@@ -128,34 +128,55 @@ def save_training_state(
     current_stage: str,
     trials_in_stage: int,
     previous_state: TrainingState,
+    transition_log: list[dict[str, Any]] | None = None,
 ) -> None:
     """
     Save a mouse's training state to disk.
 
-    Updates the state file and appends any stage changes to history.
+    Replays the full transition log (if provided) so that every stage
+    visited during the session appears in the history, not just the
+    start and end stages.
 
     Args:
-        progress_root:  Path to the autotraining_progress folder
-        mouse_id:       Mouse identifier
-        current_stage:  Stage name at end of session
+        progress_root:   Path to the autotraining_progress folder
+        mouse_id:        Mouse identifier
+        current_stage:   Stage name at end of session
         trials_in_stage: Cumulative trial count in the current stage
-        previous_state: The TrainingState that was loaded at session start
+        previous_state:  The TrainingState that was loaded at session start
+        transition_log:  List of transition dicts from engine.get_transition_log()
     """
     mouse_dir = get_mouse_progress_dir(progress_root, mouse_id)
     state_file = mouse_dir / "training_state.json"
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # Build updated history
+    # Build updated history by replaying every transition that occurred
     history = list(previous_state.stage_history)
+    transitions = transition_log or []
 
-    # If the stage changed since the previous state was loaded, close out the
-    # old history entry and open a new one
-    if previous_state.current_stage and previous_state.current_stage != current_stage:
-        # Close previous stage history entry
+    if transitions:
+        # Replay each transition into the history
+        for t in transitions:
+            from_stage = t.get("from_stage", "")
+            to_stage = t.get("to_stage", "")
+
+            # Close out the from_stage entry if it's the latest in history
+            if history and history[-1].get("stage") == from_stage:
+                history[-1]["exited"] = today
+
+            # Open a new entry for the to_stage
+            history.append({
+                "stage": to_stage,
+                "entered": today,
+                "exited": None,
+                "sessions": 1,
+            })
+
+        sessions_in_stage = 1
+    elif previous_state.current_stage and previous_state.current_stage != current_stage:
+        # Stage changed but no transition log provided (shouldn't happen, but handle it)
         if history and history[-1].get("stage") == previous_state.current_stage:
             history[-1]["exited"] = today
-        # Open new stage history entry
         history.append({
             "stage": current_stage,
             "entered": today,
@@ -164,7 +185,7 @@ def save_training_state(
         })
         sessions_in_stage = 1
     else:
-        # Same stage -- increment session count
+        # Same stage as session start -- increment session count
         sessions_in_stage = previous_state.sessions_in_stage + 1
         if history and history[-1].get("stage") == current_stage:
             history[-1]["sessions"] = sessions_in_stage
