@@ -1,0 +1,112 @@
+site_name: Hex Behav Control
+site_description: Modular behaviour rig control system for Arduino-based neuroscience experiments
+repo_url: https://github.com/your-org/hex_behav_control
+repo_name: hex_behav_control
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - First Session: getting-started/first-session.md
+    - Simulation Mode: getting-started/simulation.md
+  - User Guide:
+    - user-guide/index.md
+    - GUI Walkthrough: user-guide/gui-walkthrough.md
+    - Writing Protocols:
+      - user-guide/protocols/index.md
+      - Protocol Template: user-guide/protocols/template-walkthrough.md
+      - Parameter Types: user-guide/protocols/parameter-types.md
+      - Performance Trackers: user-guide/protocols/performance-trackers.md
+      - Using BehavLink in Protocols: user-guide/protocols/using-behavlink.md
+      - Full Example Protocol: user-guide/protocols/full-example.md
+    - Autotraining:
+      - user-guide/autotraining/index.md
+      - Concepts: user-guide/autotraining/concepts.md
+      - Defining Stages: user-guide/autotraining/defining-stages.md
+      - Defining Transitions: user-guide/autotraining/defining-transitions.md
+      - Persistence & Progress: user-guide/autotraining/persistence.md
+      - Creating a Custom Training Sequence: user-guide/autotraining/custom-sequence.md
+  - Library Reference:
+    - reference/index.md
+    - BehavLink:
+      - reference/behavlink/index.md
+      - Quick Start: reference/behavlink/quickstart.md
+      - Command Reference: reference/behavlink/commands.md
+      - Events & Sensors: reference/behavlink/events.md
+      - Simulation: reference/behavlink/simulation.md
+    - DAQLink:
+      - reference/daqlink/index.md
+      - Quick Start: reference/daqlink/quickstart.md
+      - Manager API: reference/daqlink/manager.md
+      - Data Format: reference/daqlink/data-format.md
+    - ScalesLink:
+      - reference/scaleslink/index.md
+      - Quick Start: reference/scaleslink/quickstart.md
+      - Wired vs Wireless: reference/scaleslink/wired-wireless.md
+      - Calibration: reference/scaleslink/calibration.md
+      - Client-Server Architecture: reference/scaleslink/client-server.md
+  - Architecture:
+    - architecture/index.md
+    - System Overview: architecture/system-overview.md
+    - Session Lifecycle: architecture/session-lifecycle.md
+    - GUI System: architecture/gui-system.md
+    - Autotraining Engine: architecture/autotraining-engine.md
+    - BehavLink Protocol Spec: architecture/behavlink-protocol.md
+    - Threading Model: architecture/threading-model.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.mark
+  - pymdownx.keys
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search

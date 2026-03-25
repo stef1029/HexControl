@@ -139,7 +139,6 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                 iti = stage_params["iti"]
                 cue_duration = stage_params["cue_duration"]
                 led_brightness = stage_params["led_brightness"]
-                reward_ms = self.reward_durations[target_port]
                 punishment_s = stage_params["punishment_duration"]
                 punishment_enabled = stage_params.get("punishment_enabled", False)
                 platform_settle_time = stage_params["platform_settle_time"]
@@ -247,7 +246,7 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                 elif event.port == target_port:
                     if tracker is not None:
                         tracker.success(correct_port=target_port, trial_duration=trial_duration)
-                    self.link.valve_pulse(target_port, reward_ms)
+                    self.link.valve_pulse(target_port, self.reward_durations[target_port])
                     outcome = "success"
                     chosen_port = event.port
                     self.log(
