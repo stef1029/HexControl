@@ -37,8 +37,7 @@ BASE_DEFAULTS: dict[str, Any] = {
     "wait_duration": 0.0,
     "iti": 1.0,
 
-    # Reward/punishment
-    "reward_duration": 500,     # ms
+    # Punishment
     "punishment_duration": 0.0, # s — 0 means no punishment
     "punishment_enabled": False,
 

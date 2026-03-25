@@ -139,7 +139,7 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                 iti = stage_params["iti"]
                 cue_duration = stage_params["cue_duration"]
                 led_brightness = stage_params["led_brightness"]
-                reward_ms = stage_params["reward_duration"]
+                reward_ms = self.reward_durations[target_port]
                 punishment_s = stage_params["punishment_duration"]
                 punishment_enabled = stage_params.get("punishment_enabled", False)
                 platform_settle_time = stage_params["platform_settle_time"]

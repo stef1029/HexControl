@@ -103,13 +103,6 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                 min_value=0,
                 max_value=255,
             ),
-            IntParameter(
-                name="reward_duration",
-                display_name="Reward Duration (ms)",
-                default=500,
-                min_value=50,
-                max_value=5000,
-            ),
             FloatParameter(
                 name="punishment_duration",
                 display_name="Punishment Duration (s)",
@@ -144,7 +137,6 @@ class FullTaskWithWaitProtocol(BaseProtocol):
         platform_settle_time = params["platform_settle_time"]
 
         led_brightness = params["led_brightness"]
-        reward_ms = params["reward_duration"]
         punishment_s = params["punishment_duration"]
 
         audio_enabled = params["audio_enabled"]
@@ -310,7 +302,7 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             elif event.port == target_port:
                 if perf_tracker is not None:
                     perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
-                self.link.valve_pulse(target_port, reward_ms)
+                self.link.valve_pulse(target_port, self.reward_durations[target_port])
                 self.log(f"  SUCCESS - correct port {event.port}, reward delivered")
             else:
                 if perf_tracker is not None:

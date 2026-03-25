@@ -80,7 +80,6 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "reward_duration": 500,     # ms
         "punishment_duration": 0.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
@@ -124,7 +123,6 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "reward_duration": 500,     # ms
         "punishment_duration": 0.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
@@ -163,7 +161,6 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "reward_duration": 500,     # ms
         "punishment_duration": 0.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
@@ -202,7 +199,6 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "reward_duration": 500,     # ms
         "punishment_duration": 0.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
@@ -241,11 +237,140 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "reward_duration": 500,     # ms
         "punishment_duration": 0.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
         # Audio
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+
+# -----------------------------------------------------------------------------
+# Phase 5: Cue duration ladder (all 6 ports, decreasing LED on-time)
+# -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="cue_duration_1000ms",
+    display_name="Cue duration 1000ms",
+    description="All 6 ports, LED cue limited to 1000ms.",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 1.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "punishment_duration": 0.0,
+        "punishment_enabled": False,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="cue_duration_750ms",
+    display_name="Cue duration 750ms",
+    description="All 6 ports, LED cue limited to 750ms.",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.75,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "punishment_duration": 0.0,
+        "punishment_enabled": False,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="cue_duration_500ms",
+    display_name="Cue duration 500ms",
+    description="All 6 ports, LED cue limited to 500ms.",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.5,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "punishment_duration": 0.0,
+        "punishment_enabled": False,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="cue_duration_250ms",
+    display_name="Cue duration 250ms",
+    description="All 6 ports, LED cue limited to 250ms.",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.25,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "punishment_duration": 0.0,
+        "punishment_enabled": False,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="cue_duration_100ms",
+    display_name="Cue duration 100ms",
+    description="All 6 ports, LED cue limited to 100ms (final stage).",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.1,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "punishment_duration": 0.0,
+        "punishment_enabled": False,
         "audio_enabled": False,
         "audio_proportion": 6,
     },

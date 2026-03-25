@@ -156,11 +156,19 @@ class PostSessionMode(ttk.Frame):
         for name, report in reports.items():
             tab = ttk.Frame(notebook, padding=(10, 6))
             notebook.add(tab, text=name)
-            self._fill_report_tab(tab, report)
+            self._fill_report_tab(tab, report, display_name=name)
 
-    def _fill_report_tab(self, parent: ttk.Frame, report: dict) -> None:
+    def _fill_report_tab(self, parent: ttk.Frame, report: dict, display_name: str = "") -> None:
         """Populate a single report tab with stats from a tracker report."""
         palette = Theme.palette
+
+        # Tracker name header
+        if display_name:
+            ttk.Label(
+                parent, text=display_name,
+                font=Theme.font_mono(size=13, weight="bold"),
+                foreground=palette.accent_primary,
+            ).pack(fill="x", pady=(2, 4))
 
         if report.get("total_trials", 0) == 0:
             ttk.Label(parent, text="No trials recorded.", style="Muted.TLabel").pack(pady=10)

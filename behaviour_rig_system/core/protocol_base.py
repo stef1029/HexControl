@@ -68,6 +68,7 @@ class BaseProtocol(ABC):
         self.scales = None
         self.perf_trackers: dict[str, Any] = {}  # Named performance trackers
         self.rig_number: int | None = None
+        self.reward_durations: list[int] = [500] * 6  # Per-port reward durations (ms)
 
         self._stop_requested = False
         self._listeners: dict[str, list[Callable]] = {}
@@ -190,12 +191,15 @@ class BaseProtocol(ABC):
         perf_trackers: dict | None = None,
         rig_number: int | None = None,
         clock=None,
+        reward_durations: list[int] | None = None,
     ) -> None:
         """Attach runtime services provided by the GUI/orchestrator."""
         self.scales = scales
         self.perf_trackers = perf_trackers or {}
         self.rig_number = rig_number
         self._clock = clock
+        if reward_durations is not None:
+            self.reward_durations = reward_durations
 
     # =========================================================================
     # Protected Methods - Use these in your protocol

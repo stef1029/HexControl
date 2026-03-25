@@ -105,4 +105,113 @@ TRANSITIONS: list[Transition] = [
         description="Performance regression at 6-port (<30% over 20 trials)",
     ),
 
+    # -------------------------------------------------------------------------
+    # Forward: cue duration ladder
+    # multiple_leds_6x -> 1000ms -> 750ms -> 500ms -> 250ms -> 100ms
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="multiple_leds_6x",
+        to_stage="cue_duration_1000ms",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=30),
+        ],
+        priority=10,
+        description="6-port mastered, beginning cue duration ladder (>90% over 30 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_1000ms",
+        to_stage="cue_duration_750ms",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 75, window=30),
+        ],
+        priority=10,
+        description="1000ms cue mastered (>=75% over 30 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_750ms",
+        to_stage="cue_duration_500ms",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 60, window=30),
+        ],
+        priority=10,
+        description="750ms cue mastered (>=60% over 30 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_500ms",
+        to_stage="cue_duration_250ms",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 50, window=30),
+        ],
+        priority=10,
+        description="500ms cue mastered (>=50% over 30 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_250ms",
+        to_stage="cue_duration_100ms",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 40, window=30),
+        ],
+        priority=10,
+        description="250ms cue mastered (>=40% over 30 trials)",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Regression: cue duration ladder
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="cue_duration_1000ms",
+        to_stage="multiple_leds_6x",
+        conditions=[
+            Condition("rolling_accuracy", "<", 25, window=20),
+        ],
+        priority=5,
+        description="Regression at 1000ms cue (<25% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_750ms",
+        to_stage="cue_duration_1000ms",
+        conditions=[
+            Condition("rolling_accuracy", "<", 25, window=20),
+        ],
+        priority=5,
+        description="Regression at 750ms cue (<25% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_500ms",
+        to_stage="cue_duration_750ms",
+        conditions=[
+            Condition("rolling_accuracy", "<", 25, window=20),
+        ],
+        priority=5,
+        description="Regression at 500ms cue (<25% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_250ms",
+        to_stage="cue_duration_500ms",
+        conditions=[
+            Condition("rolling_accuracy", "<", 25, window=20),
+        ],
+        priority=5,
+        description="Regression at 250ms cue (<25% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="cue_duration_100ms",
+        to_stage="cue_duration_250ms",
+        conditions=[
+            Condition("rolling_accuracy", "<", 20, window=20),
+        ],
+        priority=5,
+        description="Regression at 100ms cue (<20% over 20 trials)",
+    ),
+
 ]

@@ -318,11 +318,15 @@ class SessionController:
             if self._peripheral_manager.scales_client is not None:
                 scales_client = self._peripheral_manager.scales_client
 
+            # Read per-port reward durations from rig config
+            reward_durations = self._rig_config.get("reward_durations", [500] * 6)
+
             self._current_protocol.set_runtime_context(
                 scales=scales_client,
                 perf_trackers=self._perf_trackers,
                 rig_number=rig_number,
                 clock=clock,
+                reward_durations=reward_durations,
             )
 
             # Wire protocol events

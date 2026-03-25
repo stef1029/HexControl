@@ -31,6 +31,8 @@ rigs:
       is_wired: True
       calibration_scale: 0.22375971500351627
       calibration_intercept: -5617.39
+    # Per-port reward durations in ms (calibrate per solenoid)
+    reward_durations: [500, 500, 500, 500, 500, 500]
 
   - name: "Rig 2"
     board_name: "rig_2_behaviour"
@@ -45,6 +47,7 @@ rigs:
       is_wired: true
       calibration_scale: 0.27978473586250524
       calibration_intercept: 475.86
+    reward_durations: [500, 500, 500, 500, 500, 500]
 
   - name: "Rig 3"
     board_name: "rig_3_behaviour"
@@ -59,6 +62,7 @@ rigs:
       is_wired: true
       calibration_scale: 0.1725046376146776
       calibration_intercept: -1327.66
+    reward_durations: [500, 500, 500, 500, 500, 500]
 
   - name: "Rig 4"
     board_name: "rig_4_behaviour"
@@ -73,6 +77,7 @@ rigs:
       is_wired: true
       calibration_scale: 0.16461420192565693
       calibration_intercept: -616.28
+    reward_durations: [500, 500, 500, 500, 500, 500]
 
 
 # Global settings

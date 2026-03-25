@@ -215,14 +215,22 @@ class RunningMode(ttk.Frame):
         for idx, tdef in enumerate(self._tracker_definitions):
             tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
             self._perf_notebook.add(tab, text=tdef.display_name)
-            widgets = self._create_tracker_tab(tab)
+            widgets = self._create_tracker_tab(tab, display_name=tdef.display_name)
             self._tracker_widgets[tdef.name] = widgets
             self._tracker_tab_indices[tdef.name] = idx
             self._last_logged_trials[tdef.name] = 0
 
-    def _create_tracker_tab(self, parent: ttk.Frame) -> dict:
+    def _create_tracker_tab(self, parent: ttk.Frame, display_name: str = "") -> dict:
         """Create the standard stats widgets inside a tracker tab. Returns widget refs."""
         palette = Theme.palette
+
+        # Tracker name header
+        name_label = ttk.Label(
+            parent, text=display_name,
+            font=Theme.font_mono(size=13, weight="bold"),
+            foreground=palette.accent_primary,
+        )
+        name_label.pack(fill="x", pady=(2, 4))
 
         # Stats row
         stats_row = ttk.Frame(parent)
