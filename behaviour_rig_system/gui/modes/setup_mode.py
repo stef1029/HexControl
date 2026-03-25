@@ -238,7 +238,7 @@ class SetupMode(ttk.Frame):
         trials_frame = ttk.Frame(session_params_frame)
         trials_frame.pack(fill="x", pady=2)
         ttk.Label(trials_frame, text="Number of Trials:").pack(side="left")
-        self.num_trials_var = tk.StringVar(value="100")
+        self.num_trials_var = tk.StringVar(value="1000")
         self.num_trials_entry = ttk.Entry(trials_frame, textvariable=self.num_trials_var, width=12)
         self.num_trials_entry.pack(side="left", padx=6)
         
