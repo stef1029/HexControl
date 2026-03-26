@@ -110,7 +110,12 @@ class SessionController:
 
     @property
     def is_running(self) -> bool:
-        return self._status in (SessionStatus.RUNNING, SessionStatus.STOPPING)
+        return self._status in (
+            SessionStatus.STARTING,
+            SessionStatus.RUNNING,
+            SessionStatus.STOPPING,
+            SessionStatus.CLEANING_UP,
+        )
 
     @property
     def virtual_rig_state(self) -> VirtualRigState | None:
