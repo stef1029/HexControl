@@ -7,9 +7,13 @@ for recording rig state during behavioural experiments.
 
 from .serial_listen import listen, main
 from .manager import DAQManager
+from .viewer import DAQViewer
+from . import protocol
 
 __all__ = [
     "listen",
     "main",
     "DAQManager",
+    "DAQViewer",
+    "protocol",
 ]

@@ -229,7 +229,16 @@ class RigWindow:
             if self.rig_config.get("simulate"):
                 self.running_mode._scales_plot._battery_detection_enabled = False
 
-        self.running_mode.activate(session_info, tracker_definitions=tracker_definitions or [])
+        # Extract rig number from name (e.g. "Rig 1" -> 1)
+        try:
+            rig_number = int(self.rig_name.split()[-1])
+        except (ValueError, IndexError):
+            rig_number = 0
+        self.running_mode.activate(
+            session_info,
+            tracker_definitions=tracker_definitions or [],
+            rig_number=rig_number,
+        )
 
         # Set scales threshold line if available
         scales_threshold = session_info.get("scales_threshold")

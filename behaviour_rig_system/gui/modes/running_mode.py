@@ -20,6 +20,7 @@ from typing import Callable
 from core.protocol_base import ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 from gui.scales_plot_widget import ScalesPlotWidget
+from gui.daq_view_widget import DAQViewWidget
 
 
 
@@ -44,6 +45,9 @@ class RunningMode(ttk.Frame):
         self._last_logged_trials: dict[str, int] = {}  # Per-tracker log index
         self._perf_notebook: ttk.Notebook | None = None
         self._lock_tracker_view = tk.BooleanVar(value=False)
+        self._daq_view_window: tk.Toplevel | None = None
+        self._daq_view_widget: DAQViewWidget | None = None
+        self._rig_number: int = 0
 
         self._create_widgets()
     
@@ -78,6 +82,12 @@ class RunningMode(ttk.Frame):
             style="Danger.TButton"
         )
         self._stop_button.pack(side="right", padx=3)
+
+        self._daq_view_btn = ttk.Button(
+            button_frame, text="DAQ View",
+            command=self._toggle_daq_view,
+        )
+        self._daq_view_btn.pack(side="right", padx=3)
         
         # Timer and status row
         timer_frame = ttk.Frame(self)
@@ -150,14 +160,18 @@ class RunningMode(ttk.Frame):
         """Set the activation threshold line on the scales plot."""
         self._scales_plot.set_threshold(value)
     
-    def activate(self, session_config: dict, tracker_definitions: list | None = None) -> None:
+    def activate(self, session_config: dict, tracker_definitions: list | None = None,
+                 rig_number: int = 0) -> None:
         """
         Called when this mode becomes active.
 
         Args:
             session_config: Dict with protocol_name, mouse_id, save_path
             tracker_definitions: List of TrackerDefinition from the protocol
+            rig_number: Rig number (1-indexed) for DAQ UDP listener
         """
+        self._rig_number = rig_number
+
         # Reset UI state
         self._clear_log()
         self._stop_button.config(state="normal", text="Stop Session")
@@ -419,12 +433,13 @@ class RunningMode(ttk.Frame):
     def deactivate(self) -> dict:
         """
         Called when leaving this mode.
-        
+
         Returns:
             Context dict with elapsed_time and final log
         """
         self.stop_timer()
         self._scales_plot.stop()
+        self._close_daq_view()
         
         return {
             "elapsed_time": self.get_elapsed_time(),
@@ -499,6 +514,41 @@ class RunningMode(ttk.Frame):
         self._log_text.delete("1.0", tk.END)
         self._log_text.config(state="disabled")
     
+    def _toggle_daq_view(self) -> None:
+        """Open or focus the DAQ live-view pop-out window."""
+        # If window exists and is still open, just focus it
+        if self._daq_view_window is not None:
+            try:
+                self._daq_view_window.lift()
+                self._daq_view_window.focus_force()
+                return
+            except tk.TclError:
+                # Window was closed by the user
+                self._daq_view_window = None
+                self._daq_view_widget = None
+
+        top = tk.Toplevel(self)
+        top.title(f"DAQ Live View — Rig {self._rig_number}")
+        top.geometry("1100x620")
+        top.configure(bg=Theme.palette.bg_primary)
+        top.protocol("WM_DELETE_WINDOW", self._close_daq_view)
+
+        widget = DAQViewWidget(top)
+        widget.pack(fill="both", expand=True)
+        widget.start(self._rig_number)
+
+        self._daq_view_window = top
+        self._daq_view_widget = widget
+
+    def _close_daq_view(self) -> None:
+        """Clean up the DAQ view pop-out window."""
+        if self._daq_view_widget:
+            self._daq_view_widget.stop()
+            self._daq_view_widget = None
+        if self._daq_view_window:
+            self._daq_view_window.destroy()
+            self._daq_view_window = None
+
     def _on_stop_clicked(self) -> None:
         """Handle stop button click."""
         if self._on_stop:

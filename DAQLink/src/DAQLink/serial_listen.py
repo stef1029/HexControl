@@ -20,6 +20,8 @@ import csv
 import glob
 import json
 import os
+import socket
+import struct
 import sys
 import threading
 import time
@@ -314,6 +316,12 @@ async def listen(
     backup_counter = 1
     last_backup_time = time.perf_counter()
 
+    # UDP broadcast for live viewer — silently drops if nobody listens
+    _udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    _udp_port = 9876 + int(rig or 0)
+    _udp_addr = ("127.0.0.1", _udp_port)
+    _udp_pack = struct.Struct(">dQ")  # 8-byte double timestamp + 8-byte uint64 state
+
     while not stop_event.is_set():
         if serial_connection.in_waiting > 9:
             current_time = time.perf_counter() - start_time
@@ -327,6 +335,10 @@ async def listen(
                 messages_from_arduino.append(record)
                 backup_buffer.append(record)
                 full_messages += 1
+                try:
+                    _udp_sock.sendto(_udp_pack.pack(current_time, message_word), _udp_addr)
+                except OSError:
+                    pass
             else:
                 error_messages.append([message_counter, raw_message.hex(), current_time])
             message_counter += 1
@@ -342,6 +354,7 @@ async def listen(
         await asyncio.sleep(0)  # yield to event‑loop
 
     # -- acquisition ended -------------------------------------------------
+    _udp_sock.close()
     print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Stop signal received, ending acquisition...")
     print(f"{Fore.GREEN}ArduinoDAQ:{Style.RESET_ALL} Sending end commands to Arduino...")
     for _ in range(3):
