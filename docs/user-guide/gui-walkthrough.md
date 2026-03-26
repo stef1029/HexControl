@@ -6,17 +6,26 @@ The application has two main windows: the **Launcher** (rig selector) and the **
 
 ## Launcher
 
-The Launcher is the first window you see when running `python main.py`. It shows all rigs defined in your `rigs.yaml` configuration.
+The Launcher is the first window you see when running `python main.py`. It displays a clock, a decorative generative-art background (different each launch), and all rigs defined in your `rigs.yaml` configuration. The colour palette is set by the `global.palette` key in your config.
+
+### Rig selection
+
+Rigs are shown as toggle buttons in a 2×2 grid. Click a rig button to select or deselect it. Disabled rigs (`enabled: false` in config) are greyed out and cannot be selected.
 
 ### Controls
 
-- **Rig buttons** -- One button per rig. Disabled rigs (those with `enabled: false` in config) are greyed out
-- **Test Connection** -- Tests the serial connection to the behaviour Arduino: resolves the board name via the board registry, opens the serial port, resets the Arduino via DTR, and performs a HELLO/HELLO_ACK handshake with a 3-second timeout
-- **Simulate** -- Check this to run the rig in simulation mode (no physical hardware required)
-- **Link Sessions** -- When checked, all rigs opened from this launcher will save their session data under a shared timestamped parent folder. Useful when running multiple rigs with the same cohort
-- **Open** -- Opens the Rig Window for the selected rig
+- **Launch Selected** -- Opens a Rig Window for every selected rig. Each rig gets its own independent window
+- **Simulate** -- When checked, launched rigs run in simulation mode (no physical hardware required)
+- **Link Sessions** -- When checked, all rigs launched together save their session data under a shared timestamped parent folder. Useful when running multiple rigs with the same cohort
 
-You can open multiple rigs simultaneously -- each gets its own independent Rig Window.
+### Utility buttons
+
+- **Zero All Scales** -- Sends a zero/tare command to all configured scales and reports the result
+- **Post Processing** -- Opens the post-processing tool for offline analysis of saved sessions (only available when no rig windows are open)
+- **Mock Rig** -- Opens a simulated rig window using the first rig's config, without requiring any hardware. Useful for testing protocols
+- **Docs** -- Starts a local MkDocs server and opens the documentation in your browser
+
+You can open multiple rigs simultaneously -- each gets its own independent Rig Window. A mouse ID selected in one rig window cannot be selected in another to prevent duplicate assignments.
 
 ---
 

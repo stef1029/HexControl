@@ -59,7 +59,25 @@ global:
   baud_rate: 115200          # Default baud rate for serial connections
   reset_on_connect: true     # Reset Arduino via DTR on connection
   log_level: "INFO"          # DEBUG, INFO, WARNING, or ERROR
+  palette: "dark_red"        # GUI colour palette (see below)
 ```
+
+#### Palette selection
+
+The `palette` key sets the colour theme for the entire GUI. Available palettes:
+
+| Name | Description |
+|------|-------------|
+| `light` | Modern blue, light background |
+| `dark` | Dark theme for long sessions |
+| `dark_green` | Hacker green / Matrix style |
+| `dark_red` | Cyberpunk danger style |
+| `dark_bw` | Clean monochrome (black & white) |
+| `dark_magenta` | Magenta glow theme |
+| `light_pink` | Soft pink tones |
+| `boring` | Professional, no fun |
+
+If the name does not match any palette, the system prints a warning listing the available names and falls back to `boring`.
 
 ### Cohort folders
 
@@ -168,4 +186,4 @@ This scans all connected USB serial devices and prints their VID, PID, and seria
 3. Add a rig entry to `rigs.yaml` referencing those board names
 4. Run the scales [calibration procedure](../reference/scaleslink/calibration.md) and update the `calibration_scale` and `calibration_intercept` values
 5. Calibrate each solenoid and set the `reward_durations` values
-6. Launch the system and use the **Test Connection** button in the launcher to verify
+6. Launch the system, select the new rig in the launcher, and use **Launch Selected** to verify it connects correctly

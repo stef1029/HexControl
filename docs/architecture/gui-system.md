@@ -102,15 +102,21 @@ During the startup sequence, a `StartupOverlay` covers the RigWindow:
 The `RigLauncher` window:
 
 1. Reads rig definitions from `rigs.yaml`
-2. Creates a button row for each rig with Test Connection and Open controls
-3. Test Connection runs on a background thread to avoid blocking the GUI
-4. Open creates a new `RigWindow` (separate `Toplevel` window)
-5. "Link Sessions" checkbox creates a shared `multi_session_folder` for all rigs opened together
+2. Loads the palette from `global.palette` in the config (falls back to `boring` if unknown)
+3. Displays a clock, date, and a randomly generated decorative background (`launcher_background.py`)
+4. Shows rig toggle buttons in a 2×2 grid for selecting which rigs to launch
+5. **Launch Selected** opens a `RigWindow` (separate `Toplevel`) for each selected rig
+6. Utility buttons: **Zero All Scales**, **Post Processing**, **Mock Rig**, and **Docs**
+7. "Link Sessions" checkbox creates a shared `multi_session_folder` for all rigs opened together
+8. Tracks claimed mouse IDs across open rig windows to prevent duplicate assignments
 
-## Theme
+## Theme and palettes
 
-The `theme.py` module provides consistent styling:
+The `theme.py` module provides consistent styling via a palette system:
 
-- Dark color palette with configurable primary/secondary/accent colors
+- A `ColorPalette` named tuple defines all colours, fonts, and accent tones for the GUI
+- Eight built-in palettes: `light`, `dark`, `dark_green`, `dark_red`, `dark_bw`, `dark_magenta`, `light_pink`, `boring`
+- The active palette is selected via `global.palette` in `rigs.yaml` and applied at launcher startup
+- `Theme.set_palette()` updates the class-level palette reference; all subsequent `Theme.font()`, `Theme.font_mono()`, and `Theme.font_special()` calls use the new palette's font families
 - `get_accuracy_color(accuracy)` returns a color gradient from red (0%) through yellow (50%) to green (100%)
-- Style functions for buttons, labels, frames, etc.
+- Generative background art (`launcher_background.py`) derives its line colours from the active palette's accent colours

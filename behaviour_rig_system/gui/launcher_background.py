@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import random
 
-from behaviour_rig_system.gui.theme import Theme
+from gui.theme import Theme
 
 
 def _get_line_colors() -> list[str]:
