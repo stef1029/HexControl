@@ -24,6 +24,7 @@ Usage:
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -82,6 +83,8 @@ class DAQManager:
         
         self._process: Optional[subprocess.Popen] = None
         self._log_file_handle = None  # File handle for subprocess output
+        self._log_file_path: Optional[str] = None
+        self._reader_thread: Optional[threading.Thread] = None
         self._started: bool = False
         self.last_error: Optional[str] = None
     
@@ -144,21 +147,27 @@ class DAQManager:
                 return False
         
         try:
-            # Redirect stdout/stderr to a log file so we can diagnose failures.
             # The session folder may not exist yet — create it.
             os.makedirs(self.session_folder, exist_ok=True)
             self._log_file_path = os.path.join(
                 self.session_folder, f"daq_rig{self.rig_number}.log"
             )
             self._log_file_handle = open(self._log_file_path, "w")
-            
+
             self._process = subprocess.Popen(
                 command,
-                stdout=self._log_file_handle,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
             )
             self._log(f"DAQ started (PID: {self._process.pid})")
-            self._log(f"DAQ output -> {self._log_file_path}")
+            self._log(f"DAQ log -> {self._log_file_path}")
+
+            # Start background thread to stream subprocess output
+            self._reader_thread = threading.Thread(
+                target=self._read_output_loop, daemon=True
+            )
+            self._reader_thread.start()
+
             return True
         except Exception as e:
             self.last_error = f"Failed to start Arduino DAQ: {e}"
@@ -168,6 +177,22 @@ class DAQManager:
                 self._log_file_handle = None
             return False
     
+    def _read_output_loop(self) -> None:
+        """Read subprocess stdout line-by-line, log each line and write to file."""
+        try:
+            for raw_line in self._process.stdout:
+                line = raw_line.decode(errors="replace").rstrip("\n\r")
+                if line:
+                    self._log(f"[DAQ] {line}")
+                if self._log_file_handle and not self._log_file_handle.closed:
+                    try:
+                        self._log_file_handle.write(raw_line.decode(errors="replace"))
+                        self._log_file_handle.flush()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     def wait_for_connection(self) -> bool:
         """
         Wait for the Arduino connection signal file.
@@ -288,9 +313,9 @@ class DAQManager:
         """Wait for the DAQ process to exit, terminating if necessary."""
         if self._process is None:
             return
-        
+
         try:
-            self._process.wait(timeout=10)
+            self._process.wait(timeout=30)
             self._log(f"DAQ stopped (exit code: {self._process.returncode})")
         except subprocess.TimeoutExpired:
             self._log("DAQ timeout, terminating...")
@@ -303,6 +328,11 @@ class DAQManager:
             self._log(f"Error stopping DAQ: {e}")
         finally:
             self._process = None
+
+        # Wait for reader thread to finish flushing output
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=5)
+            self._reader_thread = None
     
     def _cleanup_signal_files(self) -> None:
         """Remove signal files from the session folder."""

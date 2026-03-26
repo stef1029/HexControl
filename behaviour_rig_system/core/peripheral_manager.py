@@ -67,8 +67,8 @@ class PeripheralConfig:
     # Settings
     connection_timeout: int = 30
     camera_fps: int = 30
-    camera_window_width: int = 640
-    camera_window_height: int = 512
+    camera_window_width: int = 960
+    camera_window_height: int = 768
     
     # Scales subprocess config
     scales: ScalesProcessConfig = None

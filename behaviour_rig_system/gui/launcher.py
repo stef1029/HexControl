@@ -10,6 +10,7 @@ Supports linked sessions where multiple rigs share a common multi-session folder
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -154,6 +155,9 @@ class RigLauncher:
         
         # Shared multi-session folder for linked sessions
         self._shared_multi_session_folder: str | None = None
+
+        # Track which mice are claimed by which rigs: {mouse_id: rig_name}
+        self._claimed_mice: dict[str, str] = {}
 
         self._create_widgets()
         self._update_clock()
@@ -315,6 +319,15 @@ class RigLauncher:
         )
         mock_btn.pack(side="left", padx=5)
         self._mock_btn = mock_btn
+
+        # Docs button
+        docs_btn = ttk.Button(
+            utility_frame,
+            text="Docs",
+            command=self._on_docs_click,
+            style="Secondary.TButton",
+        )
+        docs_btn.pack(side="left", padx=5)
         
         # Status bar at bottom
         status_frame = ttk.Frame(self._main_container)
@@ -398,6 +411,36 @@ class RigLauncher:
 
         self._open_rig_window(rig, simulate=True)
         self.status_var.set("Mock Rig opened (simulated hardware)")
+
+    def _on_docs_click(self) -> None:
+        """Serve the documentation site locally and open it in the browser."""
+        import subprocess as _sp
+        import webbrowser
+
+        project_root = Path(__file__).parent.parent.parent
+        mkdocs_config = project_root / "mkdocs.yml"
+
+        if not mkdocs_config.exists():
+            messagebox.showinfo("Docs", f"mkdocs.yml not found at:\n{project_root}")
+            return
+
+        # Check if mkdocs server is already running
+        if getattr(self, "_docs_process", None) is not None and self._docs_process.poll() is None:
+            webbrowser.open("http://localhost:8000")
+            return
+
+        try:
+            self._docs_process = _sp.Popen(
+                [sys.executable, "-m", "mkdocs", "serve", "--no-livereload"],
+                cwd=str(project_root),
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+            # Give the server a moment to start
+            self.root.after(1500, lambda: webbrowser.open("http://localhost:8000"))
+            self.status_var.set("Docs server started at http://localhost:8000")
+        except Exception as e:
+            messagebox.showerror("Docs Error", f"Failed to start mkdocs:\n{e}")
 
     def _style_rig_button_state(self, rig_name: str) -> None:
         """Style a rig button to reflect its current selection and open state."""
@@ -590,6 +633,9 @@ class RigLauncher:
             "config_path": self.config_path,
             "board_registry_path": self.board_registry._path,
             "shared_multi_session": shared_multi_session,
+            "claim_mouse_fn": self.claim_mouse,
+            "release_mouse_fn": self.release_mouse,
+            "get_claimed_mice_fn": self.get_claimed_mice,
         }
         
         # Resolve board name (or raw COM port) via registry
@@ -616,14 +662,40 @@ class RigLauncher:
         # Update button appearance to show it's open (grayed out)
         self._style_rig_button_state(rig_name)
         
-        # Handle window close
+        # Handle window close (via X button)
         def on_window_close():
             self._on_rig_window_close(rig_name)
-        
+
         window.protocol("WM_DELETE_WINDOW", on_window_close)
+
+        # Handle programmatic destroy (e.g. from post-session close button)
+        def on_window_destroyed(event):
+            if event.widget is window and rig_name in self.open_windows:
+                self.release_mouse(rig_name)
+                del self.open_windows[rig_name]
+                self.rig_selected[rig_name] = False
+                self._style_rig_button_state(rig_name)
+                self.status_var.set(f"{rig_name} closed")
+
+        window.bind("<Destroy>", on_window_destroyed)
         
         self.status_var.set(f"{rig_name} opened")
     
+    def claim_mouse(self, mouse_id: str, rig_name: str) -> bool:
+        """Claim a mouse for a rig. Returns False if already claimed by another rig."""
+        if mouse_id in self._claimed_mice and self._claimed_mice[mouse_id] != rig_name:
+            return False
+        self._claimed_mice[mouse_id] = rig_name
+        return True
+
+    def release_mouse(self, rig_name: str) -> None:
+        """Release all mice claimed by a rig."""
+        self._claimed_mice = {m: r for m, r in self._claimed_mice.items() if r != rig_name}
+
+    def get_claimed_mice(self) -> dict[str, str]:
+        """Return a copy of claimed mice: {mouse_id: rig_name}."""
+        return dict(self._claimed_mice)
+
     def _on_rig_window_close(self, rig_name: str) -> None:
         """Handle a rig window being closed."""
         if rig_name in self.open_windows:
@@ -638,15 +710,18 @@ class RigLauncher:
                 )
                 return
             
+            # Release any claimed mice
+            self.release_mouse(rig_name)
+
             # Clean up the rig window
             rig_window.controller.close()
-            
+
             # Destroy the window
             try:
                 window.destroy()
             except:
                 pass
-            
+
             # Remove from tracking
             del self.open_windows[rig_name]
             
@@ -685,6 +760,13 @@ class RigLauncher:
             except:
                 pass
         
+        # Stop docs server if running
+        if getattr(self, "_docs_process", None) is not None:
+            try:
+                self._docs_process.terminate()
+            except Exception:
+                pass
+
         self.root.destroy()
     
     def run(self) -> None:

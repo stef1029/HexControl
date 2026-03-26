@@ -342,11 +342,21 @@ class SessionController:
 
             self._emit("startup_status", message="Startup complete!")
 
+            # Compute scales threshold if available
+            params = config.get("parameters", {})
+            scales_threshold = None
+            if "weight_offset" in params and "mouse_weight" in params:
+                try:
+                    scales_threshold = float(params["mouse_weight"]) - float(params["weight_offset"])
+                except (TypeError, ValueError):
+                    pass
+
             # Build session info for the GUI
             session_info = {
                 "protocol_name": self._session_protocol_name,
                 "mouse_id": self._session_mouse_id,
                 "save_path": self._session_save_path,
+                "scales_threshold": scales_threshold,
             }
 
             self._emit(

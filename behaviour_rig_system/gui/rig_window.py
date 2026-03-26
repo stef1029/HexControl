@@ -116,6 +116,7 @@ class RigWindow:
         self.post_session_mode = PostSessionMode(
             self.root,
             on_new_session=self._new_session,
+            on_close_window=self._close_window,
         )
 
     def _create_startup_overlay(self) -> None:
@@ -227,6 +228,12 @@ class RigWindow:
             self.running_mode.set_scales_client(scales_client)
 
         self.running_mode.activate(session_info, tracker_definitions=tracker_definitions or [])
+
+        # Set scales threshold line if available
+        scales_threshold = session_info.get("scales_threshold")
+        if scales_threshold is not None:
+            self.running_mode.set_scales_threshold(scales_threshold)
+
         self.running_mode.set_status(ProtocolStatus.RUNNING)
         self._show_mode(WindowMode.RUNNING)
         self.running_mode.start_timer()
@@ -293,6 +300,13 @@ class RigWindow:
             self._virtual_rig_window.close()
             self._virtual_rig_window = None
 
+        self.running_mode.log_message("Cleanup complete")
+
+        # Brief delay so user can read the final cleanup messages
+        self.root.after(500, self._transition_to_post_session)
+
+    def _transition_to_post_session(self) -> None:
+        """Switch to post-session mode with the pending result."""
         if self._pending_result is not None:
             self.post_session_mode.activate({
                 "status": self._pending_result.status,
@@ -316,6 +330,14 @@ class RigWindow:
         """Close the startup error overlay and return to setup mode."""
         self.startup_overlay.hide()
         self._show_mode(WindowMode.SETUP)
+
+    def _close_window(self) -> None:
+        """Close this rig window entirely (called from post-session)."""
+        self.controller.close()
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
     def _on_close(self) -> None:
         """Handle window close event."""

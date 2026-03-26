@@ -69,7 +69,17 @@ class ScalesPlotWidget(ttk.Frame):
         # Cached canvas dimensions
         self._drawn_w: int = 0
         self._drawn_h: int = 0
-        
+
+        # Threshold line
+        self._threshold_value: Optional[float] = None
+
+        # Battery detection state
+        self._static_threshold_seconds: float = 30.0
+        self._static_jitter_tolerance: float = 0.01
+        self._last_varied_time: float = 0.0
+        self._static_alert_shown: bool = False
+        self._last_weight: Optional[float] = None
+
         self._create_widgets()
     
     def _create_widgets(self) -> None:
@@ -81,7 +91,7 @@ class ScalesPlotWidget(ttk.Frame):
         header.pack(fill="x", padx=4, pady=(2, 0))
         
         ttk.Label(
-            header, text="Current:", 
+            header, text="Current weight:",
             style="Subheading.TLabel"
         ).pack(side="left")
         
@@ -114,6 +124,11 @@ class ScalesPlotWidget(ttk.Frame):
     def set_scales_client(self, client: Optional[ScalesClientProtocol]) -> None:
         """Set the scales client to poll for weight readings."""
         self._scales_client = client
+
+    def set_threshold(self, value: Optional[float]) -> None:
+        """Set the activation threshold value for a horizontal reference line."""
+        self._threshold_value = value
+        self._invalidate_static()
     
     def start(self) -> None:
         """Start polling the scales and updating the plot."""
@@ -133,6 +148,24 @@ class ScalesPlotWidget(ttk.Frame):
             self._poll_id = None
         self._status_label.config(text="Stopped")
     
+    def _show_battery_warning(self) -> None:
+        """Show a non-blocking warning popup about possible battery issue."""
+        warn = tk.Toplevel(self)
+        warn.title("Scales Warning")
+        warn.geometry("380x130")
+        warn.attributes("-topmost", True)
+        palette = Theme.palette
+        ttk.Label(
+            warn, text="Scales may be out of battery!",
+            font=Theme.font(size=12, weight="bold"),
+            foreground=palette.warning,
+        ).pack(pady=(15, 5))
+        ttk.Label(
+            warn,
+            text=f"No weight variation detected for {self._static_threshold_seconds:.0f}+ seconds.",
+        ).pack()
+        ttk.Button(warn, text="Dismiss", command=warn.destroy).pack(pady=10)
+
     def _poll(self) -> None:
         """Poll the scales client and schedule next poll."""
         if not self._is_active:
@@ -149,6 +182,20 @@ class ScalesPlotWidget(ttk.Frame):
             if weight is not None:
                 self._data.append((now, weight))
                 self._weight_label.config(text=f"{weight:.2f} g")
+
+                # Battery detection: check for static readings
+                if self._last_weight is not None:
+                    if abs(weight - self._last_weight) > self._static_jitter_tolerance:
+                        self._last_varied_time = now
+                        self._static_alert_shown = False
+                else:
+                    self._last_varied_time = now
+                self._last_weight = weight
+
+                if (now - self._last_varied_time > self._static_threshold_seconds
+                        and not self._static_alert_shown):
+                    self._static_alert_shown = True
+                    self._show_battery_warning()
             else:
                 self._weight_label.config(text="-- g")
         
@@ -240,6 +287,22 @@ class ScalesPlotWidget(ttk.Frame):
                 tags="static",
             )
         
+        # Activation threshold line
+        if self._threshold_value is not None and y_min <= self._threshold_value <= y_max:
+            thresh_frac = (y_max - self._threshold_value) / y_range
+            thresh_py = px_top + thresh_frac * plot_h
+            canvas.create_line(
+                px_left, thresh_py, px_right, thresh_py,
+                fill=palette.warning, width=2, dash=(8, 4),
+                tags="static",
+            )
+            canvas.create_text(
+                px_right - 4, thresh_py - 8,
+                text=f"threshold: {self._threshold_value:.1f}g",
+                anchor="e", font=Theme.font_tiny(),
+                fill=palette.warning, tags="static",
+            )
+
         # Y-axis grid lines and labels
         n_grid_y = 4
         for i in range(n_grid_y + 1):

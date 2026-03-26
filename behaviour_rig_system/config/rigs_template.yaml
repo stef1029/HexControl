@@ -140,6 +140,6 @@ processes:
   
   # Camera settings
   camera_fps: 30
-  camera_window_width: 640
-  camera_window_height: 512
+  camera_window_width: 960
+  camera_window_height: 768
 

@@ -5,7 +5,6 @@ Provides a GUI for batch processing cohort data including:
 - Recovering crashed sessions
 - Processing videos (binary/BMP to AVI)
 - Running behavioral analysis
-- Processing electrophysiology data (optional)
 
 Uses a mode-based UI that switches between Configuration and Progress views.
 """
@@ -66,7 +65,7 @@ class TextRedirector:
             return "header"
         if line_stripped.startswith("----- STEP"):
             return "step"
-        if line_stripped.startswith(("COHORT:", "DIRECTORY:", "HAS EPHYS:")):
+        if line_stripped.startswith(("COHORT:", "DIRECTORY:")):
             return "label"
         if "Error" in line or "ERROR" in line or "error" in line:
             return "error"
@@ -145,18 +144,11 @@ class PostProcessingWindow:
 
         # Cohort checkboxes (select for processing)
         self.cohort_vars: dict[str, tk.BooleanVar] = {}
-        # Cohort ephys checkboxes (whether cohort has ephys data)
-        self.cohort_ephys_vars: dict[str, tk.BooleanVar] = {}
-
         # Processing option checkboxes
         self.recover_sessions_var = tk.BooleanVar(value=True)
         self.process_videos_var = tk.BooleanVar(value=True)
         self.run_analysis_var = tk.BooleanVar(value=True)
         self.refresh_analysis_var = tk.BooleanVar(value=False)
-
-        # Ephys options (applied to cohorts marked as ephys)
-        self.ephys_pin_var = tk.IntVar(value=0)
-        self.ephys_force_var = tk.BooleanVar(value=False)
 
         self._create_widgets()
         self._show_mode(WindowMode.CONFIG)
@@ -319,7 +311,6 @@ class PostProcessingWindow:
         header_frame = ttk.Frame(cohort_inner_frame)
         header_frame.pack(anchor="w", padx=10, pady=(5, 3), fill="x")
         ttk.Label(header_frame, text="Process", style="Subheading.TLabel").pack(side="left", padx=(0, 10))
-        ttk.Label(header_frame, text="Ephys", style="Subheading.TLabel").pack(side="left", padx=(0, 10))
         ttk.Label(header_frame, text="Cohort", style="Subheading.TLabel").pack(side="left")
 
         ttk.Separator(cohort_inner_frame, orient="horizontal").pack(fill="x", padx=10, pady=3)
@@ -347,12 +338,6 @@ class PostProcessingWindow:
                 self.cohort_vars[name] = var
                 process_cb = ttk.Checkbutton(row_frame, variable=var)
                 process_cb.pack(side="left", padx=(12, 18))
-
-                # Ephys checkbox
-                ephys_var = tk.BooleanVar(value=False)
-                self.cohort_ephys_vars[name] = ephys_var
-                ephys_cb = ttk.Checkbutton(row_frame, variable=ephys_var)
-                ephys_cb.pack(side="left", padx=(6, 14))
 
                 # Cohort name label
                 name_label = ttk.Label(row_frame, text=f"{name} ({directory})")
@@ -407,43 +392,6 @@ class PostProcessingWindow:
             variable=self.refresh_analysis_var
         ).pack(anchor="w", padx=10, pady=2)
 
-        # Ephys options section (applies to cohorts marked as ephys above)
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
-
-        ephys_label = ttk.Label(
-            parent,
-            text="Ephys Processing Options:",
-            style="Subheading.TLabel"
-        )
-        ephys_label.pack(anchor="w", pady=(0, 3))
-
-        ephys_note = ttk.Label(
-            parent,
-            text="(Applied to cohorts marked as 'Ephys' above)",
-            style="Muted.TLabel"
-        )
-        ephys_note.pack(anchor="w", padx=10, pady=(0, 5))
-
-        ephys_options_frame = ttk.Frame(parent)
-        ephys_options_frame.pack(fill="x", pady=(0, 8))
-
-        pin_frame = ttk.Frame(ephys_options_frame)
-        pin_frame.pack(anchor="w", padx=10, pady=2)
-        ttk.Label(pin_frame, text="Target pin:").pack(side="left", padx=(0, 6))
-        pin_spinbox = ttk.Spinbox(
-            pin_frame,
-            from_=0,
-            to=15,
-            textvariable=self.ephys_pin_var,
-            width=6
-        )
-        pin_spinbox.pack(side="left")
-
-        ttk.Checkbutton(
-            ephys_options_frame,
-            text="Force reprocess existing ephys files",
-            variable=self.ephys_force_var
-        ).pack(anchor="w", padx=10, pady=2)
 
     def _create_progress_content(self, parent: ttk.Frame) -> None:
         """Create the progress mode content."""
@@ -497,17 +445,10 @@ class PostProcessingWindow:
             )
             return
 
-        # Check if any cohort has ephys enabled
-        any_ephys = any(
-            self.cohort_ephys_vars.get(name, tk.BooleanVar(value=False)).get()
-            for name in selected_cohorts
-        )
-
         # Check if any processing step is selected
         if not (self.recover_sessions_var.get() or
                 self.process_videos_var.get() or
-                self.run_analysis_var.get() or
-                any_ephys):
+                self.run_analysis_var.get()):
             messagebox.showwarning(
                 "No Steps Selected",
                 "Please select at least one processing step."
@@ -552,16 +493,14 @@ class PostProcessingWindow:
             # Import processing functions (local copy)
             from behaviour_rig_system.post_processing.post_process_arduinoDAQ import (
                 recover_crashed_sessions,
-                process_ephys_data,
                 process_cohort_directory,
                 run_analysis_on_local
             )
 
-            # Get cohort directories with ephys flag
+            # Get cohort directories
             cohort_dirs = {
                 c.get("name"): {
                     "directory": Path(c.get("directory")),
-                    "has_ephys": self.cohort_ephys_vars.get(c.get("name"), tk.BooleanVar(value=False)).get()
                 }
                 for c in self.cohort_folders
                 if c.get("name") in selected_cohorts
@@ -575,7 +514,6 @@ class PostProcessingWindow:
                     break
 
                 directory = cohort_info["directory"]
-                has_ephys = cohort_info["has_ephys"]
 
                 self._update_progress(
                     f"Processing cohort {idx}/{total_cohorts}: {name}"
@@ -584,7 +522,6 @@ class PostProcessingWindow:
                 print(f"\n{'='*80}")
                 print(f"COHORT: {name}")
                 print(f"DIRECTORY: {directory}")
-                print(f"HAS EPHYS: {has_ephys}")
                 print(f"{'='*80}\n")
 
                 # Step 1: Recover crashed sessions
@@ -595,31 +532,21 @@ class PostProcessingWindow:
                     except Exception as e:
                         print(f"Error recovering crashed sessions: {e}")
 
-                # Step 2: Process ephys data (only if cohort is marked as ephys)
-                if has_ephys and not self.cancel_requested:
-                    print("\n----- STEP 2: PROCESSING EPHYS DATA -----")
-                    try:
-                        target_pin = self.ephys_pin_var.get()
-                        force = self.ephys_force_var.get()
-                        process_ephys_data(directory, target_pin=target_pin, force=force)
-                    except Exception as e:
-                        print(f"Error processing ephys data: {e}")
-
-                # Step 3: Process videos
+                # Step 2: Process videos
                 if self.process_videos_var.get() and not self.cancel_requested:
-                    print("\n----- STEP 3: PROCESSING VIDEOS -----")
+                    print("\n----- STEP 2: PROCESSING VIDEOS -----")
                     try:
                         num_processes = mp.cpu_count()
                         process_cohort_directory(directory, num_processes=num_processes)
                     except Exception as e:
                         print(f"Error processing videos: {e}")
 
-                # Step 4: Run analysis
+                # Step 3: Run analysis
                 if self.run_analysis_var.get() and not self.cancel_requested:
-                    print("\n----- STEP 4: RUNNING ANALYSIS -----")
+                    print("\n----- STEP 3: RUNNING ANALYSIS -----")
                     try:
                         refresh = self.refresh_analysis_var.get()
-                        run_analysis_on_local(directory, refresh=refresh, ephys_data=has_ephys)
+                        run_analysis_on_local(directory, refresh=refresh)
                     except Exception as e:
                         print(f"Error running analysis: {e}")
 

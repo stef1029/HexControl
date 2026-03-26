@@ -123,9 +123,13 @@ class SetupMode(ttk.Frame):
         self._cohort_folders = []
         self._mice = []
         self._mouse_form: ParameterFormBuilder | None = None
+        self._mouse_radiobuttons: dict[str, ttk.Radiobutton] = {}
 
         self._load_session_options()
         self._create_widgets()
+
+        # Refresh greyed-out mice when the window gets focus
+        self.bind("<FocusIn>", lambda e: self._refresh_mouse_availability())
     
     def _load_session_options(self) -> None:
         """Load cohort folder and mouse options from config file."""
@@ -214,7 +218,8 @@ class SetupMode(ttk.Frame):
                 value=mouse_id, command=self._update_save_path_preview
             )
             rb.pack(side="left")
-            
+            self._mouse_radiobuttons[mouse_id] = rb
+
             if desc:
                 desc_label = ttk.Label(
                     rb_frame, text=f"({desc})",
@@ -241,6 +246,14 @@ class SetupMode(ttk.Frame):
         self.num_trials_var = tk.StringVar(value="1000")
         self.num_trials_entry = ttk.Entry(trials_frame, textvariable=self.num_trials_var, width=12)
         self.num_trials_entry.pack(side="left", padx=6)
+
+        # Max session duration
+        duration_frame = ttk.Frame(session_params_frame)
+        duration_frame.pack(fill="x", pady=2)
+        ttk.Label(duration_frame, text="Max Duration (min, 0=no limit):").pack(side="left")
+        self.max_duration_var = tk.StringVar(value="0")
+        self.max_duration_entry = ttk.Entry(duration_frame, textvariable=self.max_duration_var, width=12)
+        self.max_duration_entry.pack(side="left", padx=6)
         
         # Session path preview
         path_frame = ttk.Frame(session_frame)
@@ -344,6 +357,19 @@ class SetupMode(ttk.Frame):
                 return cf.get("directory", "")
         return ""
     
+    def _refresh_mouse_availability(self) -> None:
+        """Grey out mice that are claimed by other rigs."""
+        get_claimed = self._rig_config.get("get_claimed_mice_fn")
+        if not get_claimed:
+            return
+        rig_name = self._rig_config.get("name", "")
+        claimed = get_claimed()
+        for mouse_id, rb in self._mouse_radiobuttons.items():
+            if mouse_id in claimed and claimed[mouse_id] != rig_name:
+                rb.configure(state="disabled")
+            else:
+                rb.configure(state="normal")
+
     def _on_start_clicked(self) -> None:
         """Handle start button click."""
         tab = self.get_current_tab()
@@ -366,7 +392,31 @@ class SetupMode(ttk.Frame):
             from tkinter import messagebox
             messagebox.showerror("Validation Error", f"Invalid number of trials: {e}")
             return
+
+        try:
+            max_duration = float(self.max_duration_var.get())
+            if max_duration < 0:
+                raise ValueError("Max duration cannot be negative")
+        except ValueError as e:
+            from tkinter import messagebox
+            messagebox.showerror("Validation Error", f"Invalid max duration: {e}")
+            return
         
+        # Check mouse is not claimed by another rig
+        mouse_id = self.mouse_id_var.get()
+        claim_fn = self._rig_config.get("claim_mouse_fn")
+        if claim_fn:
+            rig_name = self._rig_config.get("name", "Unknown")
+            if not claim_fn(mouse_id, rig_name):
+                from tkinter import messagebox
+                claimed_by = self._rig_config.get("get_claimed_mice_fn", lambda: {})()
+                other_rig = claimed_by.get(mouse_id, "another rig")
+                messagebox.showerror(
+                    "Mouse Already Selected",
+                    f"Mouse '{mouse_id}' is already in use by {other_rig}."
+                )
+                return
+
         # Validate protocol parameters
         is_valid, errors = tab.validate()
         if not is_valid:
@@ -379,6 +429,7 @@ class SetupMode(ttk.Frame):
         protocol_params = tab.get_parameters()
         protocol_params["mouse_weight"] = mouse_weight
         protocol_params["num_trials"] = num_trials
+        protocol_params["max_duration_minutes"] = max_duration
         protocol_params["mouse_id"] = self.mouse_id_var.get()
         protocol_params["save_directory"] = self._get_selected_cohort_directory()
         

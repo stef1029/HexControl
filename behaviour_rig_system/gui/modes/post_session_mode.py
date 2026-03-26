@@ -26,14 +26,21 @@ class PostSessionMode(ttk.Frame):
     Post-session mode - shows session summary and new session button.
     """
     
-    def __init__(self, parent: tk.Widget, on_new_session: Callable[[], None]):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        on_new_session: Callable[[], None],
+        on_close_window: Callable[[], None] | None = None,
+    ):
         """
         Args:
             parent: Parent widget
-            on_new_session: Callback when new session is clicked
+            on_new_session: Callback when Ctrl+click (new session in same folder)
+            on_close_window: Callback when normal click (close window)
         """
         super().__init__(parent)
         self._on_new_session = on_new_session
+        self._on_close_window = on_close_window
         
         self._create_widgets()
     
@@ -84,12 +91,19 @@ class PostSessionMode(ttk.Frame):
         button_frame = ttk.Frame(self)
         button_frame.pack(side="bottom", fill="x", padx=18, pady=14)
         
+        hint = ttk.Label(
+            button_frame,
+            text="Ctrl+click for new session (same session folder)",
+            style="Muted.TLabel"
+        )
+        hint.pack(side="right", padx=10)
+
         self._new_session_button = ttk.Button(
-            button_frame, text="New Session",
-            command=self._on_new_session_clicked,
+            button_frame, text="Close Window",
             style="Primary.TButton"
         )
         self._new_session_button.pack(side="right", padx=5)
+        self._new_session_button.bind("<Button-1>", self._on_button_click)
         
         # Performance Plot Section
         self._create_performance_plot()
@@ -353,7 +367,11 @@ class PostSessionMode(ttk.Frame):
         self._figure.tight_layout()
         self._canvas.draw()
     
-    def _on_new_session_clicked(self) -> None:
-        """Handle new session button click."""
-        if self._on_new_session:
-            self._on_new_session()
+    def _on_button_click(self, event: tk.Event) -> None:
+        """Handle button click: Ctrl+click = new session, normal click = close window."""
+        if event.state & 0x4:  # Ctrl key held
+            if self._on_new_session:
+                self._on_new_session()
+        else:
+            if self._on_close_window:
+                self._on_close_window()

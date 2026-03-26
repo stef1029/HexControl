@@ -125,7 +125,7 @@ class RunningMode(ttk.Frame):
         self._scales_plot = ScalesPlotWidget(scales_pane)
         self._scales_plot.pack(fill="both", expand=True)
         
-        self._paned.add(scales_pane, weight=2)
+        self._paned.add(scales_pane, weight=1)
         
         # --- Pane 3: Session Log ---
         log_pane = ttk.LabelFrame(self._paned, text="Session Log", padding=(8, 4))
@@ -140,11 +140,15 @@ class RunningMode(ttk.Frame):
     def set_scales_client(self, client) -> None:
         """
         Provide a scales client for live weight plotting.
-        
+
         Args:
             client: Object with get_weight() -> Optional[float]
         """
         self._scales_plot.set_scales_client(client)
+
+    def set_scales_threshold(self, value) -> None:
+        """Set the activation threshold line on the scales plot."""
+        self._scales_plot.set_threshold(value)
     
     def activate(self, session_config: dict, tracker_definitions: list | None = None) -> None:
         """

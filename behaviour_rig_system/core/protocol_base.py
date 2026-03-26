@@ -19,6 +19,7 @@ Key things to know:
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum, auto
+import threading
 import time as _time
 from typing import Any, Callable
 
@@ -71,6 +72,8 @@ class BaseProtocol(ABC):
         self.reward_durations: list[int] = [500] * 6  # Per-port reward durations (ms)
 
         self._stop_requested = False
+        self._duration_exceeded = False
+        self._duration_timer: threading.Timer | None = None
         self._listeners: dict[str, list[Callable]] = {}
         self._start_time: datetime | None = None
         self._clock = None  # Optional BehaviourClock for accelerated simulation
@@ -139,7 +142,7 @@ class BaseProtocol(ABC):
     def run(self) -> None:
         """
         Execute the protocol lifecycle: setup -> run -> cleanup.
-        
+
         Called by the GUI when Start is clicked.
         """
         if self.status != ProtocolStatus.IDLE:
@@ -148,6 +151,18 @@ class BaseProtocol(ABC):
         self._start_time = datetime.now()
         error: Exception | None = None
 
+        # Start max-duration timer if configured
+        max_minutes = self.parameters.get("max_duration_minutes", 0)
+        if max_minutes and max_minutes > 0:
+            def _duration_timeout():
+                self._duration_exceeded = True
+                self._stop_requested = True
+                self.log(f"Max session duration reached ({max_minutes} min) — finishing current trial...")
+
+            self._duration_timer = threading.Timer(float(max_minutes) * 60, _duration_timeout)
+            self._duration_timer.daemon = True
+            self._duration_timer.start()
+
         try:
             self.status = ProtocolStatus.RUNNING
             self._emit("started")
@@ -155,8 +170,10 @@ class BaseProtocol(ABC):
             self._setup()
             self._run_protocol()
 
-            # Set final status
-            if self._stop_requested:
+            # Set final status: duration limit is a normal completion
+            if self._duration_exceeded:
+                self.status = ProtocolStatus.COMPLETED
+            elif self._stop_requested:
                 self.status = ProtocolStatus.STOPPED
             else:
                 self.status = ProtocolStatus.COMPLETED
@@ -167,6 +184,10 @@ class BaseProtocol(ABC):
             error = e
 
         finally:
+            # Cancel duration timer if still pending
+            if self._duration_timer is not None:
+                self._duration_timer.cancel()
+                self._duration_timer = None
             try:
                 self._cleanup()
             except Exception:

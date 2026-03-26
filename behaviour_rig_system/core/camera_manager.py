@@ -142,6 +142,23 @@ class CameraManager:
                 stderr=subprocess.PIPE,
             )
             self._emit("log", message=f"Camera started (PID: {self._process.pid})")
+
+            # Health check: give the process a moment to fail fast
+            time.sleep(1.0)
+            if self._process.poll() is not None:
+                stderr = ""
+                try:
+                    stderr = self._process.stderr.read().decode(errors="replace").strip()
+                except Exception:
+                    pass
+                self.last_error = (
+                    f"Camera process exited immediately (code {self._process.returncode})"
+                    + (f": {stderr}" if stderr else "")
+                )
+                self._emit("log", message=self.last_error)
+                self._process = None
+                return False
+
             return True
         except Exception as e:
             self.last_error = f"Failed to start camera: {e}"

@@ -28,6 +28,7 @@ Usage:
 import os
 import subprocess
 import sys
+import threading
 import time
 from typing import Callable, Optional, TYPE_CHECKING
 
@@ -102,6 +103,7 @@ class ScalesManager:
         self._process: Optional[subprocess.Popen] = None
         self._log_file_handle = None
         self._log_file_path: Optional[str] = None
+        self._reader_thread: Optional[threading.Thread] = None
         self._started: bool = False
         self.client: Optional[ScalesClient] = None
         self.last_error: Optional[str] = None
@@ -149,20 +151,25 @@ class ScalesManager:
             command.append("--wired")
         
         try:
-            # Redirect stdout/stderr to a log file so we can diagnose failures.
             os.makedirs(self.session_folder, exist_ok=True)
             self._log_file_path = os.path.join(
-                self.session_folder, f"scales_server.log"
+                self.session_folder, "scales_server.log"
             )
             self._log_file_handle = open(self._log_file_path, "w")
-            
+
             self._process = subprocess.Popen(
                 command,
-                stdout=self._log_file_handle,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
             )
             self._log(f"Scales server started (PID: {self._process.pid})")
-            self._log(f"Scales output -> {self._log_file_path}")
+            self._log(f"Scales log -> {self._log_file_path}")
+
+            # Start background thread to stream subprocess output
+            self._reader_thread = threading.Thread(
+                target=self._read_output_loop, daemon=True
+            )
+            self._reader_thread.start()
         except Exception as e:
             self.last_error = f"Failed to start scales server: {e}"
             self._log(self.last_error)
@@ -222,6 +229,22 @@ class ScalesManager:
             self._cleanup_process()
             return False
     
+    def _read_output_loop(self) -> None:
+        """Read subprocess stdout line-by-line, log each line and write to file."""
+        try:
+            for raw_line in self._process.stdout:
+                line = raw_line.decode(errors="replace").rstrip("\n\r")
+                if line:
+                    self._log(f"[Scales] {line}")
+                if self._log_file_handle and not self._log_file_handle.closed:
+                    try:
+                        self._log_file_handle.write(raw_line.decode(errors="replace"))
+                        self._log_file_handle.flush()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     def stop(self) -> None:
         """Stop the scales server gracefully."""
         if self._simulate:
@@ -292,9 +315,15 @@ class ScalesManager:
         except Exception as e:
             self._log(f"Error stopping scales server: {e}")
         finally:
-            self._close_log_file()
             self._process = None
             self.client = None
+
+        # Wait for reader thread to finish flushing output
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=5)
+            self._reader_thread = None
+
+        self._close_log_file()
 
     # ── Simulated mode ──────────────────────────────────────────────────
 
