@@ -491,7 +491,7 @@ class PostProcessingWindow:
         """Process the selected cohorts (runs in background thread)."""
         try:
             # Import processing functions (local copy)
-            from behaviour_rig_system.post_processing.post_process_arduinoDAQ import (
+            from behaviour_rig_system.post_processing.post_processing_pipeline import (
                 recover_crashed_sessions,
                 process_cohort_directory,
                 run_analysis_on_local

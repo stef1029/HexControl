@@ -16,10 +16,7 @@ from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
 from hex_behav_analysis.utils.analysis_manager_v2 import Process_Raw_Behaviour_Data_V2  # Import V2 analysis manager for behaviour_rig_system
 from hex_behav_analysis.utils.recover_crashed_sessions import recover_crashed_sessions
 from hex_behav_analysis.ephys.post_processing import get_axona_events
-
-# Import the video processing functions
-from hex_behav_control.archive.bmp_to_video import bmp_to_avi_MP, clear_BMP_files
-from hex_behav_control.post_processing.bin_to_vid_MP import convert_binary_to_video, cleanup_binary_files, delete_binary_files
+from hex_behav_analysis.utils.post_processing.bin_to_video import convert_binary_to_video, cleanup_binary_files, delete_binary_files
 
 
 
@@ -39,7 +36,6 @@ def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plo
                - Numbers of files processed, skipped, errors encountered, and list of failed sessions
     """
     from pathlib import Path
-    from hex_behav_analysis.ephys import get_axona_events
     import logging
     import time
 
@@ -179,7 +175,6 @@ def get_sessions_to_process(directory_info):
 
             # Determine the processing method based on the files present
             binary_files = list(session_directory.glob('*binary_video*'))
-            bmp_files = list(session_directory.glob("*.bmp"))
             raw_video = session_data["raw_data"].get("raw_video", "None")
 
             # Load behavior data to get the FPS (frames per second)
@@ -197,44 +192,23 @@ def get_sessions_to_process(directory_info):
 
             if raw_video == "None":
                 if binary_files:
-                    # Use new processing method
                     sessions_to_process.append((session_directory, fps, 'binary'))
-                elif bmp_files:
-                    # Use old processing method
-                    sessions_to_process.append((session_directory, fps, 'bmp'))
     print(len(sessions_to_process))
     return sessions_to_process
 
-# Function to process a single video session using the appropriate method
-# def process_video_session(session_directory, fps, processing_method, num_processes=8):
-#     """
-#     Processes a video session by either processing BMP files or processing the binary file.
-#
-#     Args:
-#         session_directory (Path): The directory containing the data for this session.
-#         fps (int): The frames per second to use for the video (used for BMP method).
-#         processing_method (str): The method to use for processing ('bmp' or 'binary').
-#         num_processes (int): Number of processes to use for multiprocessing (for 'bmp' method).
-#
-#     Returns:
-#         None
-#     """
-
 def process_video_session(session_directory, fps, processing_method, num_processes=8):
     """
-    Processes a video session by either processing BMP files or processing the binary file.
-    First checks if ephys data exists in the parent folder.
+    Processes a video session by converting binary video files to AVI.
 
     Args:
         session_directory (Path): The directory containing the data for this session.
-        fps (int): The frames per second to use for the video (used for BMP method).
-        processing_method (str): The method to use for processing ('bmp' or 'binary').
-        num_processes (int): Number of processes to use for multiprocessing (for 'bmp' method).
+        fps (int): The frames per second to use for the video.
+        processing_method (str): The method to use for processing ('binary').
+        num_processes (int): Number of processes to use for multiprocessing.
 
     Returns:
         None
     """
-    # Continue with normal processing
     if processing_method == 'binary':
         # Search for the binary video file
         binary_files = list(session_directory.glob('*binary_video*'))
@@ -276,12 +250,6 @@ def process_video_session(session_directory, fps, processing_method, num_process
         except Exception as e:
             print(f"Error processing {session_directory}: {e}")
 
-    elif processing_method == 'bmp':
-        print(f"Processing session in {session_directory} using BMP method...")
-        bmp_to_avi_MP("raw", session_directory, framerate=fps, num_processes=num_processes)
-        print(f"Clearing BMP files in {session_directory}...")
-        clear_BMP_files(session_directory)
-        print(f"Processing of {session_directory} completed successfully.")
     else:
         print(f"Unknown processing method '{processing_method}' for {session_directory}. Skipping...")
 
