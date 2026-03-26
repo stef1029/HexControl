@@ -167,6 +167,12 @@ class BaseProtocol(ABC):
             self.status = ProtocolStatus.RUNNING
             self._emit("started")
 
+            # Configure all GPIO pins as outputs (driven LOW) by default.
+            # This prevents floating pins from picking up noise on the DAQ.
+            # Individual protocols can reconfigure specific pins in _setup()
+            # if they need a different mode (e.g. GPIOMode.INPUT).
+            self._init_gpio_outputs()
+
             self._setup()
             self._run_protocol()
 
@@ -225,6 +231,23 @@ class BaseProtocol(ABC):
     # =========================================================================
     # Protected Methods - Use these in your protocol
     # =========================================================================
+
+    def _init_gpio_outputs(self) -> None:
+        """Configure all GPIO pins as outputs driven LOW.
+
+        Runs automatically before _setup() so that every wired GPIO has a
+        defined state on the DAQ from the start of the session. If a protocol
+        needs a pin as an input, it can call
+        ``self.link.gpio_configure(pin, GPIOMode.INPUT)`` in its own _setup().
+        """
+        if self.link is None:
+            return
+        try:
+            from BehavLink import GPIOMode
+            for pin in range(self.link.NUM_GPIO_PINS):
+                self.link.gpio_configure(pin, GPIOMode.OUTPUT)
+        except Exception:
+            pass  # Don't block the protocol if GPIO init fails
 
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners."""

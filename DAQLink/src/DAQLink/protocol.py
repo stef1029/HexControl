@@ -13,18 +13,19 @@ CHANNEL_NAMES: tuple[str, ...] = (
     "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
     "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
     "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-    "GO_CUE",  "NOGO_CUE", "CAMERA", "SCALES", "LASER",
+    "GPIO_0",  "GPIO_1",  "GPIO_2",  "GPIO_3",  "GPIO_4",  "GPIO_5",
+    "CAMERA",  "SCALES",
 )
 
-NUM_CHANNELS = len(CHANNEL_NAMES)  # 23
+NUM_CHANNELS = len(CHANNEL_NAMES)  # 26
 
 # Logical groupings for display (numerically sorted within each group)
 CHANNEL_GROUPS: dict[str, list[str]] = {
     "Sensors": ["SENSOR1", "SENSOR2", "SENSOR3", "SENSOR4", "SENSOR5", "SENSOR6"],
     "LEDs":    ["LED_1", "LED_2", "LED_3", "LED_4", "LED_5", "LED_6"],
     "Valves":  ["VALVE1", "VALVE2", "VALVE3", "VALVE4", "VALVE5", "VALVE6"],
-    "Cues":    ["GO_CUE", "NOGO_CUE"],
-    "System":  ["CAMERA", "SCALES", "LASER"],
+    "GPIOs":   ["GPIO_0", "GPIO_1", "GPIO_2", "GPIO_3", "GPIO_4", "GPIO_5"],
+    "System":  ["CAMERA", "SCALES"],
 }
 
 # Flat display order derived from groups
@@ -74,5 +75,5 @@ def extract_channel(state_word: int, channel_name: str) -> int:
 
 
 def state_word_to_bits(state_word: int) -> list[int]:
-    """Return a list of 23 bit-values in :data:`CHANNEL_NAMES` order."""
+    """Return a list of 26 bit-values in :data:`CHANNEL_NAMES` order."""
     return [(state_word >> i) & 1 for i in range(NUM_CHANNELS)]

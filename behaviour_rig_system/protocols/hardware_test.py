@@ -11,7 +11,7 @@ from core.protocol_base import BaseProtocol
 
 
 try:
-    from BehavLink import SpeakerFrequency, SpeakerDuration
+    from BehavLink import SpeakerFrequency, SpeakerDuration, GPIOMode
     SPEAKER_AVAILABLE = True
 except ImportError:
     SPEAKER_AVAILABLE = False
@@ -61,6 +61,14 @@ class HardwareTestProtocol(BaseProtocol):
                 min_value=10,
                 max_value=2000,
             ),
+            BoolParameter(name="gpio_test_enabled", display_name="Test GPIOs", default=True),
+            IntParameter(
+                name="gpio_pulse_ms",
+                display_name="GPIO Pulse Duration (ms)",
+                default=200,
+                min_value=50,
+                max_value=2000,
+            ),
             BoolParameter(name="sensor_test_enabled", display_name="Test Sensors", default=True),
             FloatParameter(
                 name="sensor_test_duration",
@@ -99,6 +107,8 @@ class HardwareTestProtocol(BaseProtocol):
         speaker_enabled = params["speaker_test_enabled"]
         valve_enabled = params["valve_test_enabled"]
         valve_ms = params["valve_duration_ms"]
+        gpio_enabled = params["gpio_test_enabled"]
+        gpio_pulse_ms = params["gpio_pulse_ms"]
         sensor_enabled = params["sensor_test_enabled"]
         sensor_duration = params["sensor_test_duration"]
         scales_enabled = params["scales_test_enabled"]
@@ -242,6 +252,36 @@ class HardwareTestProtocol(BaseProtocol):
                     time.sleep(step)
             else:
                 self.log("  SKIPPED - valve test disabled (enable in parameters)")
+
+            if self.check_stop():
+                return
+            self.log("")
+            self.log("--- GPIO Test ---")
+            if gpio_enabled:
+                num_gpio = self.link.NUM_GPIO_PINS
+                gpio_step_s = gpio_pulse_ms / 1000.0
+
+                # Pulse each GPIO individually
+                for pin in range(num_gpio):
+                    if self.check_stop():
+                        return
+                    self.log(f"  GPIO pin {pin} HIGH ({gpio_pulse_ms} ms)")
+                    self.link.gpio_set(pin, True)
+                    time.sleep(gpio_step_s)
+                    self.link.gpio_set(pin, False)
+                    time.sleep(step / 4)
+
+                # Pulse all GPIOs together
+                if not self.check_stop():
+                    self.log("  All GPIOs HIGH")
+                    for pin in range(num_gpio):
+                        self.link.gpio_set(pin, True)
+                    time.sleep(gpio_step_s)
+                    for pin in range(num_gpio):
+                        self.link.gpio_set(pin, False)
+                    self.log("  All GPIOs LOW")
+            else:
+                self.log("  SKIPPED - GPIO test disabled")
 
             if self.check_stop():
                 return

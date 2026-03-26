@@ -127,14 +127,13 @@ def save_hdf5_json(
     message_words = np.fromiter((record[1] for record in records), dtype=np.uint64)
     timestamps = np.fromiter((record[2] for record in records), dtype=np.float64)
 
-    # Channel map (least‑significant bit first)
+    # Channel map (least‑significant bit first, must match protocol.py)
     channel_indices = (
-        # Removed spotlights  → "SPOT1"‥"SPOT6"
-        # Removed buzzers     → "BUZZER1"‥"BUZZER6"
         "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
         "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
         "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-        "GO_CUE",  "NOGO_CUE", "CAMERA", "SCALES", "LASER",
+        "GPIO_0",  "GPIO_1",  "GPIO_2",  "GPIO_3",  "GPIO_4",  "GPIO_5",
+        "CAMERA",  "SCALES",
     )
     num_channels = len(channel_indices)
     num_messages = message_words.size

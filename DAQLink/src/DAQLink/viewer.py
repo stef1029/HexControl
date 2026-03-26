@@ -2,7 +2,7 @@
 DAQ Live Viewer — real-time logic-analyzer display for Arduino DAQ channels.
 
 Connects to an Arduino DAQ board via serial, decodes the binary protocol,
-and renders all 23 digital channels as scrolling high/low traces on a
+and renders all 26 digital channels as scrolling high/low traces on a
 tkinter Canvas.  Designed to handle data rates up to 2 000 Hz without
 dropping frames by using transition-based rendering and pre-allocated
 canvas items.
@@ -55,7 +55,7 @@ _GROUP_COLOURS: dict[str, str] = {
     "Sensors": "#00CED1",   # dark turquoise
     "LEDs":    "#5B9BD5",   # steel blue
     "Valves":  "#70AD47",   # olive green
-    "Cues":    "#ED7D31",   # orange
+    "GPIOs":   "#ED7D31",   # orange
     "System":  "#C678DD",   # soft purple
 }
 
@@ -218,7 +218,7 @@ class DAQReaderThread(threading.Thread):
 # ===================================================================
 
 class LogicAnalyzerCanvas(tk.Canvas):
-    """Renders 23 digital channels as a scrolling logic-analyzer view.
+    """Renders 26 digital channels as a scrolling logic-analyzer view.
 
     Static chrome (labels, grid, dividers) is drawn once and redrawn
     only on resize.  Waveform lines are pre-allocated canvas items
