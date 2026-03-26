@@ -68,13 +68,23 @@ The DAQ script coordinates with other processes using signal files:
 
 ## Channel Map
 
-| Channel | Description |
-|---------|-------------|
-| SENSOR1-6 | IR sensor gates |
-| LED_1-6 | LED states |
-| VALVE1-6 | Solenoid valve states |
-| GO_CUE | Go cue signal |
-| NOGO_CUE | No-go cue signal |
-| CAMERA | Camera trigger |
-| SCALES | Scales trigger |
-| LASER | Laser trigger |
+All DAQ boards use the same standardised 24-channel layout. Channel names and bit positions are identical across systems, so `serial_listen.py` and the viewer work without board-specific configuration.
+
+| Bits | Group | Channels |
+|------|-------|----------|
+| 0-5 | Sensors | SENSOR6, SENSOR1, SENSOR5, SENSOR2, SENSOR4, SENSOR3 |
+| 6-11 | LEDs | LED_3, LED_4, LED_2, LED_5, LED_1, LED_6 |
+| 12-17 | Valves | VALVE4, VALVE3, VALVE5, VALVE2, VALVE6, VALVE1 |
+| 18-19 | Links | DAQ_LINK0, DAQ_LINK1 (ctrl board link pins, recorded by DAQ) |
+| 20-23 | External | EXT_0, EXT_1, EXT_2, EXT_3 (extra input channels) |
+
+### EXT pin mapping by board
+
+The EXT channels map to different physical pins depending on the DAQ board:
+
+| Channel | Mega DAQ | Giga DAQ |
+|---------|----------|----------|
+| EXT_0 | pin 50 | pin 48 |
+| EXT_1 | pin 51 | pin 49 |
+| EXT_2 | pin 62 (camera) | pin 50 |
+| EXT_3 | pin 63 (scales) | pin 51 |

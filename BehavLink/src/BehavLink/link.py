@@ -41,6 +41,7 @@ CMD_BUZZER_SET = 0x13
 CMD_SPEAKER_SET = 0x15
 CMD_GPIO_CONFIG = 0x17
 CMD_GPIO_SET = 0x18
+CMD_DAQ_LINK_SET = 0x19
 CMD_VALVE_PULSE = 0x21
 CMD_EVENT_ACK = 0x91
 CMD_SHUTDOWN = 0x7F
@@ -252,13 +253,15 @@ class BehaviourRigLink:
     DEFAULT_TIMEOUT = 0.2
     EVENT_BUFFER_SIZE = 1024
     NUM_PORTS = 6
-    NUM_GPIO_PINS = 6
+    NUM_GPIO_PINS = 4
+    NUM_DAQ_LINK_PINS = 2
     ALL_PORTS = 255
 
     # Recognised board types
     BOARD_MEGA = "mega"
     BOARD_GIGA = "giga"
-    VALID_BOARD_TYPES = {BOARD_MEGA, BOARD_GIGA}
+    BOARD_DUE = "due"
+    VALID_BOARD_TYPES = {BOARD_MEGA, BOARD_GIGA, BOARD_DUE}
 
     def __init__(
         self,
@@ -931,6 +934,37 @@ class BehaviourRigLink:
 
         with self._gpio_lock:
             return self._gpio_modes[pin]
+
+    # -------------------------------------------------------------------------
+    # DAQ Link Pin Control
+    # -------------------------------------------------------------------------
+
+    def daq_link_set(self, index: int, state: bool) -> None:
+        """
+        Sets the state of a DAQ link output pin.
+
+        DAQ link pins are wired to the DAQ board and recorded as channels.
+        There are 2 link pins (index 0 and 1) on all board types.
+
+        Args:
+            index: The DAQ link pin (0 or 1).
+            state: True for HIGH, False for LOW.
+
+        Raises:
+            ValueError: If index is out of range.
+            RuntimeError: If the command fails.
+        """
+        if not 0 <= index < self.NUM_DAQ_LINK_PINS:
+            raise ValueError(
+                f"Index must be 0-{self.NUM_DAQ_LINK_PINS - 1}, got {index}"
+            )
+
+        state_byte = 1 if state else 0
+        payload = struct.pack("<BB", index, state_byte)
+        status = self._send_reliable_command(CMD_DAQ_LINK_SET, payload)
+
+        if status != STATUS_OK:
+            raise RuntimeError(f"DAQ_LINK_SET failed with status=0x{status:02X}")
 
     # -------------------------------------------------------------------------
     # Valve Control

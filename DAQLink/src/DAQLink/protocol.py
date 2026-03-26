@@ -13,19 +13,18 @@ CHANNEL_NAMES: tuple[str, ...] = (
     "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
     "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
     "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-    "GPIO_0",  "GPIO_1",  "GPIO_2",  "GPIO_3",  "GPIO_4",  "GPIO_5",
-    "CAMERA",  "SCALES",
+    "DAQ_LINK0", "DAQ_LINK1", "EXT_0", "EXT_1", "EXT_2", "EXT_3",
 )
 
-NUM_CHANNELS = len(CHANNEL_NAMES)  # 26
+NUM_CHANNELS = len(CHANNEL_NAMES)  # 24
 
 # Logical groupings for display (numerically sorted within each group)
 CHANNEL_GROUPS: dict[str, list[str]] = {
-    "Sensors": ["SENSOR1", "SENSOR2", "SENSOR3", "SENSOR4", "SENSOR5", "SENSOR6"],
-    "LEDs":    ["LED_1", "LED_2", "LED_3", "LED_4", "LED_5", "LED_6"],
-    "Valves":  ["VALVE1", "VALVE2", "VALVE3", "VALVE4", "VALVE5", "VALVE6"],
-    "GPIOs":   ["GPIO_0", "GPIO_1", "GPIO_2", "GPIO_3", "GPIO_4", "GPIO_5"],
-    "System":  ["CAMERA", "SCALES"],
+    "Sensors":  ["SENSOR1", "SENSOR2", "SENSOR3", "SENSOR4", "SENSOR5", "SENSOR6"],
+    "LEDs":     ["LED_1", "LED_2", "LED_3", "LED_4", "LED_5", "LED_6"],
+    "Valves":   ["VALVE1", "VALVE2", "VALVE3", "VALVE4", "VALVE5", "VALVE6"],
+    "Links":    ["DAQ_LINK0", "DAQ_LINK1"],
+    "External": ["EXT_0", "EXT_1", "EXT_2", "EXT_3"],
 }
 
 # Flat display order derived from groups
@@ -75,5 +74,5 @@ def extract_channel(state_word: int, channel_name: str) -> int:
 
 
 def state_word_to_bits(state_word: int) -> list[int]:
-    """Return a list of 26 bit-values in :data:`CHANNEL_NAMES` order."""
+    """Return a list of 24 bit-values in :data:`CHANNEL_NAMES` order."""
     return [(state_word >> i) & 1 for i in range(NUM_CHANNELS)]

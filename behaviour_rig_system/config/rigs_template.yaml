@@ -7,7 +7,7 @@
 # Each rig entry should include:
 #   - name: Display name for the rig (must end in a number - keep to the format "Rig X" for consistency)
 #   - board_name: Human-readable key for the behaviour Arduino (resolved via board_registry.json)
-#   - board_type: Arduino board type - "giga" or "mega"
+#   - board_type: Arduino board type - "giga", "mega", or "due"
 #   - enabled: Whether the rig is available for use
 #   - description: Optional description of the rig
 #   - camera_serial: Serial number for the rig's camera

@@ -11,7 +11,8 @@ Hardware Capabilities:
     - IR illuminator with PWM brightness control
     - 6 piezo buzzers with on/off control
     - Overhead I2C speaker with preset tones
-    - 6 configurable GPIO pins (input with events or output)
+    - 2 DAQ link pins (output, recorded by DAQ)
+    - 4 configurable GPIO pins (input with events or output, local to ctrl board)
     - 6 infrared sensor gates with debounced detection
 
 Example:

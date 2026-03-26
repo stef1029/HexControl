@@ -132,8 +132,7 @@ def save_hdf5_json(
         "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
         "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
         "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-        "GPIO_0",  "GPIO_1",  "GPIO_2",  "GPIO_3",  "GPIO_4",  "GPIO_5",
-        "CAMERA",  "SCALES",
+        "DAQ_LINK0", "DAQ_LINK1", "EXT_0", "EXT_1", "EXT_2", "EXT_3",
     )
     num_channels = len(channel_indices)
     num_messages = message_words.size
