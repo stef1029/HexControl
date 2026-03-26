@@ -419,11 +419,26 @@ class SessionController:
         }
         status_str = status_map.get(final_status, "Unknown")
 
-        # Get performance reports and save merged trial data
+        # Get performance reports (raw trial data) and save merged trial data
         performance_reports: dict[str, dict] | None = None
         if self._perf_trackers:
             performance_reports = {
-                name: tracker.get_report()
+                name: {
+                    "trials": [
+                        {
+                            "time_since_start": t.time_since_start,
+                            "outcome": t.outcome.value,
+                            "correct_port": t.correct_port,
+                            "chosen_port": t.chosen_port,
+                            "trial_duration": t.trial_duration,
+                        }
+                        for t in tracker.get_trials()
+                    ],
+                    "session_duration": (
+                        (tracker._trials[-1].timestamp - tracker._start_time)
+                        if tracker._trials and tracker._start_time else 0.0
+                    ),
+                }
                 for name, tracker in self._perf_trackers.items()
             }
 

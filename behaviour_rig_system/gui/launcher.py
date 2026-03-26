@@ -698,9 +698,12 @@ class RigLauncher:
 
     def _on_rig_window_close(self, rig_name: str) -> None:
         """Handle a rig window being closed."""
+        if rig_name not in self.open_windows:
+            return  # Already cleaned up by <Destroy> handler
+
         if rig_name in self.open_windows:
             window, btn, rig_window = self.open_windows[rig_name]
-            
+
             # Check if a session is running
             if rig_window.controller.is_running:
                 messagebox.showwarning(
@@ -716,15 +719,15 @@ class RigLauncher:
             # Clean up the rig window
             rig_window.controller.close()
 
+            # Remove from tracking BEFORE destroy (destroy triggers <Destroy> handler)
+            del self.open_windows[rig_name]
+
             # Destroy the window
             try:
                 window.destroy()
-            except:
+            except Exception:
                 pass
 
-            # Remove from tracking
-            del self.open_windows[rig_name]
-            
             # Update button appearance (restore to normal unselected state)
             self.rig_selected[rig_name] = False
             self._style_rig_button_state(rig_name)

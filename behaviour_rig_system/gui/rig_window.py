@@ -226,6 +226,8 @@ class RigWindow:
 
         if scales_client is not None:
             self.running_mode.set_scales_client(scales_client)
+            if self.rig_config.get("simulate"):
+                self.running_mode._scales_plot._battery_detection_enabled = False
 
         self.running_mode.activate(session_info, tracker_definitions=tracker_definitions or [])
 

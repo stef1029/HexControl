@@ -74,6 +74,7 @@ class ScalesPlotWidget(ttk.Frame):
         self._threshold_value: Optional[float] = None
 
         # Battery detection state
+        self._battery_detection_enabled: bool = True
         self._static_threshold_seconds: float = 30.0
         self._static_jitter_tolerance: float = 0.01
         self._last_varied_time: float = 0.0
@@ -183,16 +184,17 @@ class ScalesPlotWidget(ttk.Frame):
                 self._data.append((now, weight))
                 self._weight_label.config(text=f"{weight:.2f} g")
 
-                # Battery detection: check for static readings
-                if self._last_weight is not None:
+                # Battery detection: check for static readings (skip in simulate mode)
+                if self._battery_detection_enabled and self._last_weight is not None:
                     if abs(weight - self._last_weight) > self._static_jitter_tolerance:
                         self._last_varied_time = now
                         self._static_alert_shown = False
-                else:
+                elif self._battery_detection_enabled:
                     self._last_varied_time = now
                 self._last_weight = weight
 
-                if (now - self._last_varied_time > self._static_threshold_seconds
+                if (self._battery_detection_enabled
+                        and now - self._last_varied_time > self._static_threshold_seconds
                         and not self._static_alert_shown):
                     self._static_alert_shown = True
                     self._show_battery_warning()
