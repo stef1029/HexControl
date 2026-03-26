@@ -39,14 +39,18 @@ Each bit in the 40-bit message word represents one channel. The channels are ord
 | 15 | VALVE2 | Valve at port 1 |
 | 16 | VALVE6 | Valve at port 5 |
 | 17 | VALVE1 | Valve at port 0 |
-| 18 | GO_CUE | Go cue signal |
-| 19 | NOGO_CUE | No-go cue signal |
-| 20 | CAMERA | Camera trigger |
-| 21 | SCALES | Scales trigger |
-| 22 | LASER | Laser trigger |
+| 18 | DAQ_LINK0 | Ctrl board link pin (recorded by DAQ) |
+| 19 | DAQ_LINK1 | Ctrl board link pin (recorded by DAQ) |
+| 20 | EXT_0 | Extra input channel |
+| 21 | EXT_1 | Extra input channel |
+| 22 | EXT_2 | Extra input channel |
+| 23 | EXT_3 | Extra input channel |
 
 !!! note
     Channel numbering on the hardware doesn't map 1:1 to port indices. For example, SENSOR1 corresponds to port 0, and it's at bit position 1 (not 0).
+
+!!! note
+    The EXT channels map to different physical pins depending on the DAQ board. On the Mega DAQ: EXT_0=pin50, EXT_1=pin51, EXT_2=pin62 (camera), EXT_3=pin63 (scales). On the Giga DAQ: EXT_0=pin48, EXT_1=pin49, EXT_2=pin50, EXT_3=pin51. All boards use the same channel names and bit positions, so `serial_listen.py` and the viewer work identically across systems.
 
 ## HDF5 output
 
@@ -66,11 +70,12 @@ session-ArduinoDAQ.h5
 │   ├── ...
 │   ├── VALVE1
 │   ├── ...
-│   ├── GO_CUE
-│   ├── NOGO_CUE
-│   ├── CAMERA
-│   ├── SCALES
-│   └── LASER
+│   ├── DAQ_LINK0
+│   ├── DAQ_LINK1
+│   ├── EXT_0
+│   ├── EXT_1
+│   ├── EXT_2
+│   └── EXT_3
 └── (attributes)
     ├── mouse_ID         # Mouse identifier
     ├── date_time        # Session timestamp
