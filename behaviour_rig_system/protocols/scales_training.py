@@ -53,7 +53,7 @@ class ScalesTrainingProtocol(BaseProtocol):
             FloatParameter(
                 name="platform_settle_time",
                 display_name="Platform Settle Time (s)",
-                default=1.0,
+                default=0.0,
                 min_value=0.0,
                 max_value=5.0,
             ),
@@ -72,6 +72,13 @@ class ScalesTrainingProtocol(BaseProtocol):
                 max_value=10.0,
             ),
         ]
+
+    def _setup(self) -> None:
+        self.link.ir_set(255)
+        self.log("IR illuminator ON (100%)")
+
+    def _cleanup(self) -> None:
+        self.link.ir_set(0)
 
     def _run_protocol(self) -> None:
         params = self.parameters

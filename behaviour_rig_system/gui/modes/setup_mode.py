@@ -230,7 +230,7 @@ class SetupMode(ttk.Frame):
         weight_frame = ttk.Frame(session_params_frame)
         weight_frame.pack(fill="x", pady=2)
         ttk.Label(weight_frame, text="Mouse Weight (g):").pack(side="left")
-        self.mouse_weight_var = tk.StringVar(value="25.0")
+        self.mouse_weight_var = tk.StringVar(value="18.0")
         self.mouse_weight_entry = ttk.Entry(weight_frame, textvariable=self.mouse_weight_var, width=12)
         self.mouse_weight_entry.pack(side="left", padx=6)
         

@@ -112,6 +112,13 @@ class FullTaskWithWaitProtocol(BaseProtocol):
             ),
         ]
 
+    def _setup(self) -> None:
+        self.link.ir_set(255)
+        self.log("IR illuminator ON (100%)")
+
+    def _cleanup(self) -> None:
+        self.link.ir_set(0)
+
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
