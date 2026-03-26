@@ -93,6 +93,9 @@ global:
   # Log level (DEBUG, INFO, WARNING, ERROR)
   log_level: "INFO"
 
+  # GUI colour palette (see gui/theme.py for available palettes)
+  palette: "light_pink"
+
 
 # Cohort folders
 # --------------

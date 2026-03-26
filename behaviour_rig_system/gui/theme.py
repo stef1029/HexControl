@@ -36,24 +36,29 @@ _ICON_PATH = Path(__file__).parent / "favicon.ico"
 
 class ColorPalette(NamedTuple):
     """Color palette for the theme."""
+    # Fonts
+    font_family: str         # Primary UI font family
+    font_family_mono: str    # Monospace font family
+    font_special: str        # Display/title font (e.g. launcher header)
+
     # Main colors
     bg_primary: str          # Main background
     bg_secondary: str        # Secondary background (cards, frames)
     bg_tertiary: str         # Tertiary (input fields)
     bg_header: str           # Header/title bar background
-    
+
     # Text colors
     text_primary: str        # Main text
     text_secondary: str      # Secondary/muted text
     text_disabled: str       # Disabled text
     text_inverse: str        # Text on dark backgrounds
-    
+
     # Accent colors
     accent_primary: str      # Primary accent (buttons, highlights)
     accent_secondary: str    # Secondary accent
     accent_hover: str        # Hover state
     accent_active: str       # Active/pressed state
-    
+
     # Status colors
     success: str             # Success/correct
     success_light: str       # Light success background
@@ -63,12 +68,12 @@ class ColorPalette(NamedTuple):
     error_light: str         # Light error background
     info: str                # Information
     info_light: str          # Light info background
-    
+
     # Border colors
     border_light: str        # Light borders
     border_medium: str       # Medium borders
     border_dark: str         # Dark borders
-    
+
     # Special colors
     rig_selected: str        # Selected rig button
     rig_open: str            # Open rig button
@@ -76,6 +81,11 @@ class ColorPalette(NamedTuple):
 
 # Modern blue theme - professional and clean
 LIGHT_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Segoe UI",
+    font_family_mono="Consolas",
+    font_special="Old English Text MT",
+
     # Main backgrounds - light slate grey tones
     bg_primary="#f5f7fa",          # Light blue-grey
     bg_secondary="#ffffff",        # White for cards
@@ -117,6 +127,11 @@ LIGHT_PALETTE = ColorPalette(
 
 # Dark theme - easy on the eyes for long sessions
 DARK_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Segoe UI",
+    font_family_mono="Consolas",
+    font_special="Old English Text MT",
+
     # Main backgrounds - dark blue-grey tones
     bg_primary="#1e1e2e",          # Dark base
     bg_secondary="#2a2a3d",        # Slightly lighter for cards
@@ -158,6 +173,11 @@ DARK_PALETTE = ColorPalette(
 
 # Green theme
 DARK_GREEN_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Small Fonts",
+    font_family_mono="Terminal",
+    font_special="Old English Text MT",
+
     # Main backgrounds - pure black/dark charcoal
     bg_primary="#0a0a0a",          # Near black base
     bg_secondary="#0f0f0f",        # Slightly lighter for cards
@@ -199,6 +219,11 @@ DARK_GREEN_PALETTE = ColorPalette(
 
 # Red theme
 DARK_RED_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Small Fonts",
+    font_family_mono="Terminal",
+    font_special="Old English Text MT",
+
     # Main backgrounds - pure black/dark charcoal
     bg_primary="#0a0a0a",          # Near black base
     bg_secondary="#0f0f0f",        # Slightly lighter for cards
@@ -238,18 +263,211 @@ DARK_RED_PALETTE = ColorPalette(
 )
 
 
+# Black & white theme - clean monochrome
+DARK_BW_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Small Fonts",
+    font_family_mono="Terminal",
+    font_special="Old English Text MT",
+
+    # Main backgrounds - pure black
+    bg_primary="#0a0a0a",
+    bg_secondary="#111111",
+    bg_tertiary="#1a1a1a",
+    bg_header="#050505",
+
+    # Text colors - white
+    text_primary="#ffffff",
+    text_secondary="#aaaaaa",
+    text_disabled="#444444",
+    text_inverse="#0a0a0a",
+
+    # Accent colors - white/grey
+    accent_primary="#ffffff",
+    accent_secondary="#cccccc",
+    accent_hover="#e0e0e0",
+    accent_active="#999999",
+
+    # Status colors
+    success="#33ff77",
+    success_light="#0a1f10",
+    warning="#ffcc00",
+    warning_light="#1f1a0a",
+    error="#ff3333",
+    error_light="#1f0a0a",
+    info="#66ccff",
+    info_light="#0a1520",
+
+    # Border colors
+    border_light="#222222",
+    border_medium="#333333",
+    border_dark="#555555",
+
+    # Special colors
+    rig_selected="#cccccc",
+    rig_open="#1a1a1a",
+)
+
+
+# Boring mode - professional, no fun allowed
+BORING_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Segoe UI",
+    font_family_mono="Consolas",
+    font_special="Segoe UI",
+
+    # Main backgrounds - corporate grey
+    bg_primary="#f0f0f0",
+    bg_secondary="#ffffff",
+    bg_tertiary="#e8e8e8",
+    bg_header="#333333",
+
+    # Text colors
+    text_primary="#222222",
+    text_secondary="#666666",
+    text_disabled="#999999",
+    text_inverse="#ffffff",
+
+    # Accent colors - safe corporate blue
+    accent_primary="#0066cc",
+    accent_secondary="#004c99",
+    accent_hover="#3388dd",
+    accent_active="#003d80",
+
+    # Status colors
+    success="#2e7d32",
+    success_light="#e8f5e9",
+    warning="#f57c00",
+    warning_light="#fff3e0",
+    error="#c62828",
+    error_light="#ffebee",
+    info="#0066cc",
+    info_light="#e3f2fd",
+
+    # Border colors
+    border_light="#dddddd",
+    border_medium="#bbbbbb",
+    border_dark="#888888",
+
+    # Special colors
+    rig_selected="#4caf50",
+    rig_open="#9e9e9e",
+)
+
+
+# Dark magenta theme
+DARK_MAGENTA_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Small Fonts",
+    font_family_mono="Terminal",
+    font_special="Old English Text MT",
+
+    # Main backgrounds
+    bg_primary="#0a0a0a",
+    bg_secondary="#0f0f0f",
+    bg_tertiary="#161616",
+    bg_header="#050505",
+
+    # Text colors - magenta glow
+    text_primary="#ff33ff",
+    text_secondary="#cc29cc",
+    text_disabled="#4d144d",
+    text_inverse="#0a0a0a",
+
+    # Accent colors - magenta/purple variants
+    accent_primary="#ff33ff",
+    accent_secondary="#cc29cc",
+    accent_hover="#ff66ff",
+    accent_active="#991f99",
+
+    # Status colors
+    success="#33ff77",
+    success_light="#0a1f10",
+    warning="#ffcc00",
+    warning_light="#1f1a0a",
+    error="#ff3333",
+    error_light="#1f0a0a",
+    info="#cc66ff",
+    info_light="#1a0a1f",
+
+    # Border colors - subtle magenta glow
+    border_light="#331433",
+    border_medium="#4d1a4d",
+    border_dark="#662266",
+
+    # Special colors
+    rig_selected="#cc29cc",
+    rig_open="#1a1a1a",
+)
+
+
+# Light pink theme
+LIGHT_PINK_PALETTE = ColorPalette(
+    # Fonts
+    font_family="Segoe UI",
+    font_family_mono="Consolas",
+    font_special="Old English Text MT",
+
+    # Main backgrounds - soft pink tones
+    bg_primary="#fff0f5",
+    bg_secondary="#ffffff",
+    bg_tertiary="#fce4ec",
+    bg_header="#880e4f",
+
+    # Text colors
+    text_primary="#33111a",
+    text_secondary="#7a4a5a",
+    text_disabled="#bda0aa",
+    text_inverse="#ffffff",
+
+    # Accent colors - rose pink
+    accent_primary="#e91e63",
+    accent_secondary="#c2185b",
+    accent_hover="#f06292",
+    accent_active="#ad1457",
+
+    # Status colors
+    success="#2e7d32",
+    success_light="#e8f5e9",
+    warning="#f57c00",
+    warning_light="#fff3e0",
+    error="#c62828",
+    error_light="#ffebee",
+    info="#e91e63",
+    info_light="#fce4ec",
+
+    # Border colors
+    border_light="#f8bbd0",
+    border_medium="#f48fb1",
+    border_dark="#ec407a",
+
+    # Special colors
+    rig_selected="#f06292",
+    rig_open="#cfa8b5",
+)
+
+
+PALETTES = {
+    "light": LIGHT_PALETTE,
+    "dark": DARK_PALETTE,
+    "dark_green": DARK_GREEN_PALETTE,
+    "dark_red": DARK_RED_PALETTE,
+    "dark_bw": DARK_BW_PALETTE,
+    "dark_magenta": DARK_MAGENTA_PALETTE,
+    "light_pink": LIGHT_PINK_PALETTE,
+    "boring": BORING_PALETTE,
+}
+
+
 class Theme:
     """Theme configuration and utilities."""
-    
-    palette = DARK_GREEN_PALETTE
-    
-    # Font configurations
-    # FONT_FAMILY = "Segoe UI"  # Modern Windows font
-    # FONT_FAMILY_MONO = "Consolas"
 
-    FONT_FAMILY = "Small Fonts"
-    FONT_FAMILY_MONO = "Terminal"
-    
+    palette = DARK_RED_PALETTE
+
+    FONT_FAMILY = palette.font_family
+    FONT_FAMILY_MONO = palette.font_family_mono
+    FONT_SPECIAL = palette.font_special
+
     FONT_SIZE_TITLE = 18
     FONT_SIZE_HEADING = 14
     FONT_SIZE_SUBHEADING = 12
@@ -266,7 +484,15 @@ class Theme:
     # Widget dimensions
     BUTTON_HEIGHT = 26
     ENTRY_HEIGHT = 24
-    
+
+    @classmethod
+    def set_palette(cls, palette: ColorPalette) -> None:
+        """Set the active palette and update derived font attributes."""
+        cls.palette = palette
+        cls.FONT_FAMILY = palette.font_family
+        cls.FONT_FAMILY_MONO = palette.font_family_mono
+        cls.FONT_SPECIAL = palette.font_special
+
     @classmethod
     def font(cls, size: int = None, weight: str = "normal") -> tuple:
         """Get a font tuple for standard fonts."""
@@ -281,6 +507,11 @@ class Theme:
             return (cls.FONT_FAMILY_MONO, size)
         return (cls.FONT_FAMILY_MONO, size, weight)
     
+    @classmethod
+    def font_special(cls, size: int = 24) -> tuple:
+        """Get the display/decorative font (e.g. launcher title)."""
+        return (cls.FONT_SPECIAL, size)
+
     @classmethod
     def font_title(cls) -> tuple:
         return (cls.FONT_FAMILY, cls.FONT_SIZE_TITLE, "bold")

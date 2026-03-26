@@ -107,18 +107,10 @@ class RigLauncher:
     """
     
     def __init__(self, config_path: Path, board_registry_path: Path):
-        self.root = tk.Tk()
-        self.root.title("Behaviour Rig Launcher")
-        self.root.geometry("440x480")
-        self.root.resizable(False, False)
-        
-        # Apply modern theme
-        apply_theme(self.root)
-        
         # Store config path for passing to child windows
         self.config_path = config_path
-        
-        # Check configuration
+
+        # Load configuration first (needed for theme)
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Rig configuration file not found: {config_path}"
@@ -133,6 +125,25 @@ class RigLauncher:
             raise KeyError("'global.baud_rate' missing from config file")
         if "processes" not in config:
             raise KeyError("'processes' section missing from config file")
+
+        # Apply palette from config before creating any widgets
+        from .theme import PALETTES, BORING_PALETTE
+        palette_name = config.get("global", {}).get("palette", "boring")
+        if palette_name in PALETTES:
+            Theme.set_palette(PALETTES[palette_name])
+        else:
+            available = ", ".join(sorted(PALETTES.keys()))
+            print(f"WARNING: Unknown palette '{palette_name}'. Available palettes: {available}")
+            print("  Falling back to 'boring' palette.")
+            Theme.set_palette(BORING_PALETTE)
+
+        self.root = tk.Tk()
+        self.root.title("Behaviour Rig Launcher")
+        self.root.geometry("440x480")
+        self.root.resizable(False, False)
+
+        # Apply theme
+        apply_theme(self.root)
 
         self.rigs = config["rigs"]
         self.baud_rate = config["global"]["baud_rate"]
@@ -218,7 +229,7 @@ class RigLauncher:
             self._bg_canvas,
             text="Hex Behaviour Launcher",
             style="Heading.TLabel",
-            font=("Old English Text MT", 24)
+            font=Theme.font_special(24)
         )
         title_label.pack(pady=(3, 2))
         
