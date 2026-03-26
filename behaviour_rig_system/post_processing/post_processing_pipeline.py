@@ -15,150 +15,9 @@ from typing import Dict, Union, List, Optional
 from hex_behav_analysis.utils.Cohort_folder import Cohort_folder
 from hex_behav_analysis.utils.analysis_manager_v2 import Process_Raw_Behaviour_Data_V2  # Import V2 analysis manager for behaviour_rig_system
 from hex_behav_analysis.utils.recover_crashed_sessions import recover_crashed_sessions
-from hex_behav_analysis.ephys.post_processing import get_axona_events
 from hex_behav_analysis.utils.post_processing.bin_to_video import convert_binary_to_video, cleanup_binary_files, delete_binary_files
 
 
-
-def process_ephys_data(cohort_directory, target_pin=0, force=False, generate_plots=False):
-    """
-    Process electrophysiology data by finding .inp files in the parent directories
-    of all session directories within a cohort.
-
-    Args:
-        cohort_directory (Path): The root directory containing cohort data.
-        target_pin (int): The pin number to extract events for (default: 0).
-        force (bool): Whether to reprocess files even if they already exist (default: False).
-        generate_plots (bool): Whether to generate timing analysis plots (default: False).
-
-    Returns:
-        tuple: (processed_count, skipped_count, error_count, failed_sessions)
-               - Numbers of files processed, skipped, errors encountered, and list of failed sessions
-    """
-    from pathlib import Path
-    import logging
-    import time
-
-    start_time = time.time()
-
-    print(f"Processing ephys data in cohort: {cohort_directory}")
-    print(f"Settings: target_pin={target_pin}, force={force}, generate_plots={generate_plots}")
-
-    # Setup logging
-    logger = logging.getLogger(__name__)
-
-    # Load cohort directory information
-    directory_info = Cohort_folder(cohort_directory,
-                                  multi=True,
-                                  plot=False,
-                                  OEAB_legacy=False,
-                                  ignore_tests=False).cohort
-
-    processed_count = 0
-    skipped_count = 0
-    error_count = 0
-
-    # Track failed sessions with detailed error information
-    failed_sessions = []
-
-    # Iterate over each mouse in the directory information
-    for mouse in directory_info["mice"]:
-        # Iterate over each session for the mouse
-        for session in directory_info["mice"][mouse]["sessions"]:
-            session_data = directory_info["mice"][mouse]["sessions"][session]
-            session_directory = Path(session_data["directory"])
-
-            # Check if timestamp files already exist
-            json_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.json"
-            h5_timestamp_file = session_directory / f"{session_directory.name}_ephys_sync_timestamps.h5"
-
-            # Check if we should skip this session
-            if (json_timestamp_file.exists() or h5_timestamp_file.exists()) and not force:
-                print(f"Skipping {session}: timestamp files already exist (use force=True to reprocess)")
-                skipped_count += 1
-                continue
-
-            # Check for ephys data in parent folder
-            parent_directory = session_directory.parent
-            inp_files = list(parent_directory.glob('*.inp'))
-
-            if inp_files:
-                print(f"Found ephys data files for {session} in parent directory: {parent_directory}")
-                print(f"Ephys data files: {[f.name for f in inp_files]}")
-
-                if len(inp_files) > 0:
-                    inp_file = inp_files[0]
-                    try:
-                        # Process the ephys data
-                        print(f"Processing {inp_file} for {session_directory.name}...")
-
-                        # Use the enhanced version that includes timestamp analysis
-                        get_axona_events.process_file(
-                            file_path=inp_file,
-                            output_folder=session_directory,
-                            target_pin=target_pin,
-                            generate_plots=generate_plots,
-                            verbose=True
-                        )
-
-                        print(f"Successfully processed ephys sync file from {inp_file} for session {session_directory.name}")
-                        processed_count += 1
-
-                    except Exception as e:
-                        error_msg = str(e)
-                        print(f"Error processing ephys data for {session_directory}: {error_msg}")
-                        logger.error(f"Error processing ephys data for {session_directory}: {error_msg}", exc_info=True)
-                        error_count += 1
-
-                        # Store detailed failure information
-                        failed_sessions.append({
-                            'session': session,
-                            'session_directory': str(session_directory),
-                            'inp_file': str(inp_file),
-                            'error': error_msg,
-                            'error_type': type(e).__name__,
-                            'mouse': mouse
-                        })
-            else:
-                print(f"No ephys data files found for {session} in parent directory: {parent_directory}")
-
-    # Calculate elapsed time
-    elapsed_time = time.time() - start_time
-    minutes = int(elapsed_time // 60)
-    seconds = int(elapsed_time % 60)
-
-    # Print summary
-    print("\n" + "="*80)
-    print("EPHYS PROCESSING SUMMARY")
-    print("="*80)
-    print(f"  Processed: {processed_count} files")
-    print(f"  Skipped (already exist): {skipped_count} files")
-    print(f"  Errors: {error_count} files")
-    print(f"  Time taken: {minutes} minutes, {seconds} seconds")
-
-    # Print detailed failure report
-    if failed_sessions:
-        print("\n" + "="*80)
-        print(f"FAILED SESSIONS REPORT ({len(failed_sessions)} sessions)")
-        print("="*80)
-
-        # Group by error type
-        error_types = {}
-        for failure in failed_sessions:
-            error_type = failure['error_type']
-            if error_type not in error_types:
-                error_types[error_type] = []
-            error_types[error_type].append(failure)
-
-        # Print failures grouped by error type
-        for error_type, failures in error_types.items():
-            # print(f"\n{error_type} ({len(failures)} sessions):")
-            for failure in failures:
-                # print(f"{failure['session']}")
-                print(f"    File: {failure['inp_file']}")
-
-
-    return (processed_count, skipped_count, error_count, failed_sessions)
 
 def get_sessions_to_process(directory_info):
     """
@@ -272,7 +131,7 @@ def process_cohort_directory(cohort_directory, num_processes=8, cleanup=True):
     directory_info = Cohort_folder(cohort_directory,
                                    multi=True,
                                    plot=False,
-                                   OEAB_legacy=False,
+                                   system_type="v2",  # Use system_type="v2" for behaviour_rig_system sessions
                                    ignore_tests=ignore_test_sessions).cohort
 
     # Optionally clean up binary files in sessions that already have AVI files
@@ -313,7 +172,7 @@ def sync_with_cephfs(local_dir, remote_dir):
     except Exception as e:
         print(f"Error occurred during rsync: {e}")
 
-def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
+def run_analysis_on_local(cohort_directory, refresh=False):
     total_start_time = time.perf_counter()
 
     # ---- Logging setup -----
@@ -335,7 +194,7 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
     # --------------------------
 
     # Use system_type="v2" for behaviour_rig_system sessions
-    Cohort = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2")
+    Cohort = Cohort_folder(cohort_directory, multi=True, ignore_tests=ignore_test_sessions, system_type="v2")
     directory_info = Cohort.cohort
 
     sessions_to_process = []
@@ -350,9 +209,9 @@ def run_analysis_on_local(cohort_directory, refresh=False, ephys_data=False):
 
     for session in sessions_to_process:
         print(f"\n\nProcessing {session.get('directory')}...")
-        Process_Raw_Behaviour_Data_V2(session, logger=logger, sync_with_ephys=ephys_data)
+        Process_Raw_Behaviour_Data_V2(session, logger=logger)
 
-    directory_info = Cohort_folder(cohort_directory, multi=True, OEAB_legacy=False, ignore_tests=ignore_test_sessions, system_type="v2").cohort
+    directory_info = Cohort_folder(cohort_directory, multi=True, ignore_tests=ignore_test_sessions, system_type="v2").cohort
 
     total_time_taken = time.perf_counter() - total_start_time
     hours, remainder = divmod(total_time_taken, 3600)
@@ -531,28 +390,16 @@ def main():
     for cohort_directory in cohort_directories:
         recover_crashed_sessions(cohort_directory['local'], verbose=True, force=False)
 
-    # Step 2: Process ephys data
-    print("\n===== STEP 2: PROCESSING EPHYS DATA =====")
-    for cohort_directory in cohort_directories:
-        if cohort_directory.get('ephys_data', False):
-            process_ephys_data(cohort_directory['local'], target_pin=0, force=False)
-
-    # # Step 3: Process uncompressed videos
-    print("\n===== STEP 3: PROCESSING VIDEOS =====")
+    # Step 2: Process uncompressed videos
+    print("\n===== STEP 2: PROCESSING VIDEOS =====")
     for cohort_directory in cohort_directories:
         processes = mp.cpu_count()
         process_cohort_directory(cohort_directory['local'], processes)
 
-    # # Wait until after 10 PM before running the main part
-    # # wait_until_time(22)  # 22:00 is 10 PM
-
-    # # Step 4: Run analysis on the local files
-    print("\n===== STEP 4: RUNNING ANALYSIS =====")
+    # Step 3: Run analysis on the local files
+    print("\n===== STEP 3: RUNNING ANALYSIS =====")
     for cohort_directory in cohort_directories:
-        if cohort_directory.get('ephys_data', False):
-            run_analysis_on_local(cohort_directory['local'], refresh=False, ephys_data=True)
-        else:
-            run_analysis_on_local(cohort_directory['local'], refresh=False)
+        run_analysis_on_local(cohort_directory['local'], refresh=False)
 
     # # Step 5: Sync files to cephfs
     # print("\n===== STEP 5: SYNCING WITH CEPHFS =====")

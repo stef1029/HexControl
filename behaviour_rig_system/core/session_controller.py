@@ -597,14 +597,20 @@ class SessionController:
                         "width": peripheral_config.camera_window_width,
                         "height": peripheral_config.camera_window_height,
                     },
-                    "scales_enabled": bool(
-                        peripheral_config.scales and peripheral_config.scales.enabled
-                    ),
+                    "scales_enabled": peripheral_config.scales is not None,
                 },
             }
 
+            def _json_default(obj):
+                """Fallback serialiser for Path, Enum, and other non-JSON types."""
+                if isinstance(obj, Path):
+                    return str(obj)
+                if hasattr(obj, "value"):  # Enum-like
+                    return obj.value
+                return str(obj)
+
             with metadata_path.open("w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata, f, indent=2, default=_json_default)
 
             self._emit("startup_status", message=f"Metadata saved: {metadata_path.name}")
         except Exception as e:

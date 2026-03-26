@@ -30,8 +30,9 @@ sys.path.insert(0, str(project_root))
 # CONFIG_PATH = Path(r"C:\Dev\projects\rigs_config.yaml")
 # CONFIG_PATH = Path(r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\rigs_template.yaml")
 
-CONFIG_PATH = Path(r"D:\Anindita\hex_behav_configs\rigs.yaml") # (Anindita - large behaviour room)
+# CONFIG_PATH = Path(r"D:\Anindita\hex_behav_configs\rigs.yaml") # (Anindita - large behaviour room)
 # CONFIG_PATH = Path(r"D:\Yuanxin\hex_behav_configs\rigs.yaml") # (Yuanxin - large behaviour room)
+CONFIG_PATH = Path(r"D:\test\hex_behav_configs\rigs.yaml") # (test - large behaviour room)
 
  
 # Path to the board registry file
