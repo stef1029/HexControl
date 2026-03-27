@@ -145,7 +145,7 @@ class DAQViewWidget(ttk.Frame):
         self._window_var = tk.StringVar(value="5s")
         win_combo = ttk.Combobox(
             tb, textvariable=self._window_var, width=4,
-            values=["1s", "2s", "5s", "10s", "30s"],
+            values=["0.1s", "0.2s", "0.5s", "1s", "2s", "5s", "10s", "30s"],
             state="readonly", font=("Consolas", 8))
         win_combo.pack(side="left", padx=(4, 0))
         win_combo.bind("<<ComboboxSelected>>", self._on_window_change)

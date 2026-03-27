@@ -12,15 +12,17 @@ Shows:
     - Stop button
 """
 
+import subprocess
+import sys
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 from tkinter import scrolledtext, ttk
 from typing import Callable
 
 from core.protocol_base import ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 from gui.scales_plot_widget import ScalesPlotWidget
-from gui.daq_view_widget import DAQViewWidget
 
 
 
@@ -45,8 +47,7 @@ class RunningMode(ttk.Frame):
         self._last_logged_trials: dict[str, int] = {}  # Per-tracker log index
         self._perf_notebook: ttk.Notebook | None = None
         self._lock_tracker_view = tk.BooleanVar(value=False)
-        self._daq_view_window: tk.Toplevel | None = None
-        self._daq_view_widget: DAQViewWidget | None = None
+        self._daq_view_proc: subprocess.Popen | None = None
         self._rig_number: int = 0
 
         self._create_widgets()
@@ -515,39 +516,22 @@ class RunningMode(ttk.Frame):
         self._log_text.config(state="disabled")
     
     def _toggle_daq_view(self) -> None:
-        """Open or focus the DAQ live-view pop-out window."""
-        # If window exists and is still open, just focus it
-        if self._daq_view_window is not None:
-            try:
-                self._daq_view_window.lift()
-                self._daq_view_window.focus_force()
-                return
-            except tk.TclError:
-                # Window was closed by the user
-                self._daq_view_window = None
-                self._daq_view_widget = None
+        """Open the DAQ live-view in a separate process."""
+        # If process is still running, do nothing (user can close it themselves)
+        if self._daq_view_proc is not None and self._daq_view_proc.poll() is None:
+            return
 
-        top = tk.Toplevel(self)
-        top.title(f"DAQ Live View — Rig {self._rig_number}")
-        top.geometry("1100x620")
-        top.configure(bg=Theme.palette.bg_primary)
-        top.protocol("WM_DELETE_WINDOW", self._close_daq_view)
-
-        widget = DAQViewWidget(top)
-        widget.pack(fill="both", expand=True)
-        widget.start(self._rig_number)
-
-        self._daq_view_window = top
-        self._daq_view_widget = widget
+        script = Path(__file__).resolve().parents[1] / "daq_view_subprocess.py"
+        self._daq_view_proc = subprocess.Popen(
+            [sys.executable, str(script), str(self._rig_number)],
+        )
 
     def _close_daq_view(self) -> None:
-        """Clean up the DAQ view pop-out window."""
-        if self._daq_view_widget:
-            self._daq_view_widget.stop()
-            self._daq_view_widget = None
-        if self._daq_view_window:
-            self._daq_view_window.destroy()
-            self._daq_view_window = None
+        """Terminate the DAQ view subprocess if still running."""
+        if self._daq_view_proc is not None:
+            if self._daq_view_proc.poll() is None:
+                self._daq_view_proc.terminate()
+            self._daq_view_proc = None
 
     def _on_stop_clicked(self) -> None:
         """Handle stop button click."""

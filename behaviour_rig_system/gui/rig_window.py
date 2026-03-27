@@ -358,4 +358,4 @@ class RigWindow:
                 "A session is currently running.\n\nPlease stop the session before closing the window."
             )
             return
-        self.controller.close()
+        self._close_window()

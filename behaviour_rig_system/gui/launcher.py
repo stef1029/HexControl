@@ -730,8 +730,9 @@ class RigLauncher:
         if rig_name in self.open_windows:
             window, btn, rig_window = self.open_windows[rig_name]
 
-            # Check if a session is running
-            if rig_window.controller.is_running:
+            # Block close only while in running mode (active session or cleanup)
+            from .rig_window import WindowMode
+            if rig_window._current_mode == WindowMode.RUNNING:
                 messagebox.showwarning(
                     "Session Running",
                     f"A session is currently running on {rig_name}.\n\n"

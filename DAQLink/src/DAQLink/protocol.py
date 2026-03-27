@@ -13,7 +13,7 @@ CHANNEL_NAMES: tuple[str, ...] = (
     "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
     "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
     "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-    "DAQ_LINK0", "DAQ_LINK1", "EXT_0", "EXT_1", "EXT_2", "EXT_3",
+    "DAQ_LINK0", "DAQ_LINK1", "SCALES", "EXT_1", "LASER", "CAMERA",
 )
 
 NUM_CHANNELS = len(CHANNEL_NAMES)  # 24
@@ -24,7 +24,7 @@ CHANNEL_GROUPS: dict[str, list[str]] = {
     "LEDs":     ["LED_1", "LED_2", "LED_3", "LED_4", "LED_5", "LED_6"],
     "Valves":   ["VALVE1", "VALVE2", "VALVE3", "VALVE4", "VALVE5", "VALVE6"],
     "Links":    ["DAQ_LINK0", "DAQ_LINK1"],
-    "External": ["EXT_0", "EXT_1", "EXT_2", "EXT_3"],
+    "External": ["SCALES", "EXT_1", "LASER", "CAMERA"],
 }
 
 # Flat display order derived from groups
