@@ -84,14 +84,7 @@ class VirtualRigWindow:
         self._win.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self._win.configure(bg=Theme.palette.bg_primary)
 
-        # Try to position to the right of the parent
-        try:
-            parent.update_idletasks()
-            px = parent.winfo_x() + parent.winfo_width() + 12
-            py = parent.winfo_y()
-            self._win.geometry(f"+{px}+{py}")
-        except Exception:
-            pass
+        self._win.lift()
 
         # ── Main layout ─────────────────────────────────────────────────
         self._build_canvas()

@@ -439,17 +439,17 @@ def _draw_orbital_trails(canvas, w: int, h: int, rng: random.Random) -> None:
 # ===================================================================
 
 _GENERATORS = [
-    _draw_topo_rings,        # 1.  Topographic contour rings
-    _draw_flow_field,        # 2.  Flow-field streamlines
+    # _draw_topo_rings,        # 1.  Topographic contour rings
+    # _draw_flow_field,        # 2.  Flow-field streamlines
     _draw_network,           # 3.  Constellation / network graph
-    _draw_spirograph,        # 4.  Spirograph / Lissajous curves
-    _draw_moire,             # 5.  Wave interference / moire rings
-    _draw_mondrian,          # 6.  Recursive subdivision / Mondrian
-    _draw_circle_packing,    # 7.  Circle packing
-    _draw_crosshatch,        # 8.  Cross-hatching
-    _draw_fractal_trees,     # 9.  Fractal branching / L-system trees
-    _draw_delaunay,          # 10. Delaunay triangulation mesh
-    _draw_orbital_trails,    # 11. Orbital trails
+    # _draw_spirograph,        # 4.  Spirograph / Lissajous curves
+    # _draw_moire,             # 5.  Wave interference / moire rings
+    # _draw_mondrian,          # 6.  Recursive subdivision / Mondrian
+    # _draw_circle_packing,    # 7.  Circle packing
+    # _draw_crosshatch,        # 8.  Cross-hatching
+    # _draw_fractal_trees,     # 9.  Fractal branching / L-system trees
+    # _draw_delaunay,          # 10. Delaunay triangulation mesh
+    # _draw_orbital_trails,    # 11. Orbital trails
 ]
 
 

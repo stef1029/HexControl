@@ -437,7 +437,7 @@ class RigLauncher:
 
         # Check if mkdocs server is already running
         if getattr(self, "_docs_process", None) is not None and self._docs_process.poll() is None:
-            webbrowser.open("http://localhost:8000")
+            webbrowser.open("http://127.0.0.1:8000")
             return
 
         try:
@@ -445,13 +445,28 @@ class RigLauncher:
                 [sys.executable, "-m", "mkdocs", "serve", "--no-livereload"],
                 cwd=str(project_root),
                 stdout=_sp.DEVNULL,
-                stderr=_sp.DEVNULL,
+                stderr=_sp.PIPE,
             )
-            # Give the server a moment to start
-            self.root.after(1500, lambda: webbrowser.open("http://localhost:8000"))
-            self.status_var.set("Docs server started at http://localhost:8000")
+            self.status_var.set("Docs server starting...")
+            import threading
+            threading.Thread(target=self._wait_for_docs_server, daemon=True).start()
         except Exception as e:
             messagebox.showerror("Docs Error", f"Failed to start mkdocs:\n{e}")
+
+    def _wait_for_docs_server(self, timeout: int = 30) -> None:
+        """Wait for mkdocs to print its 'Serving on' line, then open the browser."""
+        import time
+        import webbrowser
+        deadline = time.monotonic() + timeout
+        proc = self._docs_process
+        for line in proc.stderr:
+            if b"Serving on" in line:
+                self.root.after(0, lambda: webbrowser.open("http://127.0.0.1:8000"))
+                self.root.after(0, lambda: self.status_var.set("Docs server started at http://127.0.0.1:8000"))
+                return
+            if time.monotonic() > deadline:
+                break
+        self.root.after(0, lambda: self.status_var.set("Docs server failed to start within 30s."))
 
     def _style_rig_button_state(self, rig_name: str) -> None:
         """Style a rig button to reflect its current selection and open state."""
