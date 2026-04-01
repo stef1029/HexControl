@@ -123,7 +123,8 @@ class SetupMode(ttk.Frame):
         self._cohort_folders = []
         self._mice = []
         self._mouse_form: ParameterFormBuilder | None = None
-        self._mouse_radiobuttons: dict[str, ttk.Radiobutton] = {}
+        self._mouse_buttons: dict[str, tk.Button] = {}
+        self._cohort_buttons: dict[str, tk.Button] = {}
 
         self._load_session_options()
         self._create_widgets()
@@ -163,69 +164,62 @@ class SetupMode(ttk.Frame):
         # Save Location
         cohort_frame = ttk.LabelFrame(session_frame, text="Save Location", padding=(8, 4))
         cohort_frame.pack(fill="x", padx=3, pady=(0, 5))
-        
+
         first_cohort = self._cohort_folders[0].get("name", "") if self._cohort_folders else ""
         self.cohort_var = tk.StringVar(value=first_cohort)
-        
+
         cohort_inner = ttk.Frame(cohort_frame)
         cohort_inner.pack(fill="x")
-        
+
         for cohort in self._cohort_folders:
             name = cohort.get("name", "Unknown")
             directory = cohort.get("directory", "")
-            
-            rb_frame = ttk.Frame(cohort_inner)
-            rb_frame.pack(fill="x", pady=1)
-            
-            rb = ttk.Radiobutton(
-                rb_frame, text=name, variable=self.cohort_var,
-                value=name, command=self._update_save_path_preview
+
+            label = f"{name}  —  {directory}" if directory else name
+            btn = tk.Button(
+                cohort_inner, text=label, anchor="w",
+                relief="flat", padx=8, pady=2,
+                font=("Segoe UI", 9),
+                cursor="hand2",
+                command=lambda n=name: self._select_cohort(n),
             )
-            rb.pack(side="left")
-            
-            if directory:
-                path_label = ttk.Label(
-                    rb_frame, text=f"  {directory}",
-                    style="Muted.TLabel"
-                )
-                path_label.pack(side="left")
+            btn.pack(fill="x", pady=1)
+            self._cohort_buttons[name] = btn
+
+        self._style_cohort_buttons()
         
         # Mouse ID
         mouse_frame = ttk.LabelFrame(session_frame, text="Mouse ID", padding=(8, 4))
         mouse_frame.pack(fill="x", padx=3, pady=(0, 5))
-        
+
         first_mouse = self._mice[0].get("id", "test") if self._mice else "test"
         self.mouse_id_var = tk.StringVar(value=first_mouse)
-        
+
         mouse_inner = ttk.Frame(mouse_frame)
         mouse_inner.pack(fill="x")
         mouse_inner.columnconfigure(0, weight=1)
         mouse_inner.columnconfigure(1, weight=1)
         mouse_inner.columnconfigure(2, weight=1)
-        
+
         for i, mouse in enumerate(self._mice):
             mouse_id = mouse.get("id", "Unknown")
             desc = mouse.get("description", "")
-            
+
             col = i % 3
             row = i // 3
-            
-            rb_frame = ttk.Frame(mouse_inner)
-            rb_frame.grid(row=row, column=col, sticky="w", padx=3, pady=1)
-            
-            rb = ttk.Radiobutton(
-                rb_frame, text=mouse_id, variable=self.mouse_id_var,
-                value=mouse_id, command=self._update_save_path_preview
-            )
-            rb.pack(side="left")
-            self._mouse_radiobuttons[mouse_id] = rb
 
-            if desc:
-                desc_label = ttk.Label(
-                    rb_frame, text=f"({desc})",
-                    style="Muted.TLabel"
-                )
-                desc_label.pack(side="left", padx=(3, 0))
+            label = f"{mouse_id}\n({desc})" if desc else mouse_id
+            btn = tk.Button(
+                mouse_inner, text=label, anchor="center",
+                relief="flat", padx=6, pady=2,
+                font=("Segoe UI", 9),
+                cursor="hand2",
+                command=lambda mid=mouse_id: self._select_mouse(mid),
+            )
+            btn.grid(row=row, column=col, sticky="ew", padx=2, pady=2)
+            self._mouse_buttons[mouse_id] = btn
+
+        self._style_mouse_buttons()
         
         # Session-level parameters (apply to all protocols)
         session_params_frame = ttk.LabelFrame(session_frame, text="Session Parameters", padding=(8, 4))
@@ -334,6 +328,60 @@ class SetupMode(ttk.Frame):
         scrollbar.pack(side="right", fill="y")
         enable_mousewheel_scrolling(canvas)
 
+    def _select_cohort(self, name: str) -> None:
+        """Handle cohort toggle-button click."""
+        self.cohort_var.set(name)
+        self._style_cohort_buttons()
+        self._update_save_path_preview()
+
+    def _select_mouse(self, mouse_id: str) -> None:
+        """Handle mouse toggle-button click."""
+        self.mouse_id_var.set(mouse_id)
+        self._style_mouse_buttons()
+        self._update_save_path_preview()
+
+    def _style_cohort_buttons(self) -> None:
+        """Restyle cohort buttons to reflect current selection."""
+        palette = Theme.palette
+        selected = self.cohort_var.get()
+        for name, btn in self._cohort_buttons.items():
+            if name == selected:
+                btn.configure(
+                    bg=palette.accent_primary,
+                    fg=palette.text_inverse,
+                    activebackground=palette.accent_hover,
+                    activeforeground=palette.text_inverse,
+                )
+            else:
+                btn.configure(
+                    bg=palette.bg_tertiary,
+                    fg=palette.text_primary,
+                    activebackground=palette.accent_hover,
+                    activeforeground=palette.text_inverse,
+                )
+
+    def _style_mouse_buttons(self) -> None:
+        """Restyle mouse buttons to reflect current selection."""
+        palette = Theme.palette
+        selected = self.mouse_id_var.get()
+        for mouse_id, btn in self._mouse_buttons.items():
+            if btn.cget("state") == "disabled":
+                continue
+            if mouse_id == selected:
+                btn.configure(
+                    bg=palette.accent_primary,
+                    fg=palette.text_inverse,
+                    activebackground=palette.accent_hover,
+                    activeforeground=palette.text_inverse,
+                )
+            else:
+                btn.configure(
+                    bg=palette.bg_tertiary,
+                    fg=palette.text_primary,
+                    activebackground=palette.accent_hover,
+                    activeforeground=palette.text_inverse,
+                )
+
     def _update_save_path_preview(self) -> None:
         """Update the save path preview label."""
         cohort_name = self.cohort_var.get()
@@ -359,16 +407,23 @@ class SetupMode(ttk.Frame):
     
     def _refresh_mouse_availability(self) -> None:
         """Grey out mice that are claimed by other rigs."""
+        palette = Theme.palette
         get_claimed = self._rig_config.get("get_claimed_mice_fn")
         if not get_claimed:
             return
         rig_name = self._rig_config.get("name", "")
         claimed = get_claimed()
-        for mouse_id, rb in self._mouse_radiobuttons.items():
+        for mouse_id, btn in self._mouse_buttons.items():
             if mouse_id in claimed and claimed[mouse_id] != rig_name:
-                rb.configure(state="disabled")
+                btn.configure(
+                    state="disabled",
+                    bg=palette.bg_secondary,
+                    fg=palette.text_disabled,
+                    disabledforeground=palette.text_disabled,
+                )
             else:
-                rb.configure(state="normal")
+                btn.configure(state="normal")
+        self._style_mouse_buttons()
 
     def _on_start_clicked(self) -> None:
         """Handle start button click."""

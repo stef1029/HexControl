@@ -23,8 +23,8 @@ import yaml
 
 # ── Configuration ─────────────────────────────────────────────
 RIGS_CONFIG_PATH: str = r"C:\Dev\projects\rigs_config.yaml"
-BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\board_registry.json"
-RIG_NUMBER: int = 4
+BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\board_registry.json"
+RIG_NUMBER: int = 2
 NUM_READINGS: int = 400          # Number of readings to average
 # ──────────────────────────────────────────────────────────────
 
