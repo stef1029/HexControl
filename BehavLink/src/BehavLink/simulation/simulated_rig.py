@@ -125,6 +125,10 @@ class SimulatedRig:
         if self._interactive:
             self._state.set_buzzer(port, state)
 
+    def noise_set(self, port: int, state: bool) -> None:
+        if self._interactive:
+            self._state.set_noise(port, state)
+
     def speaker_set(self, frequency: SpeakerFrequency, duration: SpeakerDuration) -> None:
         if self._interactive:
             self._state.set_speaker(int(frequency), int(duration))

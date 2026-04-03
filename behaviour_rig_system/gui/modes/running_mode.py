@@ -230,17 +230,51 @@ class RunningMode(ttk.Frame):
             variable=self._lock_tracker_view,
         ).pack(side="right")
 
-        # Notebook with one tab per tracker
+        # Notebook with one tab per tracker group
         self._perf_notebook = ttk.Notebook(self._perf_frame)
         self._perf_notebook.pack(fill="x", expand=True)
 
         for idx, tdef in enumerate(self._tracker_definitions):
-            tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
-            self._perf_notebook.add(tab, text=tdef.display_name)
-            widgets = self._create_tracker_tab(tab, display_name=tdef.display_name)
-            self._tracker_widgets[tdef.name] = widgets
-            self._tracker_tab_indices[tdef.name] = idx
-            self._last_logged_trials[tdef.name] = 0
+            sub_trackers = getattr(tdef, "sub_trackers", None)
+            has_subs = sub_trackers is not None and len(sub_trackers) > 0
+
+            if has_subs:
+                # Multi-sub-tracker group: create inner notebook with sub-tabs
+                outer_tab = ttk.Frame(self._perf_notebook, padding=(2, 2))
+                self._perf_notebook.add(outer_tab, text=tdef.display_name)
+                self._tracker_tab_indices[tdef.name] = idx
+
+                inner_nb = ttk.Notebook(outer_tab)
+                inner_nb.pack(fill="x", expand=True)
+
+                # "Overall" sub-tab (aggregated)
+                overall_tab = ttk.Frame(inner_nb, padding=(6, 4))
+                inner_nb.add(overall_tab, text="Overall")
+                overall_widgets = self._create_tracker_tab(overall_tab, display_name="Overall")
+
+                # Per-sub-tracker tabs
+                sub_widgets = {}
+                for sub_name in sub_trackers:
+                    sub_tab = ttk.Frame(inner_nb, padding=(6, 4))
+                    inner_nb.add(sub_tab, text=sub_name.capitalize())
+                    sub_widgets[sub_name] = self._create_tracker_tab(
+                        sub_tab, display_name=sub_name.capitalize()
+                    )
+
+                self._tracker_widgets[tdef.name] = {
+                    "_overall": overall_widgets,
+                    "_sub": sub_widgets,
+                    "_inner_nb": inner_nb,
+                }
+                self._last_logged_trials[tdef.name] = 0
+            else:
+                # Simple group: single tab as before
+                tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
+                self._perf_notebook.add(tab, text=tdef.display_name)
+                widgets = self._create_tracker_tab(tab, display_name=tdef.display_name)
+                self._tracker_widgets[tdef.name] = widgets
+                self._tracker_tab_indices[tdef.name] = idx
+                self._last_logged_trials[tdef.name] = 0
 
     def _create_tracker_tab(self, parent: ttk.Frame, display_name: str = "") -> dict:
         """Create the standard stats widgets inside a tracker tab. Returns widget refs."""
@@ -346,51 +380,42 @@ class RunningMode(ttk.Frame):
         self._trial_log.see(tk.END)
         self._trial_log.config(state="disabled")
 
-    def update_performance(self, trackers: dict, updated: str) -> None:
+    def update_performance(self, tracker_groups: dict = None, trackers: dict = None,
+                           updated: str = "") -> None:
         """
-        Update the performance display for the tracker that changed.
+        Update the performance display for the tracker group that changed.
 
         Must be called on the main thread (marshalling is done by RigWindow).
 
         Args:
-            trackers: Dict of tracker_name -> PerformanceTracker.
-            updated:  Name of the tracker that just changed.
+            tracker_groups: Dict of group_name -> TrackerGroup (new style).
+            trackers:       Legacy alias for tracker_groups.
+            updated:        Name of the group that just changed.
         """
-        if updated not in self._tracker_widgets or updated not in trackers:
+        groups = tracker_groups or trackers
+        if groups is None or updated not in self._tracker_widgets or updated not in groups:
             return
 
-        tracker = trackers[updated]
+        group = groups[updated]
         w = self._tracker_widgets[updated]
         palette = Theme.palette
 
-        w["trials"].config(text=str(tracker.total_trials))
-        w["correct"].config(text=str(tracker.successes))
-        w["incorrect"].config(text=str(tracker.failures))
-        w["timeout"].config(text=str(tracker.timeouts))
-
-        # Overall accuracy
-        if tracker.responses > 0:
-            acc = tracker.accuracy
-            w["accuracy"].config(text=f"{acc:.0f}%", foreground=get_accuracy_color(acc))
+        if "_overall" in w:
+            # Multi-sub-tracker group: update overall + sub-tracker tabs
+            self._update_tracker_widgets(w["_overall"], group, palette)
+            for sub_name, sub_widgets in w["_sub"].items():
+                sub = group.get_sub_tracker(sub_name)
+                if sub is not None:
+                    self._update_tracker_widgets(sub_widgets, sub, palette)
         else:
-            w["accuracy"].config(text="--", foreground=palette.info)
-
-        # Rolling accuracy
-        if tracker.total_trials > 0:
-            try:
-                n = int(w["rolling_n_var"].get())
-            except ValueError:
-                n = 20
-            rolling = tracker.rolling_accuracy(n)
-            w["rolling"].config(text=f"{rolling:.0f}%")
-        else:
-            w["rolling"].config(text="--")
+            # Simple group: update single tab
+            self._update_tracker_widgets(w, group, palette)
 
         # Log new trials to the shared trial log
         last = self._last_logged_trials.get(updated, 0)
-        new_trials = tracker.get_trials_since(last)
+        all_trials = group.get_all_trials()
+        new_trials = all_trials[last:]
         multi = len(self._tracker_definitions) > 1
-        # Find display name for prefix
         display_name = updated
         for tdef in self._tracker_definitions:
             if tdef.name == updated:
@@ -401,13 +426,36 @@ class RunningMode(ttk.Frame):
             self._last_logged_trials[updated] = last + 1
             last += 1
 
-        # Auto-switch to the updated tracker's tab (unless locked)
+        # Auto-switch to the updated group's tab (unless locked)
         if (
             not self._lock_tracker_view.get()
             and self._perf_notebook is not None
             and updated in self._tracker_tab_indices
         ):
             self._perf_notebook.select(self._tracker_tab_indices[updated])
+
+    def _update_tracker_widgets(self, w: dict, tracker, palette) -> None:
+        """Update a set of stat widgets from a tracker or tracker group."""
+        w["trials"].config(text=str(tracker.total_trials))
+        w["correct"].config(text=str(tracker.successes))
+        w["incorrect"].config(text=str(tracker.failures))
+        w["timeout"].config(text=str(tracker.timeouts))
+
+        if tracker.responses > 0:
+            acc = tracker.accuracy
+            w["accuracy"].config(text=f"{acc:.0f}%", foreground=get_accuracy_color(acc))
+        else:
+            w["accuracy"].config(text="--", foreground=palette.info)
+
+        if tracker.total_trials > 0:
+            try:
+                n = int(w["rolling_n_var"].get())
+            except ValueError:
+                n = 20
+            rolling = tracker.rolling_accuracy(n)
+            w["rolling"].config(text=f"{rolling:.0f}%")
+        else:
+            w["rolling"].config(text="--")
 
     def _log_trial(self, trial, prefix: str = "") -> None:
         """Log a single trial to the trial log with colored output."""

@@ -38,6 +38,7 @@ CMD_LED_SET = 0x10
 CMD_SPOTLIGHT_SET = 0x11
 CMD_IR_SET = 0x12
 CMD_BUZZER_SET = 0x13
+CMD_NOISE_SET = 0x14
 CMD_SPEAKER_SET = 0x15
 CMD_GPIO_CONFIG = 0x17
 CMD_GPIO_SET = 0x18
@@ -799,6 +800,38 @@ class BehaviourRigLink:
 
         if status != STATUS_OK:
             raise RuntimeError(f"BUZZER_SET failed with status=0x{status:02X}")
+
+    # -------------------------------------------------------------------------
+    # White Noise Control (Spatial Audio)
+    # -------------------------------------------------------------------------
+
+    def noise_set(self, port: int, state: bool) -> None:
+        """
+        Starts or stops white noise on a buzzer port for spatial audio cues.
+
+        White noise is generated on-board by rapidly toggling the buzzer pin
+        at random frequencies (1-22 kHz), producing broadband noise suitable
+        for spatial localisation tasks.
+
+        Args:
+            port: The buzzer port (0-5), or 255 to control all buzzers.
+            state: True to start noise, False to stop.
+
+        Raises:
+            ValueError: If port is out of range.
+            RuntimeError: If the command fails.
+        """
+        if port != self.ALL_PORTS and not 0 <= port < self.NUM_PORTS:
+            raise ValueError(
+                f"Port must be 0-{self.NUM_PORTS - 1} or 255, got {port}"
+            )
+
+        state_byte = 1 if state else 0
+        payload = struct.pack("<BB", port, state_byte)
+        status = self._send_reliable_command(CMD_NOISE_SET, payload)
+
+        if status != STATUS_OK:
+            raise RuntimeError(f"NOISE_SET failed with status=0x{status:02X}")
 
     # -------------------------------------------------------------------------
     # Overhead Speaker Control

@@ -34,10 +34,44 @@ class TrialOutcome(Enum):
 
 
 @dataclass
-class TrackerDefinition:
-    """Declaration of a named performance tracker for a protocol."""
-    name: str          # Internal key, e.g. "visual_trials"
-    display_name: str  # GUI label, e.g. "Visual Trials"
+class TrackerGroupDefinition:
+    """
+    Declaration of a tracker group for a protocol.
+
+    A tracker group covers one or more training stages and contains one or
+    more named sub-trackers (e.g., "visual", "audio") for different trial
+    types. Simple groups with no sub_trackers get a single "default"
+    sub-tracker automatically.
+
+    Attributes:
+        name:          Internal key for the group (e.g., "interleaved_phase")
+        display_name:  GUI label (e.g., "Interleaved Phase")
+        sub_trackers:  List of sub-tracker names (e.g., ["visual", "audio"]).
+                       If None, a single "default" sub-tracker is created.
+        stages:        Set of stage names this group covers. When the engine
+                       enters any of these stages, this group becomes active.
+                       If None, the group name itself is used as the sole stage.
+    """
+    name: str
+    display_name: str
+    sub_trackers: list[str] | None = None
+    stages: set[str] | None = None
+
+
+def TrackerDefinition(name: str, display_name: str) -> TrackerGroupDefinition:
+    """
+    Backwards-compatible factory that creates a simple TrackerGroupDefinition.
+
+    Equivalent to a group with a single "default" sub-tracker covering one
+    stage whose name matches the group name. Existing protocols that return
+    TrackerDefinition(...) from get_tracker_definitions() continue to work.
+    """
+    return TrackerGroupDefinition(
+        name=name,
+        display_name=display_name,
+        sub_trackers=None,
+        stages={name},
+    )
 
 
 @dataclass
@@ -50,6 +84,7 @@ class TrialRecord:
     correct_port: Optional[int] = None  # The correct port for this trial
     chosen_port: Optional[int] = None  # The port the mouse chose (None if timeout)
     trial_duration: float = 0.0  # Duration of the trial in seconds
+    trial_type: str = ""  # Sub-tracker / modality name (e.g., "visual", "audio")
     details: dict = field(default_factory=dict)  # Optional extra data
 
 
@@ -401,34 +436,275 @@ class PerformanceTracker:
 
 
 # =============================================================================
+# Tracker Group
+# =============================================================================
+
+
+class TrackerGroup:
+    """
+    A group of sub-trackers with aggregate query support.
+
+    Each group covers one or more training stages and contains named
+    sub-trackers for different trial types (e.g., "visual", "audio").
+    Simple groups with a single "default" sub-tracker behave identically
+    to a plain PerformanceTracker.
+
+    Protocols record to a specific sub-tracker; the group can compute
+    aggregate statistics across all sub-trackers for group-level queries.
+    """
+
+    DEFAULT_SUB = "default"
+
+    def __init__(self, definition: TrackerGroupDefinition, clock=None):
+        self._definition = definition
+        self._clock = clock
+        self._listeners: dict[str, list[Callable]] = {}
+
+        sub_names = definition.sub_trackers or [self.DEFAULT_SUB]
+        self._sub_trackers: dict[str, PerformanceTracker] = {}
+        for sub_name in sub_names:
+            tracker = PerformanceTracker(clock=clock)
+            self._sub_trackers[sub_name] = tracker
+            # Forward sub-tracker update events as group-level events
+            tracker.on("update", lambda tracker=tracker, _name=sub_name, **kw: self._on_sub_update(_name))
+
+    # -------------------------------------------------------------------------
+    # Properties
+    # -------------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return self._definition.name
+
+    @property
+    def display_name(self) -> str:
+        return self._definition.display_name
+
+    @property
+    def stages(self) -> set[str]:
+        return self._definition.stages or {self._definition.name}
+
+    @property
+    def sub_tracker_names(self) -> list[str]:
+        return list(self._sub_trackers.keys())
+
+    @property
+    def is_simple(self) -> bool:
+        """True if this group has only a 'default' sub-tracker."""
+        return list(self._sub_trackers.keys()) == [self.DEFAULT_SUB]
+
+    @property
+    def total_trials(self) -> int:
+        return sum(st.total_trials for st in self._sub_trackers.values())
+
+    @property
+    def successes(self) -> int:
+        return sum(st.successes for st in self._sub_trackers.values())
+
+    @property
+    def failures(self) -> int:
+        return sum(st.failures for st in self._sub_trackers.values())
+
+    @property
+    def timeouts(self) -> int:
+        return sum(st.timeouts for st in self._sub_trackers.values())
+
+    @property
+    def responses(self) -> int:
+        return self.successes + self.failures
+
+    @property
+    def accuracy(self) -> float:
+        responses = self.responses
+        if responses == 0:
+            return 0.0
+        return (self.successes / responses) * 100
+
+    # -------------------------------------------------------------------------
+    # Sub-tracker access
+    # -------------------------------------------------------------------------
+
+    def get_sub_tracker(self, name: str) -> Optional[PerformanceTracker]:
+        return self._sub_trackers.get(name)
+
+    def get_default_tracker(self) -> PerformanceTracker:
+        """Get the default sub-tracker (first one if no 'default' exists)."""
+        if self.DEFAULT_SUB in self._sub_trackers:
+            return self._sub_trackers[self.DEFAULT_SUB]
+        return next(iter(self._sub_trackers.values()))
+
+    # -------------------------------------------------------------------------
+    # Recording (delegates to a specific sub-tracker)
+    # -------------------------------------------------------------------------
+
+    def stimulus(self, target_port: int) -> None:
+        """Signal stimulus presentation (emits event for GUI)."""
+        self._emit("stimulus", port=target_port)
+
+    def success(
+        self,
+        correct_port: int,
+        trial_duration: float = 0.0,
+        sub_tracker: str = DEFAULT_SUB,
+        **details,
+    ) -> None:
+        st = self._sub_trackers.get(sub_tracker)
+        if st is None:
+            st = self.get_default_tracker()
+        st.success(correct_port=correct_port, trial_duration=trial_duration, **details)
+
+    def failure(
+        self,
+        correct_port: int,
+        chosen_port: int,
+        trial_duration: float = 0.0,
+        sub_tracker: str = DEFAULT_SUB,
+        **details,
+    ) -> None:
+        st = self._sub_trackers.get(sub_tracker)
+        if st is None:
+            st = self.get_default_tracker()
+        st.failure(correct_port=correct_port, chosen_port=chosen_port,
+                   trial_duration=trial_duration, **details)
+
+    def timeout(
+        self,
+        correct_port: int,
+        trial_duration: float = 0.0,
+        sub_tracker: str = DEFAULT_SUB,
+        **details,
+    ) -> None:
+        st = self._sub_trackers.get(sub_tracker)
+        if st is None:
+            st = self.get_default_tracker()
+        st.timeout(correct_port=correct_port, trial_duration=trial_duration, **details)
+
+    def reset(self) -> None:
+        for st in self._sub_trackers.values():
+            st.reset()
+
+    # -------------------------------------------------------------------------
+    # Aggregate queries (merge all sub-trackers)
+    # -------------------------------------------------------------------------
+
+    def get_all_trials(self) -> list[TrialRecord]:
+        """Get all trials from all sub-trackers, sorted by timestamp."""
+        trials = []
+        for sub_name, st in self._sub_trackers.items():
+            for trial in st.get_trials():
+                trials.append(trial)
+        trials.sort(key=lambda t: t.timestamp)
+        return trials
+
+    def get_all_trials_since(self, start_indices: dict[str, int]) -> list[TrialRecord]:
+        """
+        Get trials from all sub-trackers since given start indices, sorted.
+
+        Args:
+            start_indices: Dict mapping sub-tracker name to trial index.
+                           Trials at or after the index are included.
+        """
+        trials = []
+        for sub_name, st in self._sub_trackers.items():
+            idx = start_indices.get(sub_name, 0)
+            for trial in st.get_trials_since(idx):
+                trials.append(trial)
+        trials.sort(key=lambda t: t.timestamp)
+        return trials
+
+    def rolling_accuracy(self, n: int = 20) -> float:
+        """
+        Group-level rolling accuracy across all sub-trackers.
+
+        Merges all trials, sorts by timestamp, takes last N non-timeout.
+        """
+        all_trials = self.get_all_trials()
+        recent = [t for t in all_trials if t.outcome != TrialOutcome.TIMEOUT][-n:]
+        if not recent:
+            return 0.0
+        successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
+        return (successes / len(recent)) * 100
+
+    def rolling_accuracy_since(
+        self, n: int, start_indices: dict[str, int]
+    ) -> Optional[float]:
+        """
+        Group-level rolling accuracy, stage-isolated.
+
+        Returns None if fewer than n non-timeout trials since start_indices.
+        """
+        trials = self.get_all_trials_since(start_indices)
+        recent = [t for t in trials if t.outcome != TrialOutcome.TIMEOUT][-n:]
+        if len(recent) < n:
+            return None
+        successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
+        return (successes / len(recent)) * 100
+
+    def get_summary(self) -> str:
+        if self.total_trials == 0:
+            return "No trials yet"
+        return (
+            f"{self.successes}/{self.responses} correct ({self.accuracy:.0f}%) | "
+            f"{self.timeouts} timeouts | "
+            f"Last 20: {self.rolling_accuracy(20):.0f}%"
+        )
+
+    # -------------------------------------------------------------------------
+    # Events
+    # -------------------------------------------------------------------------
+
+    def on(self, event_name: str, callback: Callable) -> None:
+        self._listeners.setdefault(event_name, []).append(callback)
+
+    def _emit(self, event_name: str, **kwargs) -> None:
+        for cb in self._listeners.get(event_name, []):
+            try:
+                cb(**kwargs)
+            except Exception as e:
+                print(f"Warning: TrackerGroup listener error in '{event_name}': {e}")
+
+    def _on_sub_update(self, sub_name: str) -> None:
+        """Called when a sub-tracker records a trial."""
+        self._emit("update", group=self, sub_tracker=sub_name)
+
+
+# =============================================================================
 # Multi-tracker helpers
 # =============================================================================
 
 def save_merged_trials(
-    trackers: dict[str, "PerformanceTracker"],
+    trackers: dict[str, "PerformanceTracker | TrackerGroup"],
     save_path: str | Path,
     session_id: str = "",
 ) -> Path | None:
     """
-    Merge trials from multiple trackers into a single CSV sorted by timestamp.
+    Merge trials from multiple trackers or tracker groups into a single CSV.
 
-    Each row includes a ``tracker`` column identifying which tracker recorded it.
-    The ``trial_number`` column is the global order after sorting, not per-tracker.
+    Accepts either a dict of PerformanceTrackers (legacy) or a dict of
+    TrackerGroups (new). Each row includes ``group`` and ``trial_type``
+    columns. The ``trial_number`` column is global order after sorting.
 
     Returns:
         Path to the saved file, or None if no trials across all trackers.
     """
-    # Collect (tracker_name, trial) pairs
-    all_trials: list[tuple[str, TrialRecord]] = []
-    for name, tracker in trackers.items():
-        for trial in tracker.get_trials():
-            all_trials.append((name, trial))
+    # Collect (group_name, sub_name, trial) tuples
+    all_trials: list[tuple[str, str, TrialRecord]] = []
+
+    for name, obj in trackers.items():
+        if isinstance(obj, TrackerGroup):
+            for sub_name, sub_tracker in obj._sub_trackers.items():
+                for trial in sub_tracker.get_trials():
+                    all_trials.append((name, sub_name, trial))
+        else:
+            # Legacy PerformanceTracker
+            for trial in obj.get_trials():
+                all_trials.append((name, "", trial))
 
     if not all_trials:
         return None
 
     # Sort by timestamp for true chronological order
-    all_trials.sort(key=lambda pair: pair[1].timestamp)
+    all_trials.sort(key=lambda t: t[2].timestamp)
 
     save_dir = Path(save_path)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -437,7 +713,8 @@ def save_merged_trials(
     file_path = save_dir / filename
 
     fieldnames = [
-        "tracker",
+        "group",
+        "trial_type",
         "trial_number",
         "outcome",
         "time_since_start_s",
@@ -451,9 +728,10 @@ def save_merged_trials(
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-        for global_num, (tracker_name, trial) in enumerate(all_trials, start=1):
+        for global_num, (group_name, sub_name, trial) in enumerate(all_trials, start=1):
             row = {
-                "tracker": tracker_name,
+                "group": group_name,
+                "trial_type": sub_name or trial.trial_type,
                 "trial_number": global_num,
                 "outcome": trial.outcome.value,
                 "time_since_start_s": f"{trial.time_since_start:.3f}",
