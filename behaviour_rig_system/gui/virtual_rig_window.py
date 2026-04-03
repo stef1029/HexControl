@@ -90,6 +90,7 @@ class VirtualRigWindow:
         self._build_canvas()
         self._build_controls()
         self._build_gpio_panel()
+        self._build_daq_link_panel()
 
         # Port canvas item IDs
         self._port_items: list[dict] = []  # [{circle, label, glow, ...}, ...]
@@ -180,7 +181,7 @@ class VirtualRigWindow:
         frame = ttk.LabelFrame(
             self._win, text="  GPIO Pins  ", padding=8
         )
-        frame.pack(fill="x", padx=10, pady=(4, 10))
+        frame.pack(fill="x", padx=10, pady=4)
 
         self._gpio_buttons: list[ttk.Button] = []
         self._gpio_indicators: list[ttk.Label] = []
@@ -188,7 +189,7 @@ class VirtualRigWindow:
         grid = ttk.Frame(frame)
         grid.pack(fill="x")
 
-        for pin in range(6):
+        for pin in range(4):
             col_frame = ttk.Frame(grid)
             col_frame.pack(side="left", expand=True, padx=2)
 
@@ -217,6 +218,32 @@ class VirtualRigWindow:
             style="Muted.TLabel",
         )
         self._gpio_hint.pack(pady=(4, 0))
+
+    def _build_daq_link_panel(self) -> None:
+        """Create the DAQ link pin display panel."""
+        frame = ttk.LabelFrame(
+            self._win, text="  DAQ Link Pins  ", padding=8
+        )
+        frame.pack(fill="x", padx=10, pady=(4, 10))
+
+        self._daq_link_indicators: list[ttk.Label] = []
+
+        grid = ttk.Frame(frame)
+        grid.pack(fill="x")
+
+        for idx in range(2):
+            col_frame = ttk.Frame(grid)
+            col_frame.pack(side="left", expand=True, padx=2)
+
+            lbl = ttk.Label(col_frame, text=f"DAQ {idx}", style="Muted.TLabel")
+            lbl.pack()
+
+            indicator = ttk.Label(
+                col_frame, text="LO", width=6, anchor="center",
+                font=Theme.font_mono(size=9),
+            )
+            indicator.pack(pady=(2, 2))
+            self._daq_link_indicators.append(indicator)
 
     # ── Draw rig schematic ──────────────────────────────────────────────
 
@@ -398,7 +425,7 @@ class VirtualRigWindow:
                 c.itemconfigure(self._ir_label, fill="#555")
 
         # ── GPIO indicators (only if changed) ──────────────────────────
-        for pin in range(6):
+        for pin in range(4):
             if prev is not None and (
                 snap.gpio_modes[pin] == prev.gpio_modes[pin]
                 and snap.gpio_output_states[pin] == prev.gpio_output_states[pin]
@@ -419,6 +446,14 @@ class VirtualRigWindow:
             else:  # INPUT
                 indicator.configure(text="INPUT")
                 btn.state(["!disabled"])
+
+        # ── DAQ link indicators (only if changed) ───────────────────────
+        for idx in range(2):
+            if prev is not None and snap.daq_link_states[idx] == prev.daq_link_states[idx]:
+                continue
+            state = snap.daq_link_states[idx]
+            indicator = self._daq_link_indicators[idx]
+            indicator.configure(text="HI" if state else "LO")
 
         self._last_snap = snap
 

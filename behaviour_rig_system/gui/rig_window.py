@@ -98,7 +98,7 @@ class RigWindow:
         self.rig_name = self.rig_config.get("name", "Unknown")
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("680x1000")
+        self.root.geometry("680x1200")
         self.root.minsize(580, 580)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 

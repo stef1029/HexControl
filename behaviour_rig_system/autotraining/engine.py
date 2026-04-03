@@ -284,19 +284,20 @@ class AutotrainingEngine:
         Returns:
             Name of the new stage if a transition fired, None otherwise.
         """
-        if self._current_stage is None or self._perf_tracker is None:
+        if self._current_stage is None or not self._perf_trackers:
             return None
 
         session_minutes = (time.time() - self._session_start_time) / 60.0
 
         context = TransitionContext(
-            perf_tracker=self._perf_tracker,
+            perf_trackers=self._perf_trackers,
+            current_stage_name=self._current_stage.name,
+            stage_start_trial_index=self._stage_start_trial_index,
             trials_in_stage=self._trials_in_stage,
             total_trials_in_stage=self._total_trials_in_stage,
             consecutive_correct=self._consecutive_correct,
             consecutive_timeout=self._consecutive_timeout,
             session_time_minutes=session_minutes,
-            stage_start_trial_index=self._stage_start_trial_index,
         )
 
         for transition in self._transitions:

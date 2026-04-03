@@ -1,16 +1,19 @@
 """
-Visual Autotraining Protocol
+Audio Autotraining Protocol
 
-Adaptive protocol that progresses through training stages based on performance.
-Uses LED-only cues (no audio).
+Adaptive protocol that progresses through visual training stages then branches
+into audio/visual interleaved training. Uses the same visual introduction
+stages as the visual-only protocol, then adds audio trials with a continuous
+overhead tone. The mouse learns to go to the landmarked port (port 0) on
+audio cue, interleaved with visual LED trials at ports 1-5.
 """
 
 import os
 import random
 from datetime import datetime
 
-from autotraining.definitions.visual.graph import TRANSITIONS
-from autotraining.definitions.visual.stages import STAGES
+from autotraining.definitions.audio.graph import TRANSITIONS
+from autotraining.definitions.audio.stages import STAGES
 from autotraining.engine import AutotrainingEngine
 from autotraining.persistence import (
     append_transition_log,
@@ -22,27 +25,52 @@ from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
 
 
-class VisualAutoTrainingProtocol(BaseProtocol):
-    """Adaptive visual training protocol with persistent stage progression."""
+try:
+    from BehavLink import SpeakerFrequency, SpeakerDuration
+except ImportError:
+    class SpeakerFrequency:
+        OFF = 0
+        FREQ_3300_HZ = 4
+
+    class SpeakerDuration:
+        OFF = 0
+        CONTINUOUS = 7
+
+
+class AudioAutoTrainingProtocol(BaseProtocol):
+    """Adaptive audio/visual training protocol with persistent stage progression."""
 
     @classmethod
     def get_name(cls) -> str:
-        return "Autotraining (Visual)"
+        return "Autotraining (Audio)"
 
     @classmethod
     def get_description(cls) -> str:
         return (
-            "Visual autotraining protocol. Automatically progresses through training "
-            "stages based on mouse performance using LED-only cues. "
-            "Saves progress between sessions."
+            "Audio autotraining protocol. Progresses through visual training stages "
+            "then branches into audio/visual interleaved training. The mouse learns "
+            "to associate an overhead tone with the landmarked port (port 0), "
+            "interleaved with visual LED trials at ports 1-5."
         )
+
+    # Stages that belong to the audio phase (use general audio/visual trackers)
+    _AUDIO_PHASE_STAGES = {
+        "audio_only", "interleaved_2_6", "interleaved_3_6",
+        "interleaved_1_6", "visual_only_remedial",
+    }
 
     @classmethod
     def get_tracker_definitions(cls) -> list:
-        return [
+        # Per-stage trackers for visual introduction phases
+        defs = [
             TrackerDefinition(name=stage.name, display_name=stage.display_name)
             for stage in STAGES.values()
+            if stage.name not in cls._AUDIO_PHASE_STAGES
         ]
+        # General-purpose trackers for the audio training phase
+        defs.append(TrackerDefinition("visual", "Visual Trials"))
+        defs.append(TrackerDefinition("audio", "Audio Trials"))
+        return defs
 
     @classmethod
     def get_parameters(cls) -> list:
@@ -69,6 +97,11 @@ class VisualAutoTrainingProtocol(BaseProtocol):
         self.log("IR illuminator ON (100%)")
 
     def _cleanup(self) -> None:
+        # Ensure speaker is off on cleanup
+        try:
+            self.link.speaker_set(SpeakerFrequency.OFF, SpeakerDuration.OFF)
+        except Exception:
+            pass
         self.link.ir_set(0)
 
     def _run_protocol(self) -> None:
@@ -80,7 +113,6 @@ class VisualAutoTrainingProtocol(BaseProtocol):
             self.log("ERROR: Scales not available!")
             return
 
-        # Reset all trackers
         for tracker in perf_trackers.values():
             tracker.reset()
 
@@ -224,7 +256,7 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                             f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
                         )
 
-                # --- Visual mode trial ---
+                # --- Audio/visual mode trial ---
 
                 else:
                     response_timeout = stage_params["response_timeout"]
@@ -236,18 +268,39 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                     spotlight_duration = stage_params.get("spotlight_duration", 0.0)
                     spotlight_brightness = stage_params.get("spotlight_brightness", 255)
 
+                    audio_enabled = stage_params.get("audio_enabled", False)
+                    audio_proportion = stage_params.get("audio_proportion", 6)
+
+                    # Build enabled visual ports
                     enabled_ports = []
                     for i in range(6):
                         if stage_params.get(f"port_{i}_enabled", False):
                             enabled_ports.append(i)
 
-                    if not enabled_ports:
-                        self.log(f"WARNING: No ports enabled in stage {engine.current_stage_name}, using port 0")
-                        enabled_ports = [0]
+                    # Build weighted trial pool (port 6 = audio marker)
+                    if audio_enabled:
+                        if audio_proportion == 0:
+                            weighted_pool = [6]
+                        else:
+                            weighted_pool = enabled_ports.copy()
+                            for _ in range(audio_proportion):
+                                weighted_pool.append(6)
+                    else:
+                        weighted_pool = enabled_ports.copy()
+
+                    if not weighted_pool:
+                        self.log(f"WARNING: No trials possible in stage {engine.current_stage_name}, using port 0")
+                        weighted_pool = [0]
 
                     trial_num += 1
-                    target_port = random.choice(enabled_ports)
 
+                    # --- Select trial type ---
+                    port = random.choice(weighted_pool)
+                    is_audio = port == 6
+                    target_port = 0 if is_audio else port
+                    trial_type = "audio" if is_audio else "visual"
+
+                    # --- Wait duration ---
                     wait_complete = False
                     activation_time = self.now()
                     while not self.check_stop():
@@ -269,13 +322,28 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                         self.sleep(iti)
                         continue
 
-                    tracker = perf_trackers.get(engine.current_stage_name)
+                    # --- Select tracker ---
+                    # Per-stage tracker for visual phases, named tracker for audio phases
+                    stage_name = engine.current_stage_name
+                    stage_tracker = perf_trackers.get(stage_name)
+                    if stage_tracker is not None:
+                        tracker = stage_tracker
+                    else:
+                        tracker = perf_trackers.get(trial_type)
+
                     if tracker is not None:
                         tracker.stimulus(target_port)
                     trial_start_time = self.now()
 
-                    self.link.led_set(target_port, led_brightness)
+                    if is_audio:
+                        try:
+                            self.link.speaker_set(SpeakerFrequency.FREQ_3300_HZ, SpeakerDuration.CONTINUOUS)
+                        except Exception as e:
+                            self.log(f"  Warning: Could not play audio cue: {e}")
+                    else:
+                        self.link.led_set(target_port, led_brightness)
 
+                    # --- Wait for response ---
                     cue_on = True
                     event = None
                     while True:
@@ -284,7 +352,8 @@ class VisualAutoTrainingProtocol(BaseProtocol):
 
                         elapsed = self.now() - trial_start_time
                         if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                            self.link.led_set(target_port, 0)
+                            if not is_audio:
+                                self.link.led_set(target_port, 0)
                             cue_on = False
 
                         if elapsed >= response_timeout:
@@ -295,12 +364,19 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                         if event is not None:
                             if not ignore_incorrect or event.port == target_port:
                                 break
-                            # Incorrect touch ignored — keep waiting
 
                     trial_duration = self.now() - trial_start_time
-                    if cue_on:
+
+                    # Turn off cue
+                    if is_audio:
+                        try:
+                            self.link.speaker_set(SpeakerFrequency.OFF, SpeakerDuration.OFF)
+                        except Exception:
+                            pass
+                    elif cue_on:
                         self.link.led_set(target_port, 0)
 
+                    # --- Record outcome ---
                     outcome = "timeout"
                     chosen_port = None
 
@@ -309,17 +385,19 @@ class VisualAutoTrainingProtocol(BaseProtocol):
 
                     if event is None:
                         if tracker is not None:
-                            tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
+                            tracker.timeout(correct_port=target_port, trial_duration=trial_duration,
+                                            trial_type=trial_type, stage=stage_name)
                         outcome = "timeout"
-                        self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
+                        self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s) [{trial_type}]")
                     elif event.port == target_port:
                         if tracker is not None:
-                            tracker.success(correct_port=target_port, trial_duration=trial_duration)
+                            tracker.success(correct_port=target_port, trial_duration=trial_duration,
+                                            trial_type=trial_type, stage=stage_name)
                         self.link.valve_pulse(target_port, self.reward_durations[target_port])
                         outcome = "success"
                         chosen_port = event.port
                         self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
+                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s) [{trial_type}]"
                         )
                     else:
                         if tracker is not None:
@@ -327,11 +405,13 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                                 correct_port=target_port,
                                 chosen_port=event.port,
                                 trial_duration=trial_duration,
+                                trial_type=trial_type,
+                                stage=stage_name,
                             )
                         outcome = "failure"
                         chosen_port = event.port
                         self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
+                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port}) [{trial_type}]"
                         )
 
                         if incorrect_timeout > 0:
@@ -364,6 +444,12 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                     self.sleep(iti)
 
         finally:
+            # Make sure speaker is off
+            try:
+                self.link.speaker_set(SpeakerFrequency.OFF, SpeakerDuration.OFF)
+            except Exception:
+                pass
+
             end_state = engine.get_session_end_state()
             transition_log = engine.get_transition_log()
 

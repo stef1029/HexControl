@@ -46,6 +46,11 @@ BASE_DEFAULTS: dict[str, Any] = {
     # Audio
     "audio_enabled": False,
     "audio_proportion": 6,
+
+    # Scales mode (only used when trial_mode == "scales")
+    "trial_mode": "visual",          # "visual" or "scales"
+    "scales_reward_port": 0,         # Fixed port for reward delivery in scales mode
+    "collection_timeout": 30.0,      # Time (s) to wait for mouse to visit reward port
 }
 
 

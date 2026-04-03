@@ -164,10 +164,24 @@ class SetupMode(ttk.Frame):
     def _create_widgets(self) -> None:
         """Create the setup UI widgets."""
         palette = Theme.palette
-        
-        # Session info panel
-        session_frame = ttk.LabelFrame(self, text="Session Info", padding=(10, 6))
-        session_frame.pack(fill="x", padx=10, pady=6)
+
+        # Start button (packed first so it's always visible at the bottom)
+        button_frame = ttk.Frame(self)
+        button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
+
+        self.start_button = ttk.Button(
+            button_frame, text="Start Session",
+            command=self._on_start_clicked,
+            style="Success.TButton"
+        )
+        self.start_button.pack(side="right", padx=3)
+
+        # Resizable paned area for session info and protocol tabs
+        self._paned = ttk.PanedWindow(self, orient="vertical")
+        self._paned.pack(fill="both", expand=True, padx=10, pady=6)
+
+        # --- Pane 1: Session Info ---
+        session_frame = ttk.LabelFrame(self._paned, text="Session Info", padding=(10, 6))
         
         # Save Location
         cohort_frame = ttk.LabelFrame(session_frame, text="Save Location", padding=(8, 4))
@@ -273,38 +287,30 @@ class SetupMode(ttk.Frame):
         
         # Simulated mouse settings (only shown in simulate mode)
         if self._simulate:
-            self._create_mouse_panel()
+            self._create_mouse_panel(session_frame)
 
-        # Start button (packed first so it's always visible at the bottom)
-        button_frame = ttk.Frame(self)
-        button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
-        
-        self.start_button = ttk.Button(
-            button_frame, text="Start Session",
-            command=self._on_start_clicked,
-            style="Success.TButton"
-        )
-        self.start_button.pack(side="right", padx=3)
-        
-        # Protocol tabs (fills remaining space above the start button)
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=6)
-        
+        self._paned.add(session_frame, weight=1)
+
+        # --- Pane 2: Protocol Tabs ---
+        self.notebook = ttk.Notebook(self._paned)
+
         self.protocol_tabs: dict[str, ProtocolTab] = {}
         for protocol_class in get_available_protocols():
             tab = ProtocolTab(self.notebook, protocol_class)
             protocol_name = protocol_class.get_name()
             self.notebook.add(tab, text=protocol_name)
             self.protocol_tabs[protocol_name] = tab
+
+        self._paned.add(self.notebook, weight=3)
     
-    def _create_mouse_panel(self) -> None:
+    def _create_mouse_panel(self, parent) -> None:
         """Create the simulated mouse settings panel (simulate mode only)."""
         palette = Theme.palette
 
         mouse_frame = ttk.LabelFrame(
-            self, text="Simulated Mouse", padding=(10, 4)
+            parent, text="Simulated Mouse", padding=(10, 4)
         )
-        mouse_frame.pack(fill="x", padx=10, pady=4)
+        mouse_frame.pack(fill="x", padx=3, pady=(0, 5))
 
         # Scrollable container with fixed max height
         canvas = tk.Canvas(

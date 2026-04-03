@@ -1,16 +1,35 @@
 """
-Visual Autotraining Transition Graph
+Audio Autotraining Transition Graph
 
-Defines the edges and conditions for moving between training stages.
-Transitions are evaluated after every trial, in priority order (lowest first).
+Defines the edges and conditions for moving between training stages in the
+audio/visual interleaved protocol.
 
-The special target "$saved" means "go to the mouse's persisted stage from
-last session" -- used exclusively by the warm-up exit transition.
+Stages share the same visual introduction path (phases 1-4) as the visual
+protocol, then branch into audio training at 6-port mastery.
 
 Transition priorities:
     0-4:   Global/emergency rules (apply from any stage)
-    5-9:   Regression rules (falling back to easier stages)
+    5-6:   Severe regression rules (<30% accuracy)
+    7-8:   Moderate regression rules (<50% accuracy)
     10-19: Forward progression rules (the main training path)
+
+Audio branch graph (after multiple_leds_6x):
+
+    multiple_leds_6x ──(>=90%)──> audio_only ──(>=90%)──> interleaved_2_6
+                                     ^                         │
+                                     │                    (target stage)
+                                     │                    ┌────┼────┐
+                                     │               <50% audio  <50% visual
+                                     │                    │         │
+                                     │             interleaved_3_6  interleaved_1_6
+                                     │                    │         │
+                                     │              (>=60% audio)  (>=60% visual)
+                                     │                    └────┬────┘
+                                     │                         │
+                                     │                  back to interleaved_2_6
+                                     │
+                              <30% audio from any interleaved
+                              <30% visual ──> visual_only_remedial ──(>=90%)──┘
 """
 
 from ...transitions import Transition, Condition
@@ -23,7 +42,7 @@ from ...transitions import Transition, Condition
 TRANSITIONS: list[Transition] = [
 
     # -------------------------------------------------------------------------
-    # Warm-up exit: after 10 correct trials, move to the saved stage
+    # Warm-up exit
     # -------------------------------------------------------------------------
 
     Transition(
@@ -52,7 +71,7 @@ TRANSITIONS: list[Transition] = [
     ),
 
     # -------------------------------------------------------------------------
-    # Forward: introduce_1_led -> introduce_another_led -> multiple_leds_2x -> multiple_leds_6x
+    # Forward: visual introduction path (phases 1-4)
     # -------------------------------------------------------------------------
 
     Transition(
@@ -62,7 +81,7 @@ TRANSITIONS: list[Transition] = [
             Condition("rolling_accuracy", ">=", 90, window=20),
         ],
         priority=10,
-        description="Single LED mastered (>90% over 20 trials), move to adding wait on platform time",
+        description="Single LED mastered (>90% over 20 trials), adding platform wait",
     ),
 
     # -------------------------------------------------------------------------
@@ -120,7 +139,7 @@ TRANSITIONS: list[Transition] = [
     ),
 
     # -------------------------------------------------------------------------
-    # Regression
+    # Regression: visual introduction path
     # -------------------------------------------------------------------------
 
     Transition(
@@ -164,112 +183,138 @@ TRANSITIONS: list[Transition] = [
     ),
 
     # -------------------------------------------------------------------------
-    # Forward: cue duration ladder
-    # multiple_leds_6x -> 1000ms -> 750ms -> 500ms -> 250ms -> 100ms
+    # Forward: audio branch — 6-port mastery -> pure audio -> interleaved
     # -------------------------------------------------------------------------
 
     Transition(
         from_stage="multiple_leds_6x",
-        to_stage="cue_duration_1000ms",
+        to_stage="audio_only",
         conditions=[
             Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
-        description="6-port mastered, beginning cue duration ladder (>90% over 30 trials)",
+        description="6-port mastered (>=90% over 30 trials), entering audio training",
     ),
 
     Transition(
-        from_stage="cue_duration_1000ms",
-        to_stage="cue_duration_750ms",
+        from_stage="audio_only",
+        to_stage="interleaved_2_6",
         conditions=[
-            Condition("rolling_accuracy", ">=", 75, window=30),
+            Condition("rolling_accuracy", ">=", 90, window=20, tracker="audio"),
         ],
         priority=10,
-        description="1000ms cue mastered (>=75% over 30 trials)",
-    ),
-
-    Transition(
-        from_stage="cue_duration_750ms",
-        to_stage="cue_duration_500ms",
-        conditions=[
-            Condition("rolling_accuracy", ">=", 60, window=30),
-        ],
-        priority=10,
-        description="750ms cue mastered (>=60% over 30 trials)",
-    ),
-
-    Transition(
-        from_stage="cue_duration_500ms",
-        to_stage="cue_duration_250ms",
-        conditions=[
-            Condition("rolling_accuracy", ">=", 50, window=30),
-        ],
-        priority=10,
-        description="500ms cue mastered (>=50% over 30 trials)",
-    ),
-
-    Transition(
-        from_stage="cue_duration_250ms",
-        to_stage="cue_duration_100ms",
-        conditions=[
-            Condition("rolling_accuracy", ">=", 40, window=30),
-        ],
-        priority=10,
-        description="250ms cue mastered (>=40% over 30 trials)",
+        description="Audio mastered (>=90% over 20 trials), entering interleaved 2:5",
     ),
 
     # -------------------------------------------------------------------------
-    # Regression: cue duration ladder
+    # Severe regression from interleaved_2_6: <30% in either trial type
+    # (higher priority than moderate regressions)
     # -------------------------------------------------------------------------
 
     Transition(
-        from_stage="cue_duration_1000ms",
-        to_stage="multiple_leds_6x",
+        from_stage="interleaved_2_6",
+        to_stage="audio_only",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="audio"),
         ],
         priority=5,
-        description="Regression at 1000ms cue (<25% over 20 trials)",
+        description="Severe audio regression in 2:5 (<30% audio over 20), back to audio only",
     ),
 
     Transition(
-        from_stage="cue_duration_750ms",
-        to_stage="cue_duration_1000ms",
+        from_stage="interleaved_2_6",
+        to_stage="visual_only_remedial",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="visual"),
         ],
         priority=5,
-        description="Regression at 750ms cue (<25% over 20 trials)",
+        description="Severe visual regression in 2:5 (<30% visual over 20), to visual remedial",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Moderate regression from interleaved_2_6: <50% in either trial type
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_2_6",
+        to_stage="interleaved_3_6",
+        conditions=[
+            Condition("rolling_accuracy", "<", 50, window=20, tracker="audio"),
+        ],
+        priority=7,
+        description="Audio struggling in 2:5 (<50% audio over 20), increasing audio proportion",
     ),
 
     Transition(
-        from_stage="cue_duration_500ms",
-        to_stage="cue_duration_750ms",
+        from_stage="interleaved_2_6",
+        to_stage="interleaved_1_6",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 50, window=20, tracker="visual"),
         ],
-        priority=5,
-        description="Regression at 500ms cue (<25% over 20 trials)",
+        priority=7,
+        description="Visual struggling in 2:5 (<50% visual over 20), decreasing audio proportion",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Forward: return from interleaved remedial stages -> interleaved_2_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_3_6",
+        to_stage="interleaved_2_6",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 60, window=20, tracker="audio"),
+        ],
+        priority=10,
+        description="Audio recovered in 3:5 (>=60% audio over 20), returning to 2:5",
     ),
 
     Transition(
-        from_stage="cue_duration_250ms",
-        to_stage="cue_duration_500ms",
+        from_stage="interleaved_1_6",
+        to_stage="interleaved_2_6",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", ">=", 60, window=20, tracker="visual"),
+        ],
+        priority=10,
+        description="Visual recovered in 1:5 (>=60% visual over 20), returning to 2:5",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Severe regression from interleaved_3_6 and interleaved_1_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_3_6",
+        to_stage="audio_only",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="audio"),
         ],
         priority=5,
-        description="Regression at 250ms cue (<25% over 20 trials)",
+        description="Severe audio regression in 3:5 (<30% audio over 20), back to audio only",
     ),
 
     Transition(
-        from_stage="cue_duration_100ms",
-        to_stage="cue_duration_250ms",
+        from_stage="interleaved_1_6",
+        to_stage="visual_only_remedial",
         conditions=[
-            Condition("rolling_accuracy", "<", 20, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="visual"),
         ],
         priority=5,
-        description="Regression at 100ms cue (<20% over 20 trials)",
+        description="Severe visual regression in 1:5 (<30% visual over 20), to visual remedial",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Forward: return from pure remedial stages -> interleaved_2_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="visual_only_remedial",
+        to_stage="interleaved_2_6",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=20, tracker="visual"),
+        ],
+        priority=10,
+        description="Visual remedial mastered (>=90% over 20), returning to interleaved 2:5",
     ),
 
 ]

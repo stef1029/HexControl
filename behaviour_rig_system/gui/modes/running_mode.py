@@ -55,28 +55,11 @@ class RunningMode(ttk.Frame):
     def _create_widgets(self) -> None:
         """Create the running UI widgets."""
         palette = Theme.palette
-        
-        # Session summary at top
-        summary_frame = ttk.LabelFrame(self, text="Session", padding=(10, 6))
-        summary_frame.pack(fill="x", padx=10, pady=6)
-        
-        self._summary_labels = {}
-        for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
-            row = ttk.Frame(summary_frame)
-            row.pack(fill="x", pady=1)
-            ttk.Label(row, text=label_text, style="Subheading.TLabel").pack(side="left")
-            value_label = ttk.Label(row, text="", foreground=palette.text_secondary)
-            value_label.pack(side="left", padx=6)
-            self._summary_labels[key] = value_label
-        
-        # Performance stats container (populated dynamically in activate())
-        self._perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
-        self._perf_frame.pack(fill="x", padx=10, pady=5)
-        
+
         # Stop button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
         button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
-        
+
         self._stop_button = ttk.Button(
             button_frame, text="Stop Session",
             command=self._on_stop_clicked,
@@ -89,63 +72,83 @@ class RunningMode(ttk.Frame):
             command=self._toggle_daq_view,
         )
         self._daq_view_btn.pack(side="right", padx=3)
-        
-        # Timer and status row
+
+        # Timer and status row (pinned above buttons)
         timer_frame = ttk.Frame(self)
         timer_frame.pack(side="bottom", fill="x", padx=10, pady=6)
-        
+
         ttk.Label(timer_frame, text="Elapsed:", style="Subheading.TLabel").pack(side="left")
         self._timer_label = ttk.Label(
             timer_frame, text="00:00:00",
-            font=Theme.font_mono(size=22, weight="bold"), 
+            font=Theme.font_mono(size=22, weight="bold"),
             foreground=palette.success
         )
         self._timer_label.pack(side="left", padx=10)
-        
+
         self._status_label = ttk.Label(
             timer_frame, text="RUNNING",
-            font=Theme.font(size=12, weight="bold"), 
+            font=Theme.font(size=12, weight="bold"),
             foreground=palette.success
         )
         self._status_label.pack(side="right", padx=10)
-        
+
         # =====================================================================
-        # Resizable paned area: Trial Log | Scales Plot | Session Log
+        # Resizable paned area: Session+Performance | Trial Log | Scales | Log
         # =====================================================================
         self._paned = ttk.PanedWindow(self, orient="vertical")
         self._paned.pack(fill="both", expand=True, padx=10, pady=5)
-        
-        # --- Pane 1: Trial Log ---
+
+        # --- Pane 1: Session Summary + Performance ---
+        info_pane = ttk.Frame(self._paned)
+
+        summary_frame = ttk.LabelFrame(info_pane, text="Session", padding=(10, 6))
+        summary_frame.pack(fill="x", pady=(0, 3))
+
+        self._summary_labels = {}
+        for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
+            row = ttk.Frame(summary_frame)
+            row.pack(fill="x", pady=1)
+            ttk.Label(row, text=label_text, style="Subheading.TLabel").pack(side="left")
+            value_label = ttk.Label(row, text="", foreground=palette.text_secondary)
+            value_label.pack(side="left", padx=6)
+            self._summary_labels[key] = value_label
+
+        self._perf_frame = ttk.LabelFrame(info_pane, text="Performance", padding=(10, 6))
+        self._perf_frame.pack(fill="both", expand=True)
+
+        self._paned.add(info_pane, weight=0)
+
+        # --- Pane 2: Trial Log ---
         trial_pane = ttk.LabelFrame(self._paned, text="Trial Log", padding=(8, 4))
         self._trial_log = scrolledtext.ScrolledText(
             trial_pane, height=8, state="disabled"
         )
         style_scrolled_text(self._trial_log, log_style=True)
         self._trial_log.pack(fill="both", expand=True)
-        
+
         # Configure tags for trial log coloring
         self._trial_log.tag_config("success", foreground=palette.success)
         self._trial_log.tag_config("failure", foreground=palette.error)
         self._trial_log.tag_config("timeout", foreground=palette.warning)
         self._trial_log.tag_config("stimulus", foreground=palette.info)
-        
+
         self._paned.add(trial_pane, weight=3)
-        
-        # --- Pane 2: Live Scales Plot ---
+
+        # --- Pane 3: Live Scales Plot ---
         scales_pane = ttk.LabelFrame(self._paned, text="Scales", padding=(8, 4))
         self._scales_plot = ScalesPlotWidget(scales_pane)
         self._scales_plot.pack(fill="both", expand=True)
-        
+
         self._paned.add(scales_pane, weight=1)
-        
-        # --- Pane 3: Session Log ---
+
+        # --- Pane 4: Session Log ---
         log_pane = ttk.LabelFrame(self._paned, text="Session Log", padding=(8, 4))
         self._log_text = scrolledtext.ScrolledText(
             log_pane, height=3, state="disabled"
         )
         style_scrolled_text(self._log_text, log_style=True)
         self._log_text.pack(fill="both", expand=True)
-        
+
         self._paned.add(log_pane, weight=1)
     
     def set_scales_client(self, client) -> None:

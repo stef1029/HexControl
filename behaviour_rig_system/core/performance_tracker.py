@@ -378,6 +378,7 @@ class PerformanceTracker:
             "trial_duration_s",
             "correct_port",
             "chosen_port",
+            "stage",
         ]
 
         with open(file_path, "w", newline="", encoding="utf-8") as f:
@@ -392,6 +393,7 @@ class PerformanceTracker:
                     "trial_duration_s": f"{trial.trial_duration:.3f}",
                     "correct_port": trial.correct_port if trial.correct_port is not None else "",
                     "chosen_port": trial.chosen_port if trial.chosen_port is not None else "",
+                    "stage": trial.details.get("stage", ""),
                 }
                 writer.writerow(row)
         
@@ -442,6 +444,7 @@ def save_merged_trials(
         "trial_duration_s",
         "correct_port",
         "chosen_port",
+        "stage",
     ]
 
     with open(file_path, "w", newline="", encoding="utf-8") as f:
@@ -457,6 +460,7 @@ def save_merged_trials(
                 "trial_duration_s": f"{trial.trial_duration:.3f}",
                 "correct_port": trial.correct_port if trial.correct_port is not None else "",
                 "chosen_port": trial.chosen_port if trial.chosen_port is not None else "",
+                "stage": trial.details.get("stage", ""),
             }
             writer.writerow(row)
 
