@@ -80,8 +80,8 @@ class PerformanceTracker:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass  # Don't let GUI errors crash the protocol
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
     
     def reset(self) -> None:
         """Clear all trial records."""

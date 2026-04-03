@@ -155,7 +155,7 @@ class ScalesManager:
             self._log_file_path = os.path.join(
                 self.session_folder, "scales_server.log"
             )
-            self._log_file_handle = open(self._log_file_path, "w")
+            self._log_file_handle = open(self._log_file_path, "w", encoding="utf-8")
 
             self._process = subprocess.Popen(
                 command,
@@ -240,10 +240,10 @@ class ScalesManager:
                     try:
                         self._log_file_handle.write(raw_line.decode(errors="replace"))
                         self._log_file_handle.flush()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        print(f"Warning: scales log write error: {e}")
+        except Exception as e:
+            print(f"Warning: scales output reader error: {e}")
 
     def stop(self) -> None:
         """Stop the scales server gracefully."""
@@ -288,8 +288,8 @@ class ScalesManager:
         if self._log_file_handle is not None:
             try:
                 self._log_file_handle.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing scales log file: {e}")
             self._log_file_handle = None
     
     def _cleanup_process(self) -> None:

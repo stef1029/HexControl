@@ -97,8 +97,8 @@ class CameraManager:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
     
     @property
     def is_running(self) -> bool:
@@ -149,8 +149,8 @@ class CameraManager:
                 stderr = ""
                 try:
                     stderr = self._process.stderr.read().decode(errors="replace").strip()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Warning: could not read camera stderr: {e}")
                 self.last_error = (
                     f"Camera process exited immediately (code {self._process.returncode})"
                     + (f": {stderr}" if stderr else "")
@@ -225,5 +225,5 @@ class CameraManager:
         if os.path.exists(signal_file):
             try:
                 os.remove(signal_file)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: could not remove signal file: {e}")

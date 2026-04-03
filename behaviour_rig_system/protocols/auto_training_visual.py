@@ -146,8 +146,10 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                 iti = stage_params["iti"]
                 cue_duration = stage_params["cue_duration"]
                 led_brightness = stage_params["led_brightness"]
-                punishment_s = stage_params["punishment_duration"]
-                punishment_enabled = stage_params.get("punishment_enabled", False)
+                ignore_incorrect = stage_params.get("ignore_incorrect", False)
+                incorrect_timeout = stage_params.get("incorrect_timeout", 0.0)
+                spotlight_duration = stage_params.get("spotlight_duration", 0.0)
+                spotlight_brightness = stage_params.get("spotlight_brightness", 255)
                 platform_settle_time = stage_params["platform_settle_time"]
 
                 enabled_ports = []
@@ -233,7 +235,9 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                     remaining = response_timeout - elapsed
                     event = self.link.wait_for_event(timeout=min(0.1, remaining))
                     if event is not None:
-                        break
+                        if not ignore_incorrect or event.port == target_port:
+                            break
+                        # Incorrect touch ignored — keep waiting
 
                 trial_duration = self.now() - trial_start_time
                 if cue_on:
@@ -272,10 +276,16 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                         f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
                     )
 
-                    if punishment_enabled and punishment_s > 0:
-                        self.link.spotlight_set(255, 255)
-                        self.sleep(punishment_s)
-                        self.link.spotlight_set(255, 0)
+                    if incorrect_timeout > 0:
+                        if spotlight_duration > 0:
+                            self.link.spotlight_set(255, spotlight_brightness)
+                            self.sleep(min(spotlight_duration, incorrect_timeout))
+                            self.link.spotlight_set(255, 0)
+                            remaining_timeout = incorrect_timeout - spotlight_duration
+                            if remaining_timeout > 0:
+                                self.sleep(remaining_timeout)
+                        else:
+                            self.sleep(incorrect_timeout)
 
                 new_stage = engine.on_trial_complete(
                     outcome=outcome,

@@ -196,8 +196,8 @@ class BaseProtocol(ABC):
                 self._duration_timer = None
             try:
                 self._cleanup()
-            except Exception:
-                pass  # Don't mask original error
+            except Exception as e:
+                print(f"Warning: cleanup error: {e}")
 
         if error is not None:
             raise error
@@ -250,16 +250,16 @@ class BaseProtocol(ABC):
             from BehavLink import GPIOMode
             for pin in range(self.link.NUM_GPIO_PINS):
                 self.link.gpio_configure(pin, GPIOMode.OUTPUT)
-        except Exception:
-            pass  # Don't block the protocol if init fails
+        except Exception as e:
+            print(f"Warning: GPIO init failed: {e}")
 
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners."""
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     def check_stop(self) -> bool:
         """

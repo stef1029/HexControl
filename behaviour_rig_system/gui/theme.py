@@ -599,8 +599,8 @@ def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     if _ICON_PATH.exists():
         try:
             root.iconbitmap(_ICON_PATH)
-        except tk.TclError:
-            pass  # Silently ignore if icon can't be loaded
+        except tk.TclError as e:
+            print(f"Warning: could not load window icon: {e}")
     
     # =========================================================================
     # Frame Styles

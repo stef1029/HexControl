@@ -321,8 +321,8 @@ class VirtualRigWindow:
             if snap is not None:
                 self._redraw(snap)
             self._poll_timer_id = self._win.after(self._POLL_INTERVAL_MS, self._poll_tick)
-        except tk.TclError:
-            pass  # window destroyed
+        except tk.TclError as e:
+            print(f"Warning: virtual rig poll error (window destroyed?): {e}")
 
     def _redraw(self, snap: "RigStateSnapshot") -> None:
         """Redraw only the elements that changed since the last snapshot."""
@@ -476,18 +476,18 @@ class VirtualRigWindow:
         if self._poll_timer_id is not None:
             try:
                 self._win.after_cancel(self._poll_timer_id)
-            except (tk.TclError, ValueError):
-                pass
+            except (tk.TclError, ValueError) as e:
+                print(f"Warning: error cancelling poll timer: {e}")
             self._poll_timer_id = None
         try:
             self._win.destroy()
-        except tk.TclError:
-            pass
+        except tk.TclError as e:
+            print(f"Warning: error destroying virtual rig window: {e}")
 
     def show(self) -> None:
         """Show the window if it was hidden."""
         if not self._closed:
             try:
                 self._win.deiconify()
-            except tk.TclError:
-                pass
+            except tk.TclError as e:
+                print(f"Warning: error showing virtual rig window: {e}")

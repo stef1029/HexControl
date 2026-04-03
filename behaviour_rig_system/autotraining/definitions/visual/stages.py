@@ -80,8 +80,9 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 0.0, # s — 0 means no punishment
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
 
         # Audio
         "audio_enabled": False,
@@ -93,6 +94,45 @@ _register(Stage(
 # -----------------------------------------------------------------------------
 # Phase 1: Platform association and rearing
 # -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="introduce_1_led_no_wait",
+    display_name="Introduce 1 port + LED (no scales wait)",
+    description=(
+        ""
+    ),
+    overrides={
+        # Port selection
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": False,
+
+        # Cue settings
+        "cue_duration": 0.0,       # 0 = stay on until response
+        "led_brightness": 255,
+
+        # Platform settings
+        "weight_offset": 3.0,
+        "platform_settle_time": 0.0,
+
+        # Trial timing
+        "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+
+        # Reward/punishment
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+
+        # Audio
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
 
 _register(Stage(
     name="introduce_1_led",
@@ -123,8 +163,9 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 0.0, # s — 0 means no punishment
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
 
         # Audio
         "audio_enabled": False,
@@ -133,19 +174,20 @@ _register(Stage(
 ))
 
 _register(Stage(
-    name="introduce_another_led",
-    display_name="Introduce a different port",
+    name="introduce_another_led_lenient",
+    display_name="2nd port (lenient)",
     description=(
-        ""
+        "LED at port 3 with incorrect touches ignored — lets the mouse explore freely."
     ),
+    restart_stage="introduce_1_led",
     overrides={
         # Port selection
         "port_0_enabled": False,
         "port_1_enabled": False,
         "port_2_enabled": False,
-        "port_3_enabled": True,
+        "port_3_enabled": False,
         "port_4_enabled": False,
-        "port_5_enabled": False,
+        "port_5_enabled": True,
 
         # Cue settings
         "cue_duration": 0.0,       # 0 = stay on until response
@@ -161,8 +203,50 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 0.0, # s — 0 means no punishment
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "ignore_incorrect": True,
+
+        # Audio
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="introduce_another_led",
+    display_name="Introduce a different port",
+    description=(
+        ""
+    ),
+    restart_stage="introduce_1_led",
+    overrides={
+        # Port selection
+        "port_0_enabled": False,
+        "port_1_enabled": False,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": True,
+
+        # Cue settings
+        "cue_duration": 0.0,       # 0 = stay on until response
+        "led_brightness": 255,
+
+        # Platform settings
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+
+        # Trial timing
+        "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+
+        # Reward/punishment
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
 
         # Audio
         "audio_enabled": False,
@@ -172,7 +256,7 @@ _register(Stage(
 
 _register(Stage(
     name="multiple_leds_2x",
-    display_name="2 port active",
+    display_name="2 ports active",
     description=(
         ""
     ),
@@ -199,8 +283,9 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 0.0, # s — 0 means no punishment
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
 
         # Audio
         "audio_enabled": False,
@@ -237,8 +322,9 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 5.0, # s — 0 means no punishment
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
 
         # Audio
         "audio_enabled": False,
@@ -269,8 +355,9 @@ _register(Stage(
         "response_timeout": 5.0,
         "wait_duration": 0.0,
         "iti": 1.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": False,
         "audio_proportion": 6,
     },
@@ -294,8 +381,9 @@ _register(Stage(
         "response_timeout": 5.0,
         "wait_duration": 0.0,
         "iti": 1.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": False,
         "audio_proportion": 6,
     },
@@ -319,8 +407,9 @@ _register(Stage(
         "response_timeout": 5.0,
         "wait_duration": 0.0,
         "iti": 1.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": False,
         "audio_proportion": 6,
     },
@@ -344,8 +433,9 @@ _register(Stage(
         "response_timeout": 5.0,
         "wait_duration": 0.0,
         "iti": 1.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": False,
         "audio_proportion": 6,
     },
@@ -369,8 +459,9 @@ _register(Stage(
         "response_timeout": 5.0,
         "wait_duration": 0.0,
         "iti": 1.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": False,
         "audio_proportion": 6,
     },

@@ -339,8 +339,8 @@ class BehaviourRigLink:
         """Ensures clean shutdown when exiting context."""
         try:
             self.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: BehavLink shutdown error: {e}")
         self.stop()
 
     def start(self) -> None:
@@ -676,7 +676,7 @@ class BehaviourRigLink:
                     status = ack_queue.get(timeout=timeout)
                     return status
                 except queue.Empty:
-                    pass
+                    print(f"Warning: BehavLink command ACK timeout (attempt {attempt + 1}/{retries})")
 
             raise TimeoutError(
                 f"No acknowledgement after {retries} attempts "

@@ -14,6 +14,7 @@ Features:
 """
 
 import csv
+import logging
 import struct
 import threading
 import time
@@ -22,6 +23,8 @@ from pathlib import Path
 from typing import Optional
 
 import serial
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -226,15 +229,15 @@ class Scales:
         self._stop_flag.set()
 
         if self._read_thread is not None:
-            self._read_thread.join(timeout=2.0)
+            self._read_thread.join(timeout=5.0)
             self._read_thread = None
 
         if self._serial is not None:
             if self._config.is_wired:
                 try:
                     self._serial.write(b'e')  # Stop acquisition
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Error sending stop command to scales: %s", e)
             self._serial.close()
             self._serial = None
 
@@ -389,8 +392,8 @@ class Scales:
                 else:
                     self._read_wireless()
             except Exception:
-                # Silently continue on read errors
-                pass
+                logger.exception("Error in scales read loop")
+                time.sleep(0.1)  # back off to avoid tight error loop
 
     def _read_wired(self) -> None:
         """
@@ -399,6 +402,9 @@ class Scales:
         The wired protocol uses 8-byte messages with interleaved ID and value
         bytes, terminated by 0x02 0x03.
         """
+        if self._serial is None or self._serial.closed:
+            time.sleep(0.01)
+            return
         if self._serial.in_waiting == 0:
             time.sleep(0.01)
             return
@@ -407,9 +413,13 @@ class Scales:
         data = self._serial.read(self._serial.in_waiting)
         self._data_buffer.extend(data)
 
-        # Prevent buffer overflow
+        # Prevent buffer overflow — truncate at a delimiter boundary
         if len(self._data_buffer) > 20000:
-            self._data_buffer = self._data_buffer[-10000:]
+            last_delim = self._data_buffer.rfind(b'\x02\x03')
+            if last_delim != -1:
+                self._data_buffer = self._data_buffer[last_delim + 2:]
+            else:
+                self._data_buffer.clear()
 
         # Process complete messages (delimited by 0x02 0x03)
         end_delimiter = b'\x02\x03'
@@ -440,6 +450,9 @@ class Scales:
 
         The wireless protocol sends ASCII float values, one per line.
         """
+        if self._serial is None or self._serial.closed:
+            time.sleep(0.01)
+            return
         if self._serial.in_waiting == 0:
             time.sleep(0.01)
             return
@@ -450,8 +463,8 @@ class Scales:
                 raw_value = float(line)
                 weight_g = ((raw_value - self._config.intercept) * self._config.scale) / 1000
                 self._update_weight(weight_g, raw_value, None)
-        except (ValueError, UnicodeDecodeError):
-            pass
+        except (ValueError, UnicodeDecodeError) as e:
+            print(f"Warning: wireless scales parse error: {e}")
 
     def _update_weight(
         self,

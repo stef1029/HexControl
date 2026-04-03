@@ -93,8 +93,8 @@ class SessionController:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     # =========================================================================
     # Phase management
@@ -347,14 +347,15 @@ class SessionController:
 
             self._emit("startup_status", message="Startup complete!")
 
-            # Compute scales threshold if available
+            # Compute scales threshold if mouse_weight is available
             params = config.get("parameters", {})
             scales_threshold = None
-            if "weight_offset" in params and "mouse_weight" in params:
+            if "mouse_weight" in params:
                 try:
-                    scales_threshold = float(params["mouse_weight"]) - float(params["weight_offset"])
-                except (TypeError, ValueError):
-                    pass
+                    weight_offset = float(params.get("weight_offset", 3.0))
+                    scales_threshold = float(params["mouse_weight"]) - weight_offset
+                except (TypeError, ValueError) as e:
+                    print(f"Warning: could not compute scales threshold: {e}")
 
             # Build session info for the GUI
             session_info = {
@@ -538,24 +539,24 @@ class SessionController:
             try:
                 self._emit("cleanup_log", message="Shutting down rig link...")
                 link.shutdown()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error shutting down rig link: {e}")
             try:
                 link.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping rig link: {e}")
 
         if ser is not None:
             try:
                 ser.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing serial port: {e}")
 
         if pm is not None:
             try:
                 pm.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping peripherals: {e}")
 
     # =========================================================================
     # Metadata

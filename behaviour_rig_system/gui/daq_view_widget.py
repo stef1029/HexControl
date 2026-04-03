@@ -59,8 +59,8 @@ class DAQUDPListener(threading.Thread):
         if self._sock:
             try:
                 self._sock.close()
-            except OSError:
-                pass
+            except OSError as e:
+                print(f"Warning: error closing DAQ socket: {e}")
 
     def run(self) -> None:
         port = _UDP_BASE_PORT + self.rig_number
@@ -90,8 +90,8 @@ class DAQUDPListener(threading.Thread):
         self.receiving = False
         try:
             self._sock.close()
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"Warning: error closing DAQ socket: {e}")
 
 
 class DAQViewWidget(ttk.Frame):
@@ -213,8 +213,8 @@ class DAQViewWidget(ttk.Frame):
         text = self._window_var.get().rstrip("s")
         try:
             self._window_sec = float(text)
-        except ValueError:
-            pass
+        except ValueError as e:
+            print(f"Warning: invalid window size value: {e}")
 
     # -- update loop ----------------------------------------------------
 

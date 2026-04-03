@@ -89,13 +89,13 @@ def test_rig_connection(
         if link:
             try:
                 link.stop()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping link: {e}")
         if ser and ser.is_open:
             try:
                 ser.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing serial: {e}")
 
 
 class RigLauncher:
@@ -752,8 +752,8 @@ class RigLauncher:
             # Destroy the window
             try:
                 window.destroy()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error destroying window: {e}")
 
             # Update button appearance (restore to normal unselected state)
             self.rig_selected[rig_name] = False
@@ -787,15 +787,15 @@ class RigLauncher:
             try:
                 rig_window.controller.close()
                 window.destroy()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing rig window: {e}")
         
         # Stop docs server if running
         if getattr(self, "_docs_process", None) is not None:
             try:
                 self._docs_process.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping docs server: {e}")
 
         self.root.destroy()
     

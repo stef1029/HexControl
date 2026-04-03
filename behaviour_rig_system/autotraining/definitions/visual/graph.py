@@ -42,38 +42,68 @@ TRANSITIONS: list[Transition] = [
     # -------------------------------------------------------------------------
 
     Transition(
+        from_stage="introduce_1_led_no_wait",
+        to_stage="introduce_1_led",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=20),
+        ],
+        priority=10,
+        description="Single LED mastered (>90% over 20 trials), move to adding wait on platform time",
+    ),
+
+    Transition(
         from_stage="introduce_1_led",
-        to_stage="introduce_another_led",
+        to_stage="introduce_another_led_lenient",
         conditions=[
             Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
-        description="Single LED mastered (>90% over 30 trials)",
+        description="Single LED mastered (>90% over 30 trials), move to lenient 2nd port",
+    ),
+
+    Transition(
+        from_stage="introduce_another_led_lenient",
+        to_stage="introduce_another_led",
+        conditions=[
+            Condition("trials_in_stage", ">=", 30),
+        ],
+        priority=10,
+        description="Lenient 2nd port complete (30 trials), move to strict 2nd port",
     ),
 
     Transition(
         from_stage="introduce_another_led",
         to_stage="multiple_leds_2x",
         conditions=[
-            Condition("rolling_accuracy", ">=", 90, window=30),
+            Condition("rolling_accuracy", ">=", 90, window=20),
         ],
         priority=10,
-        description="Second LED mastered (>90% over 30 trials)",
+        description="Second LED mastered (>90% over 20 trials)",
     ),
 
     Transition(
         from_stage="multiple_leds_2x",
         to_stage="multiple_leds_6x",
         conditions=[
-            Condition("rolling_accuracy", ">=", 90, window=40),
+            Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
-        description="2-port discrimination mastered (>90% over 40 trials)",
+        description="2-port discrimination mastered (>90% over 30 trials)",
     ),
 
     # -------------------------------------------------------------------------
     # Regression
     # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="introduce_1_led",
+        to_stage="introduce_1_led_no_wait",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20),
+        ],
+        priority=5,
+        description="Performance regression at scales wait training (<30% over 20 trials)",
+    ),
 
     Transition(
         from_stage="introduce_another_led",

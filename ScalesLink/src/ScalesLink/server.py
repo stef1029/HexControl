@@ -156,14 +156,14 @@ class ScalesServer:
             client_socket.sendall(response.encode('utf-8'))
             
         except socket.timeout:
-            pass
+            print("Warning: scales server client socket timeout")
         except Exception as e:
             print(f"[ScalesServer] Error handling client: {e}")
         finally:
             try:
                 client_socket.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing client socket: {e}")
     
     def _process_command(self, command: str) -> str:
         """
@@ -202,8 +202,8 @@ class ScalesServer:
         if self._server_socket is not None:
             try:
                 self._server_socket.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing server socket: {e}")
             self._server_socket = None
         
         # Save readings to CSV before stopping scales

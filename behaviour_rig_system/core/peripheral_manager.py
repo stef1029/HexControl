@@ -226,8 +226,8 @@ class PeripheralManager:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     def _log(self, message: str) -> None:
         """Internal log helper — emits a 'log' event."""

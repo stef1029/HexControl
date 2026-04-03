@@ -355,9 +355,21 @@ class AutotrainingEngine:
         Get the state to persist at session end.
 
         Returns a dict that can be passed to persistence.save_training_state().
+        If the current stage has a ``restart_stage`` set, that stage name is
+        persisted instead so the next session resumes from there.
         """
+        stage_name = self._current_stage.name if self._current_stage else self._saved_stage_name
+        restart = self._current_stage.restart_stage if self._current_stage else None
+
+        if restart:
+            self._log(
+                f"Stage '{stage_name}' has restart_stage='{restart}' — "
+                f"next session will resume from '{restart}'"
+            )
+            stage_name = restart
+
         return {
-            "current_stage": self._current_stage.name if self._current_stage else self._saved_stage_name,
+            "current_stage": stage_name,
             "trials_in_stage": self._total_trials_in_stage,
             "in_warmup": self._in_warmup,
         }

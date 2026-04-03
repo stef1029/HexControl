@@ -117,10 +117,13 @@ cohort_folders:
 # ---------
 # List of mouse IDs that can be selected in the GUI.
 # Add/remove mice as needed for your current experiments.
+# Optional: default_cohort auto-selects that cohort folder when the mouse is clicked.
+#   Must match a cohort folder "name" above. Ignored with a warning if no match found.
 
 mice:
   - id: "T1"
     description: "Photometry"
+    default_cohort: "January 2025 cohort"  # auto-selects this cohort on click
   - id: "T2"
     description: "Electrophysiology, SC plus chrmine opsin"
   - id: "T3"

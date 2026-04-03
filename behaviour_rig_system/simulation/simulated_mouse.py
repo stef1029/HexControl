@@ -78,8 +78,8 @@ class SimulatedMouse:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 

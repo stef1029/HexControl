@@ -125,6 +125,7 @@ class SetupMode(ttk.Frame):
         self._mouse_form: ParameterFormBuilder | None = None
         self._mouse_buttons: dict[str, tk.Button] = {}
         self._cohort_buttons: dict[str, tk.Button] = {}
+        self._mouse_default_cohorts: dict[str, str] = {}
 
         self._load_session_options()
         self._create_widgets()
@@ -152,6 +153,13 @@ class SetupMode(ttk.Frame):
         self._mice = config.get("mice", [])
         if not self._mice:
             self._mice = [{"id": "test", "description": "Test mouse"}]
+
+        # Build mouse → default cohort lookup
+        self._mouse_default_cohorts = {
+            m["id"]: m["default_cohort"]
+            for m in self._mice
+            if "default_cohort" in m
+        }
     
     def _create_widgets(self) -> None:
         """Create the setup UI widgets."""
@@ -337,6 +345,14 @@ class SetupMode(ttk.Frame):
     def _select_mouse(self, mouse_id: str) -> None:
         """Handle mouse toggle-button click."""
         self.mouse_id_var.set(mouse_id)
+        # Auto-switch cohort if this mouse has a default
+        default_cohort = self._mouse_default_cohorts.get(mouse_id)
+        if default_cohort:
+            if default_cohort in self._cohort_buttons:
+                self._select_cohort(default_cohort)
+            else:
+                print(f"Warning: Mouse '{mouse_id}' has default_cohort '{default_cohort}' "
+                      f"which is not a configured cohort folder — ignoring.")
         self._style_mouse_buttons()
         self._update_save_path_preview()
 

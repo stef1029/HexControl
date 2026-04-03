@@ -135,7 +135,11 @@ class RigWindow:
         def on_main_thread(fn):
             """Wrap fn so it runs on the tkinter main thread."""
             def wrapper(**kwargs):
-                self.root.after(0, lambda: fn(**kwargs))
+                try:
+                    if self.root.winfo_exists():
+                        self.root.after(0, lambda: fn(**kwargs) if self.root.winfo_exists() else None)
+                except tk.TclError as e:
+                    print(f"Warning: TclError in event callback: {e}")
             return wrapper
 
         c = self.controller
@@ -160,8 +164,8 @@ class RigWindow:
         if self._current_mode == WindowMode.RUNNING and mode != WindowMode.RUNNING:
             try:
                 self.running_mode.deactivate()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error deactivating running mode: {e}")
 
         self.setup_mode.pack_forget()
         self.running_mode.pack_forget()
@@ -347,8 +351,8 @@ class RigWindow:
         self.controller.close()
         try:
             self.root.destroy()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: error destroying rig window: {e}")
 
     def _on_close(self) -> None:
         """Handle window close event."""
