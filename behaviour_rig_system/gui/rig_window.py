@@ -352,10 +352,10 @@ class RigWindow:
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        if self.controller.is_running:
+        if self._current_mode == WindowMode.RUNNING:
             messagebox.showwarning(
                 "Session Running",
                 "A session is currently running.\n\nPlease stop the session before closing the window."
             )
             return
-        self.controller.close()
+        self._close_window()

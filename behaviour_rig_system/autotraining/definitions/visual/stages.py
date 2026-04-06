@@ -103,11 +103,11 @@ _register(Stage(
     overrides={
         # Port selection
         "port_0_enabled": False,
-        "port_1_enabled": False,
+        "port_1_enabled": True,
         "port_2_enabled": False,
         "port_3_enabled": False,
         "port_4_enabled": False,
-        "port_5_enabled": True,
+        "port_5_enabled": False,
 
         # Cue settings
         "cue_duration": 0.0,       # 0 = stay on until response
@@ -118,7 +118,7 @@ _register(Stage(
         "platform_settle_time": 1.0,
 
         # Trial timing
-        "response_timeout": 5.0,
+        "response_timeout": 10.0,
         "wait_duration": 0.0,
         "iti": 1.0,
 
@@ -156,7 +156,7 @@ _register(Stage(
         "platform_settle_time": 1.0,
 
         # Trial timing
-        "response_timeout": 5.0,
+        "response_timeout": 10.0,
         "wait_duration": 0.0,
         "iti": 1.0,
 
@@ -179,9 +179,9 @@ _register(Stage(
     overrides={
         # Port selection
         "port_0_enabled": False,
-        "port_1_enabled": False,
+        "port_1_enabled": True,
         "port_2_enabled": False,
-        "port_3_enabled": True,
+        "port_3_enabled": False,
         "port_4_enabled": False,
         "port_5_enabled": True,
 
@@ -237,7 +237,7 @@ _register(Stage(
         "iti": 1.0,
 
         # Reward/punishment
-        "punishment_duration": 0.0, # s — 0 means no punishment
+        "punishment_duration": 5.0, # s — 0 means no punishment
         "punishment_enabled": False,
 
         # Audio
