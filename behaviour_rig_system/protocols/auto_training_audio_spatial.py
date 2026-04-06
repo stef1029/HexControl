@@ -1,19 +1,12 @@
 """
 Audio Spatial Autotraining Protocol
 
-Adaptive protocol that trains mice to respond to both visual (LED) and
-spatial audio (white noise) cues at individual ports. Progresses from
-combined simultaneous presentation through to separated interleaved
-cues at all 6 ports with decreasing cue durations.
+Adaptive protocol that trains mice to respond to combined visual (LED) +
+spatial audio (white noise) cues at individual ports. Mirrors the visual
+autotraining introduction sequence but with simultaneous LED + noise cues.
+Autotraining ends at 2-port discrimination with combined cues.
 
-Cue types handled:
-    combined    - LED + noise on same port simultaneously
-    visual      - LED only
-    audio       - Noise only (white noise on buzzer)
-    interleaved - Randomly pick visual or audio per trial
-
-Uses named "visual" and "audio" trackers for modality-specific transition
-conditions, plus per-stage trackers for combined-cue phases.
+All stages use cue_type="combined" (LED + noise on the same port).
 """
 
 import os
@@ -29,12 +22,12 @@ from autotraining.persistence import (
     save_training_state,
 )
 from core.parameter_types import BoolParameter, StringParameter
-from core.performance_tracker import TrackerDefinition, TrackerGroupDefinition
+from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
 
 
 class AudioSpatialAutoTrainingProtocol(BaseProtocol):
-    """Adaptive visual + spatial audio training with persistent stage progression."""
+    """Adaptive combined visual + spatial audio training with persistent stage progression."""
 
     @classmethod
     def get_name(cls) -> str:
@@ -43,36 +36,17 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
     @classmethod
     def get_description(cls) -> str:
         return (
-            "Audio spatial autotraining protocol. Trains mice on both visual (LED) "
-            "and spatial audio (white noise) cues. Starts with combined simultaneous "
-            "presentation, separates cues to identify modality preference, provides "
-            "remedial training for the weaker modality, then generalises to all 6 "
-            "ports with decreasing cue durations."
+            "Audio spatial autotraining protocol. Trains mice on combined visual "
+            "(LED) + spatial audio (white noise) cues presented simultaneously. "
+            "Mirrors the visual autotraining introduction sequence and ends at "
+            "2-port discrimination."
         )
 
     @classmethod
     def get_tracker_definitions(cls) -> list:
         return [
-            TrackerDefinition("warm_up", "Warm-Up"),
-            TrackerDefinition("scales_training", "Scales Training"),
-            TrackerGroupDefinition(
-                name="combined_phase",
-                display_name="Combined Phase",
-                sub_trackers=["combined"],
-                stages={"combined_single_port", "combined_two_ports_lenient", "combined_two_ports"},
-            ),
-            TrackerGroupDefinition(
-                name="interleaved_phase",
-                display_name="Interleaved Phase",
-                sub_trackers=["visual", "audio", "combined"],
-                stages={
-                    "separated_two_ports", "visual_only_two_ports",
-                    "audio_only_two_ports", "interleaved_6_ports",
-                    "cue_duration_1000ms", "cue_duration_750ms",
-                    "cue_duration_500ms", "cue_duration_250ms",
-                    "cue_duration_100ms",
-                },
-            ),
+            TrackerDefinition(name=stage.name, display_name=stage.display_name)
+            for stage in STAGES.values()
         ]
 
     @classmethod
@@ -256,7 +230,7 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                             f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
                         )
 
-                # --- Cue-based trial (combined / visual / audio / interleaved) ---
+                # --- Combined cue trial (LED + noise) ---
 
                 else:
                     response_timeout = stage_params["response_timeout"]
@@ -267,7 +241,6 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                     incorrect_timeout = stage_params.get("incorrect_timeout", 0.0)
                     spotlight_duration = stage_params.get("spotlight_duration", 0.0)
                     spotlight_brightness = stage_params.get("spotlight_brightness", 255)
-                    cue_type = stage_params.get("cue_type", "visual")
 
                     enabled_ports = []
                     for i in range(6):
@@ -280,16 +253,6 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
 
                     trial_num += 1
                     target_port = random.choice(enabled_ports)
-
-                    # Determine cue modality for this trial
-                    if cue_type == "interleaved":
-                        trial_modality = random.choice(["visual", "audio"])
-                    elif cue_type == "combined":
-                        trial_modality = "combined"
-                    elif cue_type == "audio":
-                        trial_modality = "audio"
-                    else:
-                        trial_modality = "visual"
 
                     # --- Wait period on platform ---
 
@@ -320,15 +283,10 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                         group.stimulus(target_port)
                     trial_start_time = self.now()
 
-                    # --- Present cue ---
+                    # --- Present combined cue (LED + noise) ---
 
-                    use_led = trial_modality in ("visual", "combined")
-                    use_noise = trial_modality in ("audio", "combined")
-
-                    if use_led:
-                        self.link.led_set(target_port, led_brightness)
-                    if use_noise:
-                        self.link.noise_set(target_port, True)
+                    self.link.led_set(target_port, led_brightness)
+                    self.link.noise_set(target_port, True)
 
                     # --- Wait for response ---
 
@@ -341,10 +299,8 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                         elapsed = self.now() - trial_start_time
 
                         if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                            if use_led:
-                                self.link.led_set(target_port, 0)
-                            if use_noise:
-                                self.link.noise_set(target_port, False)
+                            self.link.led_set(target_port, 0)
+                            self.link.noise_set(target_port, False)
                             cue_on = False
 
                         if elapsed >= response_timeout:
@@ -360,10 +316,8 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
 
                     # Turn off cues
                     if cue_on:
-                        if use_led:
-                            self.link.led_set(target_port, 0)
-                        if use_noise:
-                            self.link.noise_set(target_port, False)
+                        self.link.led_set(target_port, 0)
+                        self.link.noise_set(target_port, False)
 
                     # --- Record outcome ---
 
@@ -373,43 +327,38 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                     if self.check_stop():
                         break
 
-                    modality_label = trial_modality
-                    if trial_modality == "combined":
-                        modality_label = "vis+aud"
-
                     if event is None:
                         if group is not None:
                             group.timeout(
                                 correct_port=target_port, trial_duration=trial_duration,
-                                sub_tracker=trial_modality, stage=stage_name,
+                                stage=stage_name,
                             )
                         outcome = "timeout"
                         self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s) [{modality_label}]"
+                            f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)"
                         )
                     elif event.port == target_port:
                         if group is not None:
                             group.success(
                                 correct_port=target_port, trial_duration=trial_duration,
-                                sub_tracker=trial_modality, stage=stage_name,
+                                stage=stage_name,
                             )
                         self.link.valve_pulse(target_port, self.reward_durations[target_port])
                         outcome = "success"
                         chosen_port = event.port
                         self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s) [{modality_label}]"
+                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
                         )
                     else:
                         if group is not None:
                             group.failure(
                                 correct_port=target_port, chosen_port=event.port,
-                                trial_duration=trial_duration,
-                                sub_tracker=trial_modality, stage=stage_name,
+                                trial_duration=trial_duration, stage=stage_name,
                             )
                         outcome = "failure"
                         chosen_port = event.port
                         self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port}) [{modality_label}]"
+                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
                         )
 
                         if incorrect_timeout > 0:
@@ -433,6 +382,8 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                 )
 
                 if new_stage is not None:
+                    if engine.active_group is not None:
+                        self.log(f"    Rolling accuracy: {engine.active_group.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:
