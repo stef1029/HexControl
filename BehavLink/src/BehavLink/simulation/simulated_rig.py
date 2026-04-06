@@ -59,7 +59,8 @@ class SimulatedRig:
     DEFAULT_TIMEOUT = 0.2
     EVENT_BUFFER_SIZE = 1024
     NUM_PORTS = 6
-    NUM_GPIO_PINS = 6
+    NUM_GPIO_PINS = 4
+    NUM_DAQ_LINK_PINS = 2
     ALL_PORTS = 255
 
     def __init__(
@@ -124,6 +125,10 @@ class SimulatedRig:
         if self._interactive:
             self._state.set_buzzer(port, state)
 
+    def noise_set(self, port: int, state: bool) -> None:
+        if self._interactive:
+            self._state.set_noise(port, state)
+
     def speaker_set(self, frequency: SpeakerFrequency, duration: SpeakerDuration) -> None:
         if self._interactive:
             self._state.set_speaker(int(frequency), int(duration))
@@ -131,6 +136,14 @@ class SimulatedRig:
     def valve_pulse(self, port: int, duration_ms: int) -> None:
         if self._interactive:
             self._state.set_valve_pulse(port, duration_ms)
+
+    def daq_link_set(self, index: int, state: bool) -> None:
+        if not 0 <= index < self.NUM_DAQ_LINK_PINS:
+            raise ValueError(
+                f"Index must be 0-{self.NUM_DAQ_LINK_PINS - 1}, got {index}"
+            )
+        if self._interactive:
+            self._state.set_daq_link(index, state)
 
     # ── GPIO ────────────────────────────────────────────────────────────
 

@@ -46,13 +46,15 @@ class RigStateSnapshot:
     spotlight_brightness: tuple[int, ...]    # length 6
     ir_brightness: int
     buzzer_state: tuple[bool, ...]           # length 6
+    noise_state: tuple[bool, ...]            # length 6
     speaker_active: bool
     speaker_frequency: int
     speaker_duration: int
     valve_pulsing: tuple[bool, ...]          # length 6
     platform_weight: float
-    gpio_modes: tuple[Optional[GPIOMode], ...]   # length 6
-    gpio_output_states: tuple[bool, ...]         # length 6
+    gpio_modes: tuple[Optional[GPIOMode], ...]   # length 4
+    gpio_output_states: tuple[bool, ...]         # length 4
+    daq_link_states: tuple[bool, ...]            # length 2
 
 
 # ── Main state class ───────────────────────────────────────────────────────
@@ -67,7 +69,8 @@ class VirtualRigState:
     """
 
     NUM_PORTS = 6
-    NUM_GPIO_PINS = 6
+    NUM_GPIO_PINS = 4
+    NUM_DAQ_LINK_PINS = 2
     EVENT_BUFFER_SIZE = 1024
 
     def __init__(self, clock=None) -> None:
@@ -79,6 +82,7 @@ class VirtualRigState:
         self._spotlight_brightness: list[int] = [0] * self.NUM_PORTS
         self._ir_brightness: int = 0
         self._buzzer_state: list[bool] = [False] * self.NUM_PORTS
+        self._noise_state: list[bool] = [False] * self.NUM_PORTS
         self._speaker_active: bool = False
         self._speaker_frequency: int = 0
         self._speaker_duration: int = 0
@@ -88,6 +92,9 @@ class VirtualRigState:
         # GPIO
         self._gpio_modes: list[Optional[GPIOMode]] = [None] * self.NUM_GPIO_PINS
         self._gpio_output_states: list[bool] = [False] * self.NUM_GPIO_PINS
+
+        # DAQ link pins
+        self._daq_link_states: list[bool] = [False] * self.NUM_DAQ_LINK_PINS
 
         # Dirty flag — set by every mutation, cleared by take_snapshot_if_dirty()
         # Starts True so the GUI renders the initial state on its first poll tick.
@@ -139,6 +146,7 @@ class VirtualRigState:
             spotlight_brightness=tuple(self._spotlight_brightness),
             ir_brightness=self._ir_brightness,
             buzzer_state=tuple(self._buzzer_state),
+            noise_state=tuple(self._noise_state),
             speaker_active=self._speaker_active,
             speaker_frequency=self._speaker_frequency,
             speaker_duration=self._speaker_duration,
@@ -146,6 +154,7 @@ class VirtualRigState:
             platform_weight=self._platform_weight,
             gpio_modes=tuple(self._gpio_modes),
             gpio_output_states=tuple(self._gpio_output_states),
+            daq_link_states=tuple(self._daq_link_states),
         )
 
     # ── Hardware setters (called by SimulatedRig) ───────────────────────
@@ -179,6 +188,16 @@ class VirtualRigState:
                 self._buzzer_state = [state] * self.NUM_PORTS
             else:
                 self._buzzer_state[port] = state
+            self._dirty = True
+        if state:
+            self._cue_event.set()
+
+    def set_noise(self, port: int, state: bool) -> None:
+        with self._lock:
+            if port == 255:
+                self._noise_state = [state] * self.NUM_PORTS
+            else:
+                self._noise_state[port] = state
             self._dirty = True
         if state:
             self._cue_event.set()
@@ -271,6 +290,13 @@ class VirtualRigState:
             self._gpio_output_states[pin] = state
             self._dirty = True
 
+    # ── DAQ link pins (called by SimulatedRig) ──────────────────────────
+
+    def set_daq_link(self, index: int, state: bool) -> None:
+        with self._lock:
+            self._daq_link_states[index] = state
+            self._dirty = True
+
     # ── Platform weight (set by GUI slider) ─────────────────────────────
 
     def set_weight(self, weight: float) -> None:
@@ -338,12 +364,14 @@ class VirtualRigState:
             self._spotlight_brightness = [0] * self.NUM_PORTS
             self._ir_brightness = 0
             self._buzzer_state = [False] * self.NUM_PORTS
+            self._noise_state = [False] * self.NUM_PORTS
             self._speaker_active = False
             self._speaker_frequency = 0
             self._speaker_duration = 0
             self._valve_pulsing = [False] * self.NUM_PORTS
             self._gpio_modes = [None] * self.NUM_GPIO_PINS
             self._gpio_output_states = [False] * self.NUM_GPIO_PINS
+            self._daq_link_states = [False] * self.NUM_DAQ_LINK_PINS
             self._dirty = True
         self._cue_event.set()  # Wake mouse thread so it can exit
 

@@ -1,16 +1,35 @@
 """
 Audio Autotraining Transition Graph
 
-Defines the edges and conditions for moving between training stages.
-Transitions are evaluated after every trial, in priority order (lowest first).
+Defines the edges and conditions for moving between training stages in the
+audio/visual interleaved protocol.
 
-The special target "$saved" means "go to the mouse's persisted stage from
-last session" -- used exclusively by the warm-up exit transition.
+Stages share the same visual introduction path (phases 1-4) as the visual
+protocol, then branch into audio training at 6-port mastery.
 
 Transition priorities:
     0-4:   Global/emergency rules (apply from any stage)
-    5-9:   Regression rules (falling back to easier stages)
+    5-6:   Severe regression rules (<30% accuracy)
+    7-8:   Moderate regression rules (<50% accuracy)
     10-19: Forward progression rules (the main training path)
+
+Audio branch graph (after multiple_leds_6x):
+
+    multiple_leds_6x ──(>=90%)──> audio_only ──(>=90%)──> interleaved_2_6
+                                     ^                         │
+                                     │                    (target stage)
+                                     │                    ┌────┼────┐
+                                     │               <50% audio  <50% visual
+                                     │                    │         │
+                                     │             interleaved_3_6  interleaved_1_6
+                                     │                    │         │
+                                     │              (>=60% audio)  (>=60% visual)
+                                     │                    └────┬────┘
+                                     │                         │
+                                     │                  back to interleaved_2_6
+                                     │
+                              <30% audio from any interleaved
+                              <30% visual ──> visual_only_remedial ──(>=90%)──┘
 """
 
 from ...transitions import Transition, Condition
@@ -23,7 +42,7 @@ from ...transitions import Transition, Condition
 TRANSITIONS: list[Transition] = [
 
     # -------------------------------------------------------------------------
-    # Warm-up exit: after 10 correct trials, move to the saved stage
+    # Warm-up exit
     # -------------------------------------------------------------------------
 
     Transition(
@@ -38,167 +57,264 @@ TRANSITIONS: list[Transition] = [
     ),
 
     # -------------------------------------------------------------------------
-    # Phase 1: Platform association -> Rearing
+    # Forward: scales_training -> introduce_1_led_no_wait
     # -------------------------------------------------------------------------
 
     Transition(
-        from_stage="phase_1_platform_reward",
-        to_stage="phase_1_rearing",
+        from_stage="scales_training",
+        to_stage="introduce_1_led_no_wait",
         conditions=[
-            Condition("trials_in_stage", ">=", 50),
-            Condition("rolling_accuracy", ">=", 80, window=20),
+            Condition("rolling_trial_duration", "<=", 2.5, window=20),
         ],
         priority=10,
-        description="Reliable platform-port alternation (80% over 20, 50+ trials)",
-    ),
-
-    Transition(
-        from_stage="phase_1_rearing",
-        to_stage="phase_2_cue_no_punish",
-        conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", ">=", 80, window=10),
-        ],
-        priority=10,
-        description="Rearing acquired (80% over 10, 20+ trials)",
+        description="Scales training complete (average trial time <= 2.5s over 20 trials)",
     ),
 
     # -------------------------------------------------------------------------
-    # Phase 2: Cue-response training
+    # Forward: visual introduction path (phases 1-4)
     # -------------------------------------------------------------------------
 
     Transition(
-        from_stage="phase_2_cue_no_punish",
-        to_stage="phase_2_cue_with_punish",
+        from_stage="introduce_1_led_no_wait",
+        to_stage="introduce_1_led",
         conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", ">=", 70, window=10),
+            Condition("rolling_accuracy", ">=", 90, window=20),
         ],
         priority=10,
-        description="Evidence of understanding cue (70% over 10, 20+ trials)",
+        description="Single LED mastered (>90% over 20 trials), adding platform wait",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Regression: introduce_1_led_no_wait -> scales_training
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="introduce_1_led_no_wait",
+        to_stage="scales_training",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20),
+        ],
+        priority=5,
+        description="Performance regression at 1 LED no wait (<30% over 20 trials), back to scales",
     ),
 
     Transition(
-        from_stage="phase_2_cue_with_punish",
-        to_stage="phase_3_port3_no_punish",
+        from_stage="introduce_1_led",
+        to_stage="introduce_another_led_lenient",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=30),
+        ],
+        priority=10,
+        description="Single LED mastered (>90% over 30 trials), move to lenient 2nd port",
+    ),
+
+    Transition(
+        from_stage="introduce_another_led_lenient",
+        to_stage="introduce_another_led",
         conditions=[
             Condition("trials_in_stage", ">=", 30),
-            Condition("rolling_accuracy", ">=", 80, window=20),
         ],
         priority=10,
-        description="Reliable cue-response at port 0 (80% over 20, 30+ trials)",
+        description="Lenient 2nd port complete (30 trials), move to strict 2nd port",
     ),
 
-    # Regression: if punishment tanks performance, go back
     Transition(
-        from_stage="phase_2_cue_with_punish",
-        to_stage="phase_2_cue_no_punish",
+        from_stage="introduce_another_led",
+        to_stage="multiple_leds_2x",
         conditions=[
-            Condition("trials_in_stage", ">=", 15),
-            Condition("rolling_accuracy", "<", 30, window=10),
+            Condition("rolling_accuracy", ">=", 90, window=20),
         ],
-        priority=5,
-        description="Performance regression -- removing punishment temporarily",
+        priority=10,
+        description="Second LED mastered (>90% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="multiple_leds_2x",
+        to_stage="multiple_leds_6x",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=30),
+        ],
+        priority=10,
+        description="2-port discrimination mastered (>90% over 30 trials)",
     ),
 
     # -------------------------------------------------------------------------
-    # Phase 3: Spatial flexibility
+    # Regression: visual introduction path
     # -------------------------------------------------------------------------
 
     Transition(
-        from_stage="phase_3_port3_no_punish",
-        to_stage="phase_3_port3_with_punish",
+        from_stage="introduce_1_led",
+        to_stage="introduce_1_led_no_wait",
         conditions=[
-            Condition("trials_in_stage", ">=", 15),
-            Condition("rolling_accuracy", ">=", 70, window=10),
-        ],
-        priority=10,
-        description="Learning port 3 (70% over 10, 15+ trials)",
-    ),
-
-    Transition(
-        from_stage="phase_3_port3_with_punish",
-        to_stage="phase_3_two_ports",
-        conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", ">=", 80, window=10),
-        ],
-        priority=10,
-        description="Reliable port 3 responding (80% over 10, 20+ trials)",
-    ),
-
-    # Regression: port 3 with punishment not working
-    Transition(
-        from_stage="phase_3_port3_with_punish",
-        to_stage="phase_3_port3_no_punish",
-        conditions=[
-            Condition("trials_in_stage", ">=", 15),
-            Condition("rolling_accuracy", "<", 30, window=10),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
-        description="Performance regression at port 3 -- removing punishment",
+        description="Performance regression at scales wait training (<30% over 20 trials)",
     ),
 
     Transition(
-        from_stage="phase_3_two_ports",
-        to_stage="phase_4_three_ports",
+        from_stage="introduce_another_led",
+        to_stage="introduce_1_led",
         conditions=[
-            Condition("trials_in_stage", ">=", 30),
-            Condition("rolling_accuracy", ">=", 80, window=20),
-        ],
-        priority=10,
-        description="Cue-following confirmed with 2 ports (80% over 20, 30+ trials)",
-    ),
-
-    # Regression: 2-port alternation failing
-    Transition(
-        from_stage="phase_3_two_ports",
-        to_stage="phase_3_port3_with_punish",
-        conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", "<", 40, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
-        description="Struggling with 2-port alternation -- reverting to single port",
+        description="Performance regression at second LED (<30% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="multiple_leds_2x",
+        to_stage="introduce_another_led",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20),
+        ],
+        priority=5,
+        description="Performance regression at 2-port (<30% over 20 trials)",
+    ),
+
+    Transition(
+        from_stage="multiple_leds_6x",
+        to_stage="multiple_leds_2x",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20),
+        ],
+        priority=5,
+        description="Performance regression at 6-port (<30% over 20 trials)",
     ),
 
     # -------------------------------------------------------------------------
-    # Phase 4: Generalisation
+    # Forward: audio branch — 6-port mastery -> pure audio -> interleaved
     # -------------------------------------------------------------------------
 
     Transition(
-        from_stage="phase_4_three_ports",
-        to_stage="phase_4_all_ports",
+        from_stage="multiple_leds_6x",
+        to_stage="audio_only",
         conditions=[
-            Condition("trials_in_stage", ">=", 30),
-            Condition("rolling_accuracy", ">=", 80, window=20),
+            Condition("rolling_accuracy", ">=", 90, window=30),
         ],
         priority=10,
-        description="3-port generalisation achieved (80% over 20, 30+ trials)",
+        description="6-port mastered (>=90% over 30 trials), entering audio training",
     ),
 
-    # Regression: 3 ports too hard
     Transition(
-        from_stage="phase_4_three_ports",
-        to_stage="phase_3_two_ports",
+        from_stage="audio_only",
+        to_stage="interleaved_2_6",
         conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", "<", 40, window=20),
+            Condition("rolling_accuracy", ">=", 90, window=20, tracker="audio"),
         ],
-        priority=5,
-        description="Struggling with 3 ports -- reverting to 2 ports",
+        priority=10,
+        description="Audio mastered (>=90% over 20 trials), entering interleaved 2:5",
     ),
 
-    # Regression: all 6 ports too hard
+    # -------------------------------------------------------------------------
+    # Severe regression from interleaved_2_6: <30% in either trial type
+    # (higher priority than moderate regressions)
+    # -------------------------------------------------------------------------
+
     Transition(
-        from_stage="phase_4_all_ports",
-        to_stage="phase_4_three_ports",
+        from_stage="interleaved_2_6",
+        to_stage="audio_only",
         conditions=[
-            Condition("trials_in_stage", ">=", 20),
-            Condition("rolling_accuracy", "<", 40, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="audio"),
         ],
         priority=5,
-        description="Struggling with 6 ports -- reverting to 3 ports",
+        description="Severe audio regression in 2:5 (<30% audio over 20), back to audio only",
+    ),
+
+    Transition(
+        from_stage="interleaved_2_6",
+        to_stage="visual_only_remedial",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="visual"),
+        ],
+        priority=5,
+        description="Severe visual regression in 2:5 (<30% visual over 20), to visual remedial",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Moderate regression from interleaved_2_6: <50% in either trial type
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_2_6",
+        to_stage="interleaved_3_6",
+        conditions=[
+            Condition("rolling_accuracy", "<", 50, window=20, tracker="audio"),
+        ],
+        priority=7,
+        description="Audio struggling in 2:5 (<50% audio over 20), increasing audio proportion",
+    ),
+
+    Transition(
+        from_stage="interleaved_2_6",
+        to_stage="interleaved_1_6",
+        conditions=[
+            Condition("rolling_accuracy", "<", 50, window=20, tracker="visual"),
+        ],
+        priority=7,
+        description="Visual struggling in 2:5 (<50% visual over 20), decreasing audio proportion",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Forward: return from interleaved remedial stages -> interleaved_2_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_3_6",
+        to_stage="interleaved_2_6",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 60, window=20, tracker="audio"),
+        ],
+        priority=10,
+        description="Audio recovered in 3:5 (>=60% audio over 20), returning to 2:5",
+    ),
+
+    Transition(
+        from_stage="interleaved_1_6",
+        to_stage="interleaved_2_6",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 60, window=20, tracker="visual"),
+        ],
+        priority=10,
+        description="Visual recovered in 1:5 (>=60% visual over 20), returning to 2:5",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Severe regression from interleaved_3_6 and interleaved_1_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="interleaved_3_6",
+        to_stage="audio_only",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="audio"),
+        ],
+        priority=5,
+        description="Severe audio regression in 3:5 (<30% audio over 20), back to audio only",
+    ),
+
+    Transition(
+        from_stage="interleaved_1_6",
+        to_stage="visual_only_remedial",
+        conditions=[
+            Condition("rolling_accuracy", "<", 30, window=20, tracker="visual"),
+        ],
+        priority=5,
+        description="Severe visual regression in 1:5 (<30% visual over 20), to visual remedial",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Forward: return from pure remedial stages -> interleaved_2_6
+    # -------------------------------------------------------------------------
+
+    Transition(
+        from_stage="visual_only_remedial",
+        to_stage="interleaved_2_6",
+        conditions=[
+            Condition("rolling_accuracy", ">=", 90, window=20, tracker="visual"),
+        ],
+        priority=10,
+        description="Visual remedial mastered (>=90% over 20), returning to interleaved 2:5",
     ),
 
 ]

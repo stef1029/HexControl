@@ -15,8 +15,11 @@ Usage:
     client.disconnect()
 """
 
+import logging
 import socket
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -80,7 +83,8 @@ class ScalesClient:
                 self._connected = True
                 return True
             return False
-        except Exception:
+        except Exception as e:
+            print(f"Warning: scales connect failed: {e}")
             return False
     
     def disconnect(self) -> None:
@@ -104,7 +108,8 @@ class ScalesClient:
             response = self._send_command("SHUTDOWN", timeout=SOCKET_TIMEOUT)
             self._connected = False
             return response == "OK"
-        except Exception:
+        except Exception as e:
+            print(f"Warning: scales shutdown failed: {e}")
             self._connected = False
             return False
     
@@ -121,7 +126,8 @@ class ScalesClient:
         try:
             response = self._send_command("PING", timeout=timeout)
             return response == "PONG"
-        except Exception:
+        except Exception as e:
+            print(f"Warning: scales ping failed: {e}")
             return False
     
     def get_weight(self, timeout: float = SOCKET_TIMEOUT) -> Optional[float]:
@@ -139,7 +145,8 @@ class ScalesClient:
             if response == "NONE":
                 return None
             return float(response)
-        except (ValueError, Exception):
+        except Exception as e:
+            logger.warning("get_weight failed: %s", e)
             return None
     
     def _send_command(self, command: str, timeout: float = SOCKET_TIMEOUT) -> str:
@@ -182,8 +189,8 @@ class ScalesClient:
             if sock is not None:
                 try:
                     sock.close()
-                except:
-                    pass
+                except OSError as e:
+                    print(f"Warning: error closing scales socket: {e}")
 
 
 # =============================================================================
@@ -206,5 +213,6 @@ def quick_get_weight(tcp_port: int = DEFAULT_TCP_PORT) -> Optional[float]:
     client = ScalesClient(tcp_port=tcp_port)
     try:
         return client.get_weight()
-    except Exception:
+    except Exception as e:
+        print(f"Warning: scales quick_read failed: {e}")
         return None

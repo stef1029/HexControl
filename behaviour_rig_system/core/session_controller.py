@@ -93,8 +93,8 @@ class SessionController:
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     # =========================================================================
     # Phase management
@@ -302,22 +302,26 @@ class SessionController:
                 link=self._link,
             )
 
-            # Create named performance trackers from protocol definitions
+            # Create tracker groups from protocol definitions
+            from .performance_tracker import TrackerGroup, TrackerGroupDefinition
             tracker_defs = config["protocol_class"].get_tracker_definitions()
-            self._perf_trackers: dict[str, PerformanceTracker] = {}
+            self._tracker_groups: dict[str, TrackerGroup] = {}
             self._tracker_definitions = tracker_defs
-            for tdef in tracker_defs:
-                tracker = PerformanceTracker(clock=clock)
-                self._perf_trackers[tdef.name] = tracker
-                tracker.on(
+            for gdef in tracker_defs:
+                group = TrackerGroup(gdef, clock=clock)
+                self._tracker_groups[gdef.name] = group
+                group.on(
                     "update",
-                    lambda tracker, _name=tdef.name: self._emit(
-                        "performance_update", trackers=self._perf_trackers, updated=_name
+                    lambda group, sub_tracker, _name=gdef.name: self._emit(
+                        "performance_update", tracker_groups=self._tracker_groups, updated=_name
                     ),
                 )
-                tracker.on(
+                group.on(
                     "stimulus", lambda port: self._emit("stimulus", port=port)
                 )
+
+            # Legacy alias for backwards compatibility
+            self._perf_trackers = self._tracker_groups
 
             scales_client = None
             if self._peripheral_manager.scales_client is not None:
@@ -328,7 +332,7 @@ class SessionController:
 
             self._current_protocol.set_runtime_context(
                 scales=scales_client,
-                perf_trackers=self._perf_trackers,
+                perf_trackers=self._tracker_groups,
                 rig_number=rig_number,
                 clock=clock,
                 reward_durations=reward_durations,
@@ -347,14 +351,15 @@ class SessionController:
 
             self._emit("startup_status", message="Startup complete!")
 
-            # Compute scales threshold if available
+            # Compute scales threshold if mouse_weight is available
             params = config.get("parameters", {})
             scales_threshold = None
-            if "weight_offset" in params and "mouse_weight" in params:
+            if "mouse_weight" in params:
                 try:
-                    scales_threshold = float(params["mouse_weight"]) - float(params["weight_offset"])
-                except (TypeError, ValueError):
-                    pass
+                    weight_offset = float(params.get("weight_offset", 3.0))
+                    scales_threshold = float(params["mouse_weight"]) - weight_offset
+                except (TypeError, ValueError) as e:
+                    print(f"Warning: could not compute scales threshold: {e}")
 
             # Build session info for the GUI
             session_info = {
@@ -426,9 +431,22 @@ class SessionController:
 
         # Get performance reports (raw trial data) and save merged trial data
         performance_reports: dict[str, dict] | None = None
-        if self._perf_trackers:
-            performance_reports = {
-                name: {
+        if self._tracker_groups:
+            performance_reports = {}
+            for name, group in self._tracker_groups.items():
+                all_trials = group.get_all_trials()
+                first_start = None
+                last_ts = None
+                for sub in group._sub_trackers.values():
+                    if sub._trials and sub._start_time:
+                        if first_start is None or sub._start_time < first_start:
+                            first_start = sub._start_time
+                        if sub._trials:
+                            ts = sub._trials[-1].timestamp
+                            if last_ts is None or ts > last_ts:
+                                last_ts = ts
+
+                performance_reports[name] = {
                     "trials": [
                         {
                             "time_since_start": t.time_since_start,
@@ -436,16 +454,16 @@ class SessionController:
                             "correct_port": t.correct_port,
                             "chosen_port": t.chosen_port,
                             "trial_duration": t.trial_duration,
+                            "trial_type": t.trial_type,
                         }
-                        for t in tracker.get_trials()
+                        for t in all_trials
                     ],
                     "session_duration": (
-                        (tracker._trials[-1].timestamp - tracker._start_time)
-                        if tracker._trials and tracker._start_time else 0.0
+                        (last_ts - first_start) if first_start and last_ts else 0.0
                     ),
+                    "sub_trackers": group.sub_tracker_names,
+                    "is_simple": group.is_simple,
                 }
-                for name, tracker in self._perf_trackers.items()
-            }
 
             # Save merged trial data to file
             if self._session_save_path:
@@ -453,7 +471,7 @@ class SessionController:
                     from .performance_tracker import save_merged_trials
                     session_id = Path(self._session_save_path).name
                     saved_path = save_merged_trials(
-                        self._perf_trackers,
+                        self._tracker_groups,
                         self._session_save_path,
                         session_id=session_id,
                     )
@@ -538,24 +556,24 @@ class SessionController:
             try:
                 self._emit("cleanup_log", message="Shutting down rig link...")
                 link.shutdown()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error shutting down rig link: {e}")
             try:
                 link.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping rig link: {e}")
 
         if ser is not None:
             try:
                 ser.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing serial port: {e}")
 
         if pm is not None:
             try:
                 pm.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping peripherals: {e}")
 
     # =========================================================================
     # Metadata

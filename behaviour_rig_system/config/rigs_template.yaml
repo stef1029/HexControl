@@ -94,7 +94,7 @@ global:
   log_level: "INFO"
 
   # GUI colour palette (see gui/theme.py for available palettes)
-  palette: "light_pink"
+  palette: "dark_green"
 
 
 # Cohort folders
@@ -105,24 +105,25 @@ global:
 
 cohort_folders:
   - name: "Test output"
-    directory: "D:\\behaviour_data\\default"
+    directory: "C:\\data\\test_cohort"
     description: "Default folder for testing"
   - name: "January 2025 cohort"
-    directory: "D:\\behaviour_data\\cohort_2025_01"
+    directory: "C:\\behaviour_data\\cohort_2025_01"
     description: "January 2025 cohort"
-  - name: "February 2025 cohort"
-    directory: "D:\\behaviour_data\\cohort_2025_02"
-    description: "February 2025 cohort"
+
 
 
 # Mouse IDs
 # ---------
 # List of mouse IDs that can be selected in the GUI.
 # Add/remove mice as needed for your current experiments.
+# Optional: default_cohort auto-selects that cohort folder when the mouse is clicked.
+#   Must match a cohort folder "name" above. Ignored with a warning if no match found.
 
 mice:
   - id: "T1"
     description: "Photometry"
+    default_cohort: "January 2025 cohort"  # auto-selects this cohort on click
   - id: "T2"
     description: "Electrophysiology, SC plus chrmine opsin"
   - id: "T3"

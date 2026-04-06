@@ -132,7 +132,7 @@ def save_hdf5_json(
         "SENSOR6", "SENSOR1", "SENSOR5", "SENSOR2", "SENSOR4", "SENSOR3",
         "LED_3",   "LED_4",   "LED_2",   "LED_5",   "LED_1",   "LED_6",
         "VALVE4",  "VALVE3",  "VALVE5",  "VALVE2",  "VALVE6",  "VALVE1",
-        "DAQ_LINK0", "DAQ_LINK1", "EXT_0", "SCALES", "LASER", "CAMERA",
+        "DAQ_LINK0", "DAQ_LINK1", "SCALES", "EXT_1", "LASER", "CAMERA",
     )
     num_channels = len(channel_indices)
     num_messages = message_words.size
@@ -263,8 +263,8 @@ async def listen(
                 board_name = board_tag or f"rig_{rig}_daq"
                 com_port = registry.find_board_port(board_name)
                 print(f"Resolved DAQ board '{board_name}' -> {com_port}")
-            except Exception:
-                # Legacy fallback
+            except Exception as e:
+                print(f"Warning: board registry lookup failed: {e}, using legacy fallback")
                 com_port = {"1": "COM10", 
                             "2": "COM18", 
                             "3": "COM30", 
@@ -335,8 +335,8 @@ async def listen(
                 full_messages += 1
                 try:
                     _udp_sock.sendto(_udp_pack.pack(current_time, message_word), _udp_addr)
-                except OSError:
-                    pass
+                except OSError as e:
+                    print(f"Warning: UDP send failed: {e}")
             else:
                 error_messages.append([message_counter, raw_message.hex(), current_time])
             message_counter += 1

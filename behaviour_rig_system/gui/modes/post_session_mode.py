@@ -7,6 +7,9 @@ Shows:
     - Close Window / New Session button
 """
 
+import os
+import subprocess
+import sys
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable
@@ -35,6 +38,7 @@ class PostSessionMode(ttk.Frame):
         super().__init__(parent)
         self._on_new_session = on_new_session
         self._on_close_window = on_close_window
+        self._save_path: str = ""
 
         self._create_widgets()
 
@@ -42,16 +46,39 @@ class PostSessionMode(ttk.Frame):
         """Create the post-session UI widgets."""
         palette = Theme.palette
 
-        # Session complete header
+        # Close / New Session button (packed first so it's always visible at bottom)
+        button_frame = ttk.Frame(self)
+        button_frame.pack(side="bottom", fill="x", padx=18, pady=14)
+
+        hint = ttk.Label(
+            button_frame,
+            text="Ctrl+click for new session (same session folder)",
+            style="Muted.TLabel"
+        )
+        hint.pack(side="right", padx=10)
+
+        self._new_session_button = ttk.Button(
+            button_frame, text="Close Window",
+            style="Primary.TButton"
+        )
+        self._new_session_button.pack(side="right", padx=5)
+        self._new_session_button.bind("<Button-1>", self._on_button_click)
+
+        # Resizable paned area for summary and performance report
+        self._paned = ttk.PanedWindow(self, orient="vertical")
+        self._paned.pack(fill="both", expand=True, padx=10, pady=6)
+
+        # --- Pane 1: Session Summary ---
+        summary_pane = ttk.Frame(self._paned)
+
         self._header = ttk.Label(
-            self, text="Session Complete",
+            summary_pane, text="Session Complete",
             style="Title.TLabel"
         )
         self._header.pack(pady=14)
 
-        # Session summary
-        summary_frame = ttk.LabelFrame(self, text="Session Summary", padding=(14, 10))
-        summary_frame.pack(fill="x", padx=18, pady=8)
+        summary_frame = ttk.LabelFrame(summary_pane, text="Session Summary", padding=(14, 10))
+        summary_frame.pack(fill="x", padx=8, pady=8)
 
         self._summary_labels = {}
         summary_items = [
@@ -77,27 +104,11 @@ class PostSessionMode(ttk.Frame):
             value_label.pack(side="left", padx=8)
             self._summary_labels[key] = value_label
 
-        # Performance Report Section (populated dynamically in activate())
-        self._perf_frame = ttk.LabelFrame(self, text="Performance Report", padding=(14, 10))
-        self._perf_frame.pack(fill="both", expand=True, padx=18, pady=8)
+        self._paned.add(summary_pane, weight=1)
 
-        # Close / New Session button (packed at bottom so it's always visible)
-        button_frame = ttk.Frame(self)
-        button_frame.pack(side="bottom", fill="x", padx=18, pady=14)
-
-        hint = ttk.Label(
-            button_frame,
-            text="Ctrl+click for new session (same session folder)",
-            style="Muted.TLabel"
-        )
-        hint.pack(side="right", padx=10)
-
-        self._new_session_button = ttk.Button(
-            button_frame, text="Close Window",
-            style="Primary.TButton"
-        )
-        self._new_session_button.pack(side="right", padx=5)
-        self._new_session_button.bind("<Button-1>", self._on_button_click)
+        # --- Pane 2: Performance Report ---
+        self._perf_frame = ttk.LabelFrame(self._paned, text="Performance Report", padding=(14, 10))
+        self._paned.add(self._perf_frame, weight=3)
 
     def activate(self, session_result: dict) -> None:
         """
@@ -113,6 +124,9 @@ class PostSessionMode(ttk.Frame):
         minutes = int((elapsed % 3600) // 60)
         seconds = int(elapsed % 60)
         duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        # Store save path for folder-open button
+        self._save_path = session_result.get("save_path", "")
 
         # Set summary values
         status = session_result.get("status", "Unknown")
@@ -142,6 +156,17 @@ class PostSessionMode(ttk.Frame):
 
         widget = TrackerReportWidget(self._perf_frame, reports or {})
         widget.pack(fill="both", expand=True)
+
+    def _open_session_folder(self) -> None:
+        """Open the session save folder in the system file explorer."""
+        if not self._save_path or not os.path.isdir(self._save_path):
+            return
+        if sys.platform == "win32":
+            os.startfile(self._save_path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", self._save_path])
+        else:
+            subprocess.Popen(["xdg-open", self._save_path])
 
     def _on_button_click(self, event: tk.Event) -> None:
         """Handle button click: Ctrl+click = new session, normal click = close window."""

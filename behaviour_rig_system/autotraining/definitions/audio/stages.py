@@ -1,34 +1,30 @@
 """
 Audio Autotraining Stage Definitions
 
-Defines all stages in the audio mouse training autotraining sequence.
-Each stage is a named set of parameter overrides applied on top of
-the BASE_DEFAULTS from stage.py.
+Defines all stages for the audio/visual interleaved training sequence.
+Mice progress through the same visual stages as the visual-only protocol
+up to 6-port generalisation, then branch into audio training.
 
-Identical to the visual sequence but with audio cues enabled from Phase 2
-onwards, where the mouse must learn to associate audio with port identity.
-
-Training progression (based on the 4-phase shaping procedure):
+Training progression:
 
   warm_up
     └─> (mouse's saved stage from previous session)
 
-  Phase 1: Platform association & rearing
-    phase_1_platform_reward   - Mount platform -> immediate reward at port 0
-    phase_1_rearing           - Mount + rear -> reward at port 0
+  Phase 0: Platform-reward association (scales training)
+    scales_training           - Mount platform -> immediate reward (no LED cue)
 
-  Phase 2: Cue-response training (audio enabled)
-    phase_2_cue_no_punish     - Rear -> LED+audio at port 0 -> go to port 0 (no punishment)
-    phase_2_cue_with_punish   - Same but errors trigger punishment
+  Phase 1–4: Same as visual protocol
+    introduce_1_led_no_wait -> introduce_1_led -> introduce_another_led_lenient
+    -> introduce_another_led -> multiple_leds_2x -> multiple_leds_6x
 
-  Phase 3: Spatial flexibility (audio enabled)
-    phase_3_port3_no_punish   - LED+audio at port 2 only (no punishment)
-    phase_3_port3_with_punish - LED+audio at port 2 (with punishment)
-    phase_3_two_ports         - Alternating ports 0 and 2
+  Phase 5: Audio introduction
+    audio_only            - Pure audio trials, continuous tone, reward at port 0
 
-  Phase 4: Generalisation (audio enabled)
-    phase_4_three_ports       - Randomised across ports 0, 2, 4
-    phase_4_all_ports         - Full 6-port randomisation (final stage)
+  Phase 6: Interleaved audio/visual
+    interleaved_2_6       - Target end stage (2 audio : 5 visual ports)
+    interleaved_3_6       - More audio practice (regression from 2:6)
+    interleaved_1_6       - Less audio, more visual (regression from 2:6)
+    visual_only_remedial  - Pure visual at ports 1-5 (regression from interleaved)
 """
 
 from ...stage import Stage
@@ -48,199 +44,18 @@ def _register(stage: Stage) -> Stage:
 
 
 # -----------------------------------------------------------------------------
-# Warm-up: always runs at session start
+# Warm-up: runs at session start only for mice that have reached 6-port stage
 # -----------------------------------------------------------------------------
 
 _register(Stage(
     name="warm_up",
     display_name="Warm-Up",
     description=(
-        "Start-of-day warm-up. Single port, no punishment, "
-        "gives the mouse a few easy wins to get going."
+        "Start-of-day warm-up. All 6 ports with continuous cue, no punishment. "
+        "Only runs for mice that have previously reached the 6-port stage."
     ),
     is_warmup=True,
-    overrides={
-        "port_0_enabled": True,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
-        "wait_duration": 0.0,
-        "response_timeout": 30.0,   # generous timeout for warm-up
-    },
-))
-
-
-# -----------------------------------------------------------------------------
-# Phase 1: Platform association and rearing
-# -----------------------------------------------------------------------------
-
-_register(Stage(
-    name="phase_1_platform_reward",
-    display_name="Phase 1a: Platform Reward",
-    description=(
-        "Mouse mounts platform -> immediate reward at port 0. "
-        "No cue, no rearing required. Establishes platform as "
-        "reward-predictive location."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "cue_duration": 0.0,       # LED stays on (acts as beacon)
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
-        "wait_duration": 0.0,
-        "response_timeout": 60.0,  # very generous - mouse is just learning
-    },
-))
-
-_register(Stage(
-    name="phase_1_rearing",
-    display_name="Phase 1b: Rearing Required",
-    description=(
-        "Mouse mounts platform + rears -> reward at port 0. "
-        "Introduces the rearing initiation signal."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "cue_duration": 0.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
-        "wait_duration": 1.0,      # requires brief wait (rearing stand-in)
-        "response_timeout": 30.0,
-    },
-))
-
-
-# -----------------------------------------------------------------------------
-# Phase 2: Cue-response training (audio enabled)
-# -----------------------------------------------------------------------------
-
-_register(Stage(
-    name="phase_2_cue_no_punish",
-    display_name="Phase 2a: Cue-Response (No Punishment)",
-    description=(
-        "Rear on platform -> LED+audio at port 0 -> go to port 0 for reward. "
-        "No punishment for incorrect responses yet."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "cue_duration": 0.0,       # LED stays on until response
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
-        "wait_duration": 1.0,
-        "response_timeout": 20.0,
-        "audio_enabled": True,
-    },
-))
-
-_register(Stage(
-    name="phase_2_cue_with_punish",
-    display_name="Phase 2b: Cue-Response (With Punishment)",
-    description=(
-        "Same as Phase 2a but incorrect port visits now trigger "
-        "overhead lighting and a 10-second timeout."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "cue_duration": 0.0,
-        "punishment_duration": 10.0,
-        "punishment_enabled": True,
-        "wait_duration": 1.0,
-        "response_timeout": 15.0,
-        "audio_enabled": True,
-    },
-))
-
-
-# -----------------------------------------------------------------------------
-# Phase 3: Spatial flexibility (audio enabled)
-# -----------------------------------------------------------------------------
-
-_register(Stage(
-    name="phase_3_port3_no_punish",
-    display_name="Phase 3a: Port 3 Only (No Punishment)",
-    description=(
-        "LED+audio switches to port 2 (physical port 3). "
-        "No punishment to allow exploratory learning."
-    ),
-    overrides={
-        "port_2_enabled": True,    # port index 2 = physical port 3
-        "cue_duration": 0.0,
-        "punishment_duration": 0.0,
-        "punishment_enabled": False,
-        "wait_duration": 1.0,
-        "response_timeout": 20.0,
-        "audio_enabled": True,
-    },
-))
-
-_register(Stage(
-    name="phase_3_port3_with_punish",
-    display_name="Phase 3b: Port 3 (With Punishment)",
-    description=(
-        "Port 2 only with punishment for errors."
-    ),
-    overrides={
-        "port_2_enabled": True,
-        "cue_duration": 0.0,
-        "punishment_duration": 10.0,
-        "punishment_enabled": True,
-        "wait_duration": 1.0,
-        "response_timeout": 15.0,
-        "audio_enabled": True,
-    },
-))
-
-_register(Stage(
-    name="phase_3_two_ports",
-    display_name="Phase 3c: Ports 1 & 3 Alternating",
-    description=(
-        "LED+audio alternates between ports 0 and 2 within the session. "
-        "Mouse must follow the cue rather than using spatial strategy."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "port_2_enabled": True,
-        "cue_duration": 0.0,
-        "punishment_duration": 10.0,
-        "punishment_enabled": True,
-        "wait_duration": 1.0,
-        "response_timeout": 15.0,
-        "audio_enabled": True,
-    },
-))
-
-
-# -----------------------------------------------------------------------------
-# Phase 4: Generalisation (audio enabled)
-# -----------------------------------------------------------------------------
-
-_register(Stage(
-    name="phase_4_three_ports",
-    display_name="Phase 4a: 3-Port Randomisation",
-    description=(
-        "Randomised across ports 0, 2, and 4. "
-        "Tests generalisation beyond two learned positions."
-    ),
-    overrides={
-        "port_0_enabled": True,
-        "port_2_enabled": True,
-        "port_4_enabled": True,
-        "cue_duration": 0.0,
-        "punishment_duration": 10.0,
-        "punishment_enabled": True,
-        "wait_duration": 1.0,
-        "response_timeout": 12.0,
-        "audio_enabled": True,
-    },
-))
-
-_register(Stage(
-    name="phase_4_all_ports",
-    display_name="Phase 4b: Full 6-Port Randomisation",
-    description=(
-        "All 6 ports enabled with randomised cue presentation. "
-        "Final training stage -- mouse is fully trained when reaching "
-        "80% accuracy here."
-    ),
+    warmup_after="multiple_leds_6x",
     overrides={
         "port_0_enabled": True,
         "port_1_enabled": True,
@@ -249,10 +64,366 @@ _register(Stage(
         "port_4_enabled": True,
         "port_5_enabled": True,
         "cue_duration": 0.0,
-        "punishment_duration": 10.0,
-        "punishment_enabled": True,
-        "wait_duration": 1.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+
+# -----------------------------------------------------------------------------
+# Phase 0: Platform-reward association (scales training)
+# -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="scales_training",
+    display_name="Scales Training",
+    description=(
+        "Platform-reward association. Mouse stands on the platform and "
+        "reward is immediately delivered at a fixed port. No LED cue, "
+        "no choice — just learn that platform = reward."
+    ),
+    overrides={
+        "trial_mode": "scales",
+        "scales_reward_port": 0,
+        "collection_timeout": 30.0,
+        "weight_offset": 3.0,
+        "platform_settle_time": 0.0,
+        "iti": 1.0,
+    },
+))
+
+
+# -----------------------------------------------------------------------------
+# Phase 1–4: Shared visual stages (identical to visual protocol)
+# -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="introduce_1_led_no_wait",
+    display_name="Introduce 1 port + LED (no scales wait)",
+    description="",
+    restart_stage="scales_training",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": False,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 0.0,
         "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="introduce_1_led",
+    display_name="Introduce 1 port + LED",
+    description="",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": False,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="introduce_another_led_lenient",
+    display_name="2nd port (lenient)",
+    description="LED at port 5 with incorrect touches ignored.",
+    restart_stage="introduce_1_led",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": False,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "ignore_incorrect": True,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="introduce_another_led",
+    display_name="Introduce a different port",
+    description="",
+    restart_stage="introduce_1_led",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": False,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 10.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="multiple_leds_2x",
+    display_name="2 ports active",
+    description="",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+_register(Stage(
+    name="multiple_leds_6x",
+    display_name="6 ports active",
+    description="",
+    overrides={
+        "port_0_enabled": True,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
+    },
+))
+
+
+# -----------------------------------------------------------------------------
+# Phase 5: Audio introduction — pure audio trials
+# -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="audio_only",
+    display_name="Audio Only",
+    description=(
+        "Pure audio trials. Continuous overhead tone, mouse must go to the "
+        "landmarked port (port 0). No visual trials."
+    ),
+    restart_stage="interleaved_2_6",
+    overrides={
+        # No visual ports enabled — all trials are audio
+        "port_0_enabled": False,
+        "port_1_enabled": False,
+        "port_2_enabled": False,
+        "port_3_enabled": False,
+        "port_4_enabled": False,
+        "port_5_enabled": False,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
         "audio_enabled": True,
+        "audio_proportion": 0,   # 0 = all audio
+    },
+))
+
+
+# -----------------------------------------------------------------------------
+# Phase 6: Interleaved audio/visual stages
+# Visual trials use ports 1–5 (non-landmarked); audio rewards at port 0.
+# -----------------------------------------------------------------------------
+
+_register(Stage(
+    name="interleaved_2_6",
+    display_name="Interleaved 2:5 audio:visual",
+    description=(
+        "Target interleaved stage. 2 audio entries mixed with 5 visual ports "
+        "(ports 1-5). Audio trials reward at the landmarked port 0."
+    ),
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": True,
+        "audio_proportion": 2,
+    },
+))
+
+_register(Stage(
+    name="interleaved_3_6",
+    display_name="Interleaved 3:5 audio:visual",
+    description=(
+        "More audio practice. 3 audio entries mixed with 5 visual ports. "
+        "Used when audio performance drops below 50% in the 2:5 stage."
+    ),
+    restart_stage="interleaved_2_6",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": True,
+        "audio_proportion": 3,
+    },
+))
+
+_register(Stage(
+    name="interleaved_1_6",
+    display_name="Interleaved 1:5 audio:visual",
+    description=(
+        "Less audio, more visual practice. 1 audio entry mixed with 5 visual "
+        "ports. Used when visual performance drops below 50% in the 2:5 stage."
+    ),
+    restart_stage="interleaved_2_6",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": True,
+        "audio_proportion": 1,
+    },
+))
+
+_register(Stage(
+    name="visual_only_remedial",
+    display_name="Visual Only (remedial)",
+    description=(
+        "Remedial visual-only stage for when visual performance drops below 30% "
+        "during interleaved training. Uses ports 1-5 (non-landmarked). "
+        "Separate from multiple_leds_6x to allow independent transitions."
+    ),
+    restart_stage="interleaved_2_6",
+    overrides={
+        "port_0_enabled": False,
+        "port_1_enabled": True,
+        "port_2_enabled": True,
+        "port_3_enabled": True,
+        "port_4_enabled": True,
+        "port_5_enabled": True,
+        "cue_duration": 0.0,
+        "led_brightness": 255,
+        "weight_offset": 3.0,
+        "platform_settle_time": 1.0,
+        "response_timeout": 5.0,
+        "wait_duration": 0.0,
+        "iti": 1.0,
+        "incorrect_timeout": 5.0,
+        "spotlight_duration": 1.0,
+        "spotlight_brightness": 128,
+        "audio_enabled": False,
+        "audio_proportion": 6,
     },
 ))

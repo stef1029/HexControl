@@ -12,15 +12,17 @@ Shows:
     - Stop button
 """
 
+import subprocess
+import sys
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 from tkinter import scrolledtext, ttk
 from typing import Callable
 
 from core.protocol_base import ProtocolStatus
 from gui.theme import Theme, style_scrolled_text, get_accuracy_color
 from gui.scales_plot_widget import ScalesPlotWidget
-from gui.daq_view_widget import DAQViewWidget
 
 
 
@@ -45,8 +47,7 @@ class RunningMode(ttk.Frame):
         self._last_logged_trials: dict[str, int] = {}  # Per-tracker log index
         self._perf_notebook: ttk.Notebook | None = None
         self._lock_tracker_view = tk.BooleanVar(value=False)
-        self._daq_view_window: tk.Toplevel | None = None
-        self._daq_view_widget: DAQViewWidget | None = None
+        self._daq_view_proc: subprocess.Popen | None = None
         self._rig_number: int = 0
 
         self._create_widgets()
@@ -54,28 +55,11 @@ class RunningMode(ttk.Frame):
     def _create_widgets(self) -> None:
         """Create the running UI widgets."""
         palette = Theme.palette
-        
-        # Session summary at top
-        summary_frame = ttk.LabelFrame(self, text="Session", padding=(10, 6))
-        summary_frame.pack(fill="x", padx=10, pady=6)
-        
-        self._summary_labels = {}
-        for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
-            row = ttk.Frame(summary_frame)
-            row.pack(fill="x", pady=1)
-            ttk.Label(row, text=label_text, style="Subheading.TLabel").pack(side="left")
-            value_label = ttk.Label(row, text="", foreground=palette.text_secondary)
-            value_label.pack(side="left", padx=6)
-            self._summary_labels[key] = value_label
-        
-        # Performance stats container (populated dynamically in activate())
-        self._perf_frame = ttk.LabelFrame(self, text="Performance", padding=(10, 6))
-        self._perf_frame.pack(fill="x", padx=10, pady=5)
-        
+
         # Stop button (packed first so it's always visible at the bottom)
         button_frame = ttk.Frame(self)
         button_frame.pack(side="bottom", fill="x", padx=10, pady=8)
-        
+
         self._stop_button = ttk.Button(
             button_frame, text="Stop Session",
             command=self._on_stop_clicked,
@@ -88,63 +72,83 @@ class RunningMode(ttk.Frame):
             command=self._toggle_daq_view,
         )
         self._daq_view_btn.pack(side="right", padx=3)
-        
-        # Timer and status row
+
+        # Timer and status row (pinned above buttons)
         timer_frame = ttk.Frame(self)
         timer_frame.pack(side="bottom", fill="x", padx=10, pady=6)
-        
+
         ttk.Label(timer_frame, text="Elapsed:", style="Subheading.TLabel").pack(side="left")
         self._timer_label = ttk.Label(
             timer_frame, text="00:00:00",
-            font=Theme.font_mono(size=22, weight="bold"), 
+            font=Theme.font_mono(size=22, weight="bold"),
             foreground=palette.success
         )
         self._timer_label.pack(side="left", padx=10)
-        
+
         self._status_label = ttk.Label(
             timer_frame, text="RUNNING",
-            font=Theme.font(size=12, weight="bold"), 
+            font=Theme.font(size=12, weight="bold"),
             foreground=palette.success
         )
         self._status_label.pack(side="right", padx=10)
-        
+
         # =====================================================================
-        # Resizable paned area: Trial Log | Scales Plot | Session Log
+        # Resizable paned area: Session+Performance | Trial Log | Scales | Log
         # =====================================================================
         self._paned = ttk.PanedWindow(self, orient="vertical")
         self._paned.pack(fill="both", expand=True, padx=10, pady=5)
-        
-        # --- Pane 1: Trial Log ---
+
+        # --- Pane 1: Session Summary + Performance ---
+        info_pane = ttk.Frame(self._paned)
+
+        summary_frame = ttk.LabelFrame(info_pane, text="Session", padding=(10, 6))
+        summary_frame.pack(fill="x", pady=(0, 3))
+
+        self._summary_labels = {}
+        for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
+            row = ttk.Frame(summary_frame)
+            row.pack(fill="x", pady=1)
+            ttk.Label(row, text=label_text, style="Subheading.TLabel").pack(side="left")
+            value_label = ttk.Label(row, text="", foreground=palette.text_secondary)
+            value_label.pack(side="left", padx=6)
+            self._summary_labels[key] = value_label
+
+        self._perf_frame = ttk.LabelFrame(info_pane, text="Performance", padding=(10, 6))
+        self._perf_frame.pack(fill="both", expand=True)
+
+        self._paned.add(info_pane, weight=0)
+
+        # --- Pane 2: Trial Log ---
         trial_pane = ttk.LabelFrame(self._paned, text="Trial Log", padding=(8, 4))
         self._trial_log = scrolledtext.ScrolledText(
             trial_pane, height=8, state="disabled"
         )
         style_scrolled_text(self._trial_log, log_style=True)
         self._trial_log.pack(fill="both", expand=True)
-        
+
         # Configure tags for trial log coloring
         self._trial_log.tag_config("success", foreground=palette.success)
         self._trial_log.tag_config("failure", foreground=palette.error)
         self._trial_log.tag_config("timeout", foreground=palette.warning)
         self._trial_log.tag_config("stimulus", foreground=palette.info)
-        
+
         self._paned.add(trial_pane, weight=3)
-        
-        # --- Pane 2: Live Scales Plot ---
+
+        # --- Pane 3: Live Scales Plot ---
         scales_pane = ttk.LabelFrame(self._paned, text="Scales", padding=(8, 4))
         self._scales_plot = ScalesPlotWidget(scales_pane)
         self._scales_plot.pack(fill="both", expand=True)
-        
+
         self._paned.add(scales_pane, weight=1)
-        
-        # --- Pane 3: Session Log ---
+
+        # --- Pane 4: Session Log ---
         log_pane = ttk.LabelFrame(self._paned, text="Session Log", padding=(8, 4))
         self._log_text = scrolledtext.ScrolledText(
             log_pane, height=3, state="disabled"
         )
         style_scrolled_text(self._log_text, log_style=True)
         self._log_text.pack(fill="both", expand=True)
-        
+
         self._paned.add(log_pane, weight=1)
     
     def set_scales_client(self, client) -> None:
@@ -226,17 +230,51 @@ class RunningMode(ttk.Frame):
             variable=self._lock_tracker_view,
         ).pack(side="right")
 
-        # Notebook with one tab per tracker
+        # Notebook with one tab per tracker group
         self._perf_notebook = ttk.Notebook(self._perf_frame)
         self._perf_notebook.pack(fill="x", expand=True)
 
         for idx, tdef in enumerate(self._tracker_definitions):
-            tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
-            self._perf_notebook.add(tab, text=tdef.display_name)
-            widgets = self._create_tracker_tab(tab, display_name=tdef.display_name)
-            self._tracker_widgets[tdef.name] = widgets
-            self._tracker_tab_indices[tdef.name] = idx
-            self._last_logged_trials[tdef.name] = 0
+            sub_trackers = getattr(tdef, "sub_trackers", None)
+            has_subs = sub_trackers is not None and len(sub_trackers) > 0
+
+            if has_subs:
+                # Multi-sub-tracker group: create inner notebook with sub-tabs
+                outer_tab = ttk.Frame(self._perf_notebook, padding=(2, 2))
+                self._perf_notebook.add(outer_tab, text=tdef.display_name)
+                self._tracker_tab_indices[tdef.name] = idx
+
+                inner_nb = ttk.Notebook(outer_tab)
+                inner_nb.pack(fill="x", expand=True)
+
+                # "Overall" sub-tab (aggregated)
+                overall_tab = ttk.Frame(inner_nb, padding=(6, 4))
+                inner_nb.add(overall_tab, text="Overall")
+                overall_widgets = self._create_tracker_tab(overall_tab, display_name="Overall")
+
+                # Per-sub-tracker tabs
+                sub_widgets = {}
+                for sub_name in sub_trackers:
+                    sub_tab = ttk.Frame(inner_nb, padding=(6, 4))
+                    inner_nb.add(sub_tab, text=sub_name.capitalize())
+                    sub_widgets[sub_name] = self._create_tracker_tab(
+                        sub_tab, display_name=sub_name.capitalize()
+                    )
+
+                self._tracker_widgets[tdef.name] = {
+                    "_overall": overall_widgets,
+                    "_sub": sub_widgets,
+                    "_inner_nb": inner_nb,
+                }
+                self._last_logged_trials[tdef.name] = 0
+            else:
+                # Simple group: single tab as before
+                tab = ttk.Frame(self._perf_notebook, padding=(6, 4))
+                self._perf_notebook.add(tab, text=tdef.display_name)
+                widgets = self._create_tracker_tab(tab, display_name=tdef.display_name)
+                self._tracker_widgets[tdef.name] = widgets
+                self._tracker_tab_indices[tdef.name] = idx
+                self._last_logged_trials[tdef.name] = 0
 
     def _create_tracker_tab(self, parent: ttk.Frame, display_name: str = "") -> dict:
         """Create the standard stats widgets inside a tracker tab. Returns widget refs."""
@@ -342,51 +380,42 @@ class RunningMode(ttk.Frame):
         self._trial_log.see(tk.END)
         self._trial_log.config(state="disabled")
 
-    def update_performance(self, trackers: dict, updated: str) -> None:
+    def update_performance(self, tracker_groups: dict = None, trackers: dict = None,
+                           updated: str = "") -> None:
         """
-        Update the performance display for the tracker that changed.
+        Update the performance display for the tracker group that changed.
 
         Must be called on the main thread (marshalling is done by RigWindow).
 
         Args:
-            trackers: Dict of tracker_name -> PerformanceTracker.
-            updated:  Name of the tracker that just changed.
+            tracker_groups: Dict of group_name -> TrackerGroup (new style).
+            trackers:       Legacy alias for tracker_groups.
+            updated:        Name of the group that just changed.
         """
-        if updated not in self._tracker_widgets or updated not in trackers:
+        groups = tracker_groups or trackers
+        if groups is None or updated not in self._tracker_widgets or updated not in groups:
             return
 
-        tracker = trackers[updated]
+        group = groups[updated]
         w = self._tracker_widgets[updated]
         palette = Theme.palette
 
-        w["trials"].config(text=str(tracker.total_trials))
-        w["correct"].config(text=str(tracker.successes))
-        w["incorrect"].config(text=str(tracker.failures))
-        w["timeout"].config(text=str(tracker.timeouts))
-
-        # Overall accuracy
-        if tracker.responses > 0:
-            acc = tracker.accuracy
-            w["accuracy"].config(text=f"{acc:.0f}%", foreground=get_accuracy_color(acc))
+        if "_overall" in w:
+            # Multi-sub-tracker group: update overall + sub-tracker tabs
+            self._update_tracker_widgets(w["_overall"], group, palette)
+            for sub_name, sub_widgets in w["_sub"].items():
+                sub = group.get_sub_tracker(sub_name)
+                if sub is not None:
+                    self._update_tracker_widgets(sub_widgets, sub, palette)
         else:
-            w["accuracy"].config(text="--", foreground=palette.info)
-
-        # Rolling accuracy
-        if tracker.total_trials > 0:
-            try:
-                n = int(w["rolling_n_var"].get())
-            except ValueError:
-                n = 20
-            rolling = tracker.rolling_accuracy(n)
-            w["rolling"].config(text=f"{rolling:.0f}%")
-        else:
-            w["rolling"].config(text="--")
+            # Simple group: update single tab
+            self._update_tracker_widgets(w, group, palette)
 
         # Log new trials to the shared trial log
         last = self._last_logged_trials.get(updated, 0)
-        new_trials = tracker.get_trials_since(last)
+        all_trials = group.get_all_trials()
+        new_trials = all_trials[last:]
         multi = len(self._tracker_definitions) > 1
-        # Find display name for prefix
         display_name = updated
         for tdef in self._tracker_definitions:
             if tdef.name == updated:
@@ -397,13 +426,36 @@ class RunningMode(ttk.Frame):
             self._last_logged_trials[updated] = last + 1
             last += 1
 
-        # Auto-switch to the updated tracker's tab (unless locked)
+        # Auto-switch to the updated group's tab (unless locked)
         if (
             not self._lock_tracker_view.get()
             and self._perf_notebook is not None
             and updated in self._tracker_tab_indices
         ):
             self._perf_notebook.select(self._tracker_tab_indices[updated])
+
+    def _update_tracker_widgets(self, w: dict, tracker, palette) -> None:
+        """Update a set of stat widgets from a tracker or tracker group."""
+        w["trials"].config(text=str(tracker.total_trials))
+        w["correct"].config(text=str(tracker.successes))
+        w["incorrect"].config(text=str(tracker.failures))
+        w["timeout"].config(text=str(tracker.timeouts))
+
+        if tracker.responses > 0:
+            acc = tracker.accuracy
+            w["accuracy"].config(text=f"{acc:.0f}%", foreground=get_accuracy_color(acc))
+        else:
+            w["accuracy"].config(text="--", foreground=palette.info)
+
+        if tracker.total_trials > 0:
+            try:
+                n = int(w["rolling_n_var"].get())
+            except ValueError:
+                n = 20
+            rolling = tracker.rolling_accuracy(n)
+            w["rolling"].config(text=f"{rolling:.0f}%")
+        else:
+            w["rolling"].config(text="--")
 
     def _log_trial(self, trial, prefix: str = "") -> None:
         """Log a single trial to the trial log with colored output."""
@@ -515,39 +567,22 @@ class RunningMode(ttk.Frame):
         self._log_text.config(state="disabled")
     
     def _toggle_daq_view(self) -> None:
-        """Open or focus the DAQ live-view pop-out window."""
-        # If window exists and is still open, just focus it
-        if self._daq_view_window is not None:
-            try:
-                self._daq_view_window.lift()
-                self._daq_view_window.focus_force()
-                return
-            except tk.TclError:
-                # Window was closed by the user
-                self._daq_view_window = None
-                self._daq_view_widget = None
+        """Open the DAQ live-view in a separate process."""
+        # If process is still running, do nothing (user can close it themselves)
+        if self._daq_view_proc is not None and self._daq_view_proc.poll() is None:
+            return
 
-        top = tk.Toplevel(self)
-        top.title(f"DAQ Live View — Rig {self._rig_number}")
-        top.geometry("1100x620")
-        top.configure(bg=Theme.palette.bg_primary)
-        top.protocol("WM_DELETE_WINDOW", self._close_daq_view)
-
-        widget = DAQViewWidget(top)
-        widget.pack(fill="both", expand=True)
-        widget.start(self._rig_number)
-
-        self._daq_view_window = top
-        self._daq_view_widget = widget
+        script = Path(__file__).resolve().parents[1] / "daq_view_subprocess.py"
+        self._daq_view_proc = subprocess.Popen(
+            [sys.executable, str(script), str(self._rig_number)],
+        )
 
     def _close_daq_view(self) -> None:
-        """Clean up the DAQ view pop-out window."""
-        if self._daq_view_widget:
-            self._daq_view_widget.stop()
-            self._daq_view_widget = None
-        if self._daq_view_window:
-            self._daq_view_window.destroy()
-            self._daq_view_window = None
+        """Terminate the DAQ view subprocess if still running."""
+        if self._daq_view_proc is not None:
+            if self._daq_view_proc.poll() is None:
+                self._daq_view_proc.terminate()
+            self._daq_view_proc = None
 
     def _on_stop_clicked(self) -> None:
         """Handle stop button click."""

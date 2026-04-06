@@ -23,8 +23,8 @@ import yaml
 
 # ── Configuration ─────────────────────────────────────────────
 RIGS_CONFIG_PATH: str = r"C:\Dev\projects\rigs_config.yaml"
-BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\board_registry.json"
-RIG_NUMBER: int = 4
+BOARD_REGISTRY_PATH: str = r"C:\Dev\projects\hex_behav\hex_behav_control\behaviour_rig_system\config\board_registry.json"
+RIG_NUMBER: int = 2
 NUM_READINGS: int = 400          # Number of readings to average
 # ──────────────────────────────────────────────────────────────
 
@@ -88,7 +88,8 @@ def run_calibration(
             try:
                 line = ser.readline().decode('utf-8').strip()
                 return float(line) if line else None
-            except (ValueError, UnicodeDecodeError):
+            except (ValueError, UnicodeDecodeError) as e:
+                print(f"Warning: scales calibration parse error: {e}")
                 return None
 
     def collect_readings(n: int = num_readings, label: str = "Reading") -> list[float]:
@@ -260,8 +261,8 @@ def run_calibration(
         if is_wired:
             try:
                 ser.write(b'e')  # Stop acquisition
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping scales: {e}")
         ser.close()
 
 

@@ -89,13 +89,13 @@ def test_rig_connection(
         if link:
             try:
                 link.stop()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping link: {e}")
         if ser and ser.is_open:
             try:
                 ser.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing serial: {e}")
 
 
 class RigLauncher:
@@ -437,7 +437,7 @@ class RigLauncher:
 
         # Check if mkdocs server is already running
         if getattr(self, "_docs_process", None) is not None and self._docs_process.poll() is None:
-            webbrowser.open("http://localhost:8000")
+            webbrowser.open("http://127.0.0.1:8000")
             return
 
         try:
@@ -445,13 +445,28 @@ class RigLauncher:
                 [sys.executable, "-m", "mkdocs", "serve", "--no-livereload"],
                 cwd=str(project_root),
                 stdout=_sp.DEVNULL,
-                stderr=_sp.DEVNULL,
+                stderr=_sp.PIPE,
             )
-            # Give the server a moment to start
-            self.root.after(1500, lambda: webbrowser.open("http://localhost:8000"))
-            self.status_var.set("Docs server started at http://localhost:8000")
+            self.status_var.set("Docs server starting...")
+            import threading
+            threading.Thread(target=self._wait_for_docs_server, daemon=True).start()
         except Exception as e:
             messagebox.showerror("Docs Error", f"Failed to start mkdocs:\n{e}")
+
+    def _wait_for_docs_server(self, timeout: int = 30) -> None:
+        """Wait for mkdocs to print its 'Serving on' line, then open the browser."""
+        import time
+        import webbrowser
+        deadline = time.monotonic() + timeout
+        proc = self._docs_process
+        for line in proc.stderr:
+            if b"Serving on" in line:
+                self.root.after(0, lambda: webbrowser.open("http://127.0.0.1:8000"))
+                self.root.after(0, lambda: self.status_var.set("Docs server started at http://127.0.0.1:8000"))
+                return
+            if time.monotonic() > deadline:
+                break
+        self.root.after(0, lambda: self.status_var.set("Docs server failed to start within 30s."))
 
     def _style_rig_button_state(self, rig_name: str) -> None:
         """Style a rig button to reflect its current selection and open state."""
@@ -715,8 +730,9 @@ class RigLauncher:
         if rig_name in self.open_windows:
             window, btn, rig_window = self.open_windows[rig_name]
 
-            # Check if a session is running
-            if rig_window.controller.is_running:
+            # Block close only while in running mode (active session or cleanup)
+            from .rig_window import WindowMode
+            if rig_window._current_mode == WindowMode.RUNNING:
                 messagebox.showwarning(
                     "Session Running",
                     f"A session is currently running on {rig_name}.\n\n"
@@ -736,8 +752,8 @@ class RigLauncher:
             # Destroy the window
             try:
                 window.destroy()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error destroying window: {e}")
 
             # Update button appearance (restore to normal unselected state)
             self.rig_selected[rig_name] = False
@@ -771,15 +787,15 @@ class RigLauncher:
             try:
                 rig_window.controller.close()
                 window.destroy()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing rig window: {e}")
         
         # Stop docs server if running
         if getattr(self, "_docs_process", None) is not None:
             try:
                 self._docs_process.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error stopping docs server: {e}")
 
         self.root.destroy()
     

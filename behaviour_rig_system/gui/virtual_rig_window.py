@@ -84,19 +84,13 @@ class VirtualRigWindow:
         self._win.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self._win.configure(bg=Theme.palette.bg_primary)
 
-        # Try to position to the right of the parent
-        try:
-            parent.update_idletasks()
-            px = parent.winfo_x() + parent.winfo_width() + 12
-            py = parent.winfo_y()
-            self._win.geometry(f"+{px}+{py}")
-        except Exception:
-            pass
+        self._win.lift()
 
         # ── Main layout ─────────────────────────────────────────────────
         self._build_canvas()
         self._build_controls()
         self._build_gpio_panel()
+        self._build_daq_link_panel()
 
         # Port canvas item IDs
         self._port_items: list[dict] = []  # [{circle, label, glow, ...}, ...]
@@ -187,7 +181,7 @@ class VirtualRigWindow:
         frame = ttk.LabelFrame(
             self._win, text="  GPIO Pins  ", padding=8
         )
-        frame.pack(fill="x", padx=10, pady=(4, 10))
+        frame.pack(fill="x", padx=10, pady=4)
 
         self._gpio_buttons: list[ttk.Button] = []
         self._gpio_indicators: list[ttk.Label] = []
@@ -195,7 +189,7 @@ class VirtualRigWindow:
         grid = ttk.Frame(frame)
         grid.pack(fill="x")
 
-        for pin in range(6):
+        for pin in range(4):
             col_frame = ttk.Frame(grid)
             col_frame.pack(side="left", expand=True, padx=2)
 
@@ -224,6 +218,32 @@ class VirtualRigWindow:
             style="Muted.TLabel",
         )
         self._gpio_hint.pack(pady=(4, 0))
+
+    def _build_daq_link_panel(self) -> None:
+        """Create the DAQ link pin display panel."""
+        frame = ttk.LabelFrame(
+            self._win, text="  DAQ Link Pins  ", padding=8
+        )
+        frame.pack(fill="x", padx=10, pady=(4, 10))
+
+        self._daq_link_indicators: list[ttk.Label] = []
+
+        grid = ttk.Frame(frame)
+        grid.pack(fill="x")
+
+        for idx in range(2):
+            col_frame = ttk.Frame(grid)
+            col_frame.pack(side="left", expand=True, padx=2)
+
+            lbl = ttk.Label(col_frame, text=f"DAQ {idx}", style="Muted.TLabel")
+            lbl.pack()
+
+            indicator = ttk.Label(
+                col_frame, text="LO", width=6, anchor="center",
+                font=Theme.font_mono(size=9),
+            )
+            indicator.pack(pady=(2, 2))
+            self._daq_link_indicators.append(indicator)
 
     # ── Draw rig schematic ──────────────────────────────────────────────
 
@@ -328,8 +348,8 @@ class VirtualRigWindow:
             if snap is not None:
                 self._redraw(snap)
             self._poll_timer_id = self._win.after(self._POLL_INTERVAL_MS, self._poll_tick)
-        except tk.TclError:
-            pass  # window destroyed
+        except tk.TclError as e:
+            print(f"Warning: virtual rig poll error (window destroyed?): {e}")
 
     def _redraw(self, snap: "RigStateSnapshot") -> None:
         """Redraw only the elements that changed since the last snapshot."""
@@ -405,7 +425,7 @@ class VirtualRigWindow:
                 c.itemconfigure(self._ir_label, fill="#555")
 
         # ── GPIO indicators (only if changed) ──────────────────────────
-        for pin in range(6):
+        for pin in range(4):
             if prev is not None and (
                 snap.gpio_modes[pin] == prev.gpio_modes[pin]
                 and snap.gpio_output_states[pin] == prev.gpio_output_states[pin]
@@ -426,6 +446,14 @@ class VirtualRigWindow:
             else:  # INPUT
                 indicator.configure(text="INPUT")
                 btn.state(["!disabled"])
+
+        # ── DAQ link indicators (only if changed) ───────────────────────
+        for idx in range(2):
+            if prev is not None and snap.daq_link_states[idx] == prev.daq_link_states[idx]:
+                continue
+            state = snap.daq_link_states[idx]
+            indicator = self._daq_link_indicators[idx]
+            indicator.configure(text="HI" if state else "LO")
 
         self._last_snap = snap
 
@@ -483,18 +511,18 @@ class VirtualRigWindow:
         if self._poll_timer_id is not None:
             try:
                 self._win.after_cancel(self._poll_timer_id)
-            except (tk.TclError, ValueError):
-                pass
+            except (tk.TclError, ValueError) as e:
+                print(f"Warning: error cancelling poll timer: {e}")
             self._poll_timer_id = None
         try:
             self._win.destroy()
-        except tk.TclError:
-            pass
+        except tk.TclError as e:
+            print(f"Warning: error destroying virtual rig window: {e}")
 
     def show(self) -> None:
         """Show the window if it was hidden."""
         if not self._closed:
             try:
                 self._win.deiconify()
-            except tk.TclError:
-                pass
+            except tk.TclError as e:
+                print(f"Warning: error showing virtual rig window: {e}")

@@ -67,7 +67,8 @@ class BaseProtocol(ABC):
         self.link = link              # BehaviourRigLink (direct hardware access)
         self.status = ProtocolStatus.IDLE
         self.scales = None
-        self.perf_trackers: dict[str, Any] = {}  # Named performance trackers
+        self.perf_trackers: dict[str, Any] = {}  # TrackerGroups (or legacy PerformanceTrackers)
+        self.tracker_groups: dict[str, Any] = {}  # Same reference as perf_trackers (new name)
         self.rig_number: int | None = None
         self.reward_durations: list[int] = [500] * 6  # Per-port reward durations (ms)
 
@@ -196,8 +197,8 @@ class BaseProtocol(ABC):
                 self._duration_timer = None
             try:
                 self._cleanup()
-            except Exception:
-                pass  # Don't mask original error
+            except Exception as e:
+                print(f"Warning: cleanup error: {e}")
 
         if error is not None:
             raise error
@@ -223,6 +224,7 @@ class BaseProtocol(ABC):
         """Attach runtime services provided by the GUI/orchestrator."""
         self.scales = scales
         self.perf_trackers = perf_trackers or {}
+        self.tracker_groups = self.perf_trackers  # Alias for new code
         self.rig_number = rig_number
         self._clock = clock
         if reward_durations is not None:
@@ -250,16 +252,16 @@ class BaseProtocol(ABC):
             from BehavLink import GPIOMode
             for pin in range(self.link.NUM_GPIO_PINS):
                 self.link.gpio_configure(pin, GPIOMode.OUTPUT)
-        except Exception:
-            pass  # Don't block the protocol if init fails
+        except Exception as e:
+            print(f"Warning: GPIO init failed: {e}")
 
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners."""
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: listener error in '{event_name}': {e}")
 
     def check_stop(self) -> bool:
         """

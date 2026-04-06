@@ -37,13 +37,20 @@ BASE_DEFAULTS: dict[str, Any] = {
     "wait_duration": 0.0,
     "iti": 1.0,
 
-    # Punishment
-    "punishment_duration": 0.0, # s — 0 means no punishment
-    "punishment_enabled": False,
+    # Incorrect trial consequences
+    "ignore_incorrect": False,      # If True, wrong port touches are ignored; trial continues until correct or timeout
+    "incorrect_timeout": 0.0,       # s — forced wait after incorrect touch (0 = no timeout)
+    "spotlight_duration": 0.0,      # s — how long spotlights stay on during incorrect timeout (0 = no spotlight)
+    "spotlight_brightness": 255,    # 0-255 — brightness of spotlights during punishment
 
     # Audio
     "audio_enabled": False,
     "audio_proportion": 6,
+
+    # Scales mode (only used when trial_mode == "scales")
+    "trial_mode": "visual",          # "visual" or "scales"
+    "scales_reward_port": 0,         # Fixed port for reward delivery in scales mode
+    "collection_timeout": 30.0,      # Time (s) to wait for mouse to visit reward port
 }
 
 
@@ -65,6 +72,10 @@ class Stage:
         warmup_after: If set, warmup is only used when the mouse's saved stage
                       is at or past this stage in the stage ordering. If the
                       mouse hasn't reached this stage yet, warmup is skipped.
+        restart_stage: Stage name to persist at session end instead of this
+                       stage's own name. If None (default), the stage's own
+                       name is used. Use this when a session ending on this
+                       stage should restart from an earlier stage next time.
     """
     name: str
     display_name: str
@@ -72,6 +83,7 @@ class Stage:
     overrides: dict[str, Any] = field(default_factory=dict)
     is_warmup: bool = False
     warmup_after: Optional[str] = None
+    restart_stage: Optional[str] = None
 
     def get_params(self) -> dict[str, Any]:
         """

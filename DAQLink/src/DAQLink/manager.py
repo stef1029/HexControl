@@ -152,7 +152,7 @@ class DAQManager:
             self._log_file_path = os.path.join(
                 self.session_folder, f"daq_rig{self.rig_number}.log"
             )
-            self._log_file_handle = open(self._log_file_path, "w")
+            self._log_file_handle = open(self._log_file_path, "w", encoding="utf-8")
 
             self._process = subprocess.Popen(
                 command,
@@ -188,10 +188,10 @@ class DAQManager:
                     try:
                         self._log_file_handle.write(raw_line.decode(errors="replace"))
                         self._log_file_handle.flush()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        print(f"Warning: DAQ log write error: {e}")
+        except Exception as e:
+            print(f"Warning: DAQ output reader error: {e}")
 
     def wait_for_connection(self) -> bool:
         """
@@ -252,8 +252,8 @@ class DAQManager:
         if self._log_file_handle:
             try:
                 self._log_file_handle.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing DAQ log file: {e}")
             self._log_file_handle = None
         
         try:
@@ -305,8 +305,8 @@ class DAQManager:
         if self._log_file_handle:
             try:
                 self._log_file_handle.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing DAQ log file: {e}")
             self._log_file_handle = None
 
     def _cleanup_process(self) -> None:
@@ -346,5 +346,5 @@ class DAQManager:
             if os.path.exists(path):
                 try:
                     os.remove(path)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Warning: error removing signal file: {e}")

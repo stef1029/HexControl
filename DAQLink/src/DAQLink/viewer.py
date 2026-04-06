@@ -208,8 +208,8 @@ class DAQReaderThread(threading.Thread):
                     conn.write(b"e")
                     time.sleep(0.05)
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing DAQ connection: {e}")
             self.connected = False
 
 
@@ -638,8 +638,8 @@ class DAQViewer:
         text = self._window_var.get().rstrip("s")
         try:
             self._window_sec = float(text)
-        except ValueError:
-            pass
+        except ValueError as e:
+            print(f"Warning: invalid window size value: {e}")
 
     # -- update loop ----------------------------------------------------
 

@@ -197,9 +197,36 @@ class TrackerReportWidget(ttk.Frame):
         notebook.pack(fill="both", expand=True)
 
         for name, report in self._reports.items():
-            tab = ttk.Frame(notebook, padding=(10, 6))
-            notebook.add(tab, text=name)
-            self._build_tracker_tab(tab, name, report)
+            sub_trackers = report.get("sub_trackers")
+            is_simple = report.get("is_simple", True)
+
+            if not is_simple and sub_trackers and len(sub_trackers) > 1:
+                # Grouped tracker: outer tab with inner sub-tabs
+                outer_tab = ttk.Frame(notebook, padding=(4, 4))
+                notebook.add(outer_tab, text=name)
+
+                inner_nb = ttk.Notebook(outer_tab)
+                inner_nb.pack(fill="both", expand=True)
+
+                # Overall tab with all trials
+                overall_tab = ttk.Frame(inner_nb, padding=(10, 6))
+                inner_nb.add(overall_tab, text="Overall")
+                self._build_tracker_tab(overall_tab, "Overall", report)
+
+                # Per-sub-tracker tabs
+                all_trials = report.get("trials", [])
+                session_duration = report.get("session_duration", 0.0)
+                for sub_name in sub_trackers:
+                    sub_trials = [t for t in all_trials if t.get("trial_type") == sub_name]
+                    sub_report = {"trials": sub_trials, "session_duration": session_duration}
+                    sub_tab = ttk.Frame(inner_nb, padding=(10, 6))
+                    inner_nb.add(sub_tab, text=sub_name.capitalize())
+                    self._build_tracker_tab(sub_tab, sub_name.capitalize(), sub_report)
+            else:
+                # Simple tracker
+                tab = ttk.Frame(notebook, padding=(10, 6))
+                notebook.add(tab, text=name)
+                self._build_tracker_tab(tab, name, report)
 
     def _build_tracker_tab(
         self, parent: ttk.Frame, name: str, report: dict

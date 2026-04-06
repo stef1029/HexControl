@@ -74,8 +74,8 @@ def zero_scales(
         if ser is not None and ser.is_open:
             try:
                 ser.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: error closing serial: {e}")
 
 
 def zero_all_scales(

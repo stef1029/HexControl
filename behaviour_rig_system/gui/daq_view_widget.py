@@ -59,8 +59,8 @@ class DAQUDPListener(threading.Thread):
         if self._sock:
             try:
                 self._sock.close()
-            except OSError:
-                pass
+            except OSError as e:
+                print(f"Warning: error closing DAQ socket: {e}")
 
     def run(self) -> None:
         port = _UDP_BASE_PORT + self.rig_number
@@ -90,8 +90,8 @@ class DAQUDPListener(threading.Thread):
         self.receiving = False
         try:
             self._sock.close()
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"Warning: error closing DAQ socket: {e}")
 
 
 class DAQViewWidget(ttk.Frame):
@@ -145,7 +145,7 @@ class DAQViewWidget(ttk.Frame):
         self._window_var = tk.StringVar(value="5s")
         win_combo = ttk.Combobox(
             tb, textvariable=self._window_var, width=4,
-            values=["1s", "2s", "5s", "10s", "30s"],
+            values=["0.1s", "0.2s", "0.5s", "1s", "2s", "5s", "10s", "30s"],
             state="readonly", font=("Consolas", 8))
         win_combo.pack(side="left", padx=(4, 0))
         win_combo.bind("<<ComboboxSelected>>", self._on_window_change)
@@ -213,8 +213,8 @@ class DAQViewWidget(ttk.Frame):
         text = self._window_var.get().rstrip("s")
         try:
             self._window_sec = float(text)
-        except ValueError:
-            pass
+        except ValueError as e:
+            print(f"Warning: invalid window size value: {e}")
 
     # -- update loop ----------------------------------------------------
 

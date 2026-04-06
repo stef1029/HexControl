@@ -1,3 +1,3 @@
 """
-Autotraining Definitions - Audio stages and transitions
+Audio Autotraining Definitions - Stage and Graph data for audio/visual interleaved training.
 """

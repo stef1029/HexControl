@@ -98,7 +98,7 @@ class RigWindow:
         self.rig_name = self.rig_config.get("name", "Unknown")
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("680x1000")
+        self.root.geometry("680x1200")
         self.root.minsize(580, 580)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -135,7 +135,11 @@ class RigWindow:
         def on_main_thread(fn):
             """Wrap fn so it runs on the tkinter main thread."""
             def wrapper(**kwargs):
-                self.root.after(0, lambda: fn(**kwargs))
+                try:
+                    if self.root.winfo_exists():
+                        self.root.after(0, lambda: fn(**kwargs) if self.root.winfo_exists() else None)
+                except tk.TclError as e:
+                    print(f"Warning: TclError in event callback: {e}")
             return wrapper
 
         c = self.controller
@@ -160,8 +164,8 @@ class RigWindow:
         if self._current_mode == WindowMode.RUNNING and mode != WindowMode.RUNNING:
             try:
                 self.running_mode.deactivate()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: error deactivating running mode: {e}")
 
         self.setup_mode.pack_forget()
         self.running_mode.pack_forget()
@@ -279,8 +283,10 @@ class RigWindow:
     def _on_protocol_log(self, message: str) -> None:
         self.running_mode.log_message(message)
 
-    def _on_performance_update(self, trackers, updated) -> None:
-        self.running_mode.update_performance(trackers, updated)
+    def _on_performance_update(self, tracker_groups=None, trackers=None, updated="") -> None:
+        self.running_mode.update_performance(
+            tracker_groups=tracker_groups or trackers, updated=updated
+        )
 
     def _on_stimulus(self, port: int) -> None:
         self.running_mode.log_stimulus(port)
@@ -347,15 +353,15 @@ class RigWindow:
         self.controller.close()
         try:
             self.root.destroy()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: error destroying rig window: {e}")
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        if self.controller.is_running:
+        if self._current_mode == WindowMode.RUNNING:
             messagebox.showwarning(
                 "Session Running",
                 "A session is currently running.\n\nPlease stop the session before closing the window."
             )
             return
-        self.controller.close()
+        self._close_window()
