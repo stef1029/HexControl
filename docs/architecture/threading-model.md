@@ -11,9 +11,10 @@ graph TB
     end
 
     subgraph Background["Background Threads"]
-        ST[Startup Thread]
-        PT[Protocol Thread]
-        CT[Cleanup Thread]
+        ST[Startup Worker]
+        PT[Protocol Worker]
+        FT[Finalize Worker]
+        CT[Cleanup Worker]
         RT[BehavLink Receiver]
         SR[Scales Reader]
     end
@@ -26,9 +27,12 @@ graph TB
 
     GUI -.->|root.after| ST
     GUI -.->|root.after| PT
+    GUI -.->|root.after| FT
     GUI -.->|root.after| CT
     RT -->|event buffer| PT
 ```
+
+Each lifecycle worker is **short-lived** and does **one phase only**. When its phase finishes, the worker emits a single `*_complete` event and exits. The GUI listener for that event triggers the next phase by calling the next public method on the controller, which spawns the next worker.
 
 ### Main thread
 
@@ -42,11 +46,11 @@ graph TB
 
 **Rule:** No blocking operations. No serial I/O. No subprocess management. Everything that blocks goes on a background thread.
 
-### Startup thread
+### Startup worker
 
 **Created by:** `SessionController.start_session()`
 
-**Lifetime:** From Start button click to startup complete/error
+**Lifetime:** From Start button click to startup complete/error/cancelled
 
 **Does:**
 
@@ -56,11 +60,11 @@ graph TB
 - Performs BehavLink handshake
 - Creates protocol and tracker instances
 
-**Communicates via:** `_emit("startup_status")`, `_emit("startup_complete")`, `_emit("startup_error")`
+**Exits after emitting:** `_emit("startup_complete")`, `_emit("startup_error")`, or `_emit("startup_cancelled")`. Streams `_emit("startup_status")` while running.
 
-### Protocol thread
+### Protocol worker
 
-**Created by:** `SessionController.run_protocol()`
+**Created by:** `SessionController.run_protocol()` (called from the GUI's `_on_startup_complete` listener)
 
 **Lifetime:** From startup complete to protocol finish
 
@@ -68,14 +72,29 @@ graph TB
 
 - Executes `protocol.run()` (`_setup` -> `_run_protocol` -> `_cleanup`)
 - All trial logic, hardware commands, and performance recording
+- Captures the final `ProtocolStatus`
 
-**Communicates via:** `protocol._emit("log")`, `tracker._emit("update")`, `tracker._emit("stimulus")`
+**Exits after emitting:** `_emit("protocol_complete", final_status=...)`. Streams `protocol._emit("log")`, `tracker._emit("update")`, `tracker._emit("stimulus")` while running. Does **not** chain into the next phase itself.
 
-### Cleanup thread
+### Finalize worker
 
-**Created by:** `SessionController` after protocol completes
+**Created by:** `SessionController.finalize_protocol()` (called from the GUI's `_on_protocol_complete` listener)
 
-**Lifetime:** Brief -- shutdown sequence only
+**Lifetime:** Brief -- result building only
+
+**Does:**
+
+- Gathers performance reports from every tracker group
+- Saves the merged trial CSV to the session folder
+- Builds the `SessionResult`
+
+**Exits after emitting:** `_emit("finalize_complete", result=...)`.
+
+### Cleanup worker
+
+**Created by:** `SessionController.cleanup_session()` (called from the GUI's `_on_finalize_complete` listener, or by `controller.close()` on window close)
+
+**Lifetime:** Brief -- hardware shutdown only
 
 **Does:**
 
@@ -83,7 +102,7 @@ graph TB
 - Closes serial port
 - Stops PeripheralManager (DAQ, camera, scales)
 
-**Communicates via:** `_emit("cleanup_log")`, `_emit("cleanup_complete")`
+**Exits after emitting:** `_emit("cleanup_complete")`. Streams `_emit("cleanup_log")` (forwarded from PeripheralManager) while running.
 
 ### BehavLink receiver thread
 
@@ -172,11 +191,12 @@ Subprocess isolation prevents:
 ```
 Time →
 
-Main thread:    [Setup GUI] [Overlay] [Running Mode........] [Post Mode]
-Startup thread: ............[startup]
-Protocol thread:........................[_run_protocol........]
-Cleanup thread: ................................................[cleanup]
-Receiver thread:...........[serial read loop...........................]
+Main thread:     [Setup GUI] [Overlay] [Running Mode...........] [Post Mode]
+Startup worker:  ............[startup]
+Protocol worker: ........................[protocol.run.......]
+Finalize worker: ............................................[fin]
+Cleanup worker:  ...............................................[cleanup]
+Receiver thread: ...........[serial read loop............................]
 ```
 
-The startup, protocol, and cleanup threads run sequentially (never overlapping). The receiver thread runs in parallel with all of them.
+The four lifecycle workers run sequentially (never overlapping) — each one finishes and exits before the next is spawned, because the next is only kicked off when its predecessor's `*_complete` event reaches the GUI listener. The receiver thread runs in parallel with all of them.

@@ -79,8 +79,10 @@ Events don't go directly from hardware to GUI. They flow upward through a chain,
 RigWindow (GUI)
 │
 │ listens to controller via .on()
-│ receives: "startup_status", "protocol_log", "performance_update",
-│           "stimulus", "protocol_complete", "cleanup_log", etc.
+│ lifecycle events: "startup_complete", "protocol_complete",
+│           "finalize_complete", "cleanup_complete"
+│ streaming events: "startup_status", "protocol_log",
+│           "performance_update", "stimulus", "cleanup_log"
 │
 └── SessionController
     │
@@ -275,19 +277,22 @@ def _run_protocol(self):
 
 When the user clicks Stop, `controller.stop_session()` calls `protocol.request_stop()`, which sets `_stop_requested = True` and immediately shuts down rig outputs. The protocol loop checks this flag via `_check_stop()` and returns early, then `_cleanup()` runs.
 
-#### 5. Cleanup (CLEANING_UP phase)
+#### 5. Finalize and Cleanup (CLEANING_UP phase)
 
-**What the user sees:** "Cleaning up..." messages in the session log.
+**What the user sees:** "Finalising results..." then "Cleaning up..." messages in the session log.
 
-**What happens:** After the protocol thread finishes, the controller:
-1. Gathers results (final status, performance report, saves trial CSV)
-2. Emits `"protocol_complete"` — RigWindow stops the timer
-3. Runs hardware cleanup on a background thread:
+**What happens:** The lifecycle is split into two independent phases here. Each phase is its own controller method that spawns one short-lived worker thread, emits a single `*_complete` message when done, and exits. RigWindow's listener for that message triggers the next phase.
+
+1. The protocol worker finishes `protocol.run()` and emits `"protocol_complete"` carrying the final `ProtocolStatus`. The thread exits.
+2. RigWindow's `_on_protocol_complete` listener stops the timer + scales plot, sets the final status label, logs "Finalising results...", then calls `controller.finalize_protocol(final_status)`.
+3. `finalize_protocol` spawns a worker that gathers performance reports, saves the merged trial CSV, builds the `SessionResult`, emits `"finalize_complete"` carrying the result, and exits.
+4. RigWindow's `_on_finalize_complete` listener fills in the elapsed time, stashes the result, logs "Cleaning up...", then calls `controller.cleanup_session()`.
+5. `cleanup_session` spawns a worker that runs hardware cleanup:
    - `link.shutdown()` — send shutdown command to Arduino
    - `link.stop()` — stop the receive thread
    - `serial.close()` — close the serial port
    - `peripheral_manager.stop()` — stop camera, DAQ, scales subprocesses
-4. Emits `"cleanup_complete"` — RigWindow switches to PostSessionMode
+6. The worker emits `"cleanup_complete"` and exits. RigWindow's `_on_cleanup_complete` listener tears down the simulated mouse / virtual rig window, then schedules the switch to PostSessionMode after a short delay.
 
 #### 6. Results (COMPLETED phase)
 
@@ -315,20 +320,24 @@ StartupOverlay visible               wait for connection...
   │
 RunningMode visible
   │
-  ├──spawn────────────────────→    _run_protocol_thread()
+  ├──spawn────────────────────→    _protocol_worker()
   │                                  protocol.run()
   shows log messages       ←──────     emit("protocol_log")
   updates accuracy display ←──────     emit("performance_update")
   shows stimulus markers   ←──────     emit("stimulus")
   │                                  protocol finishes
-  receives protocol_complete ←────   emit("protocol_complete")
+  receives protocol_complete ←────   emit("protocol_complete"), exit
   │
-  │                                ┌─spawn─────────────────
-  │                                │ _cleanup_hardware_blocking()
+  ├──calls finalize_protocol───→    _finalize_worker()
+  shows "Finalising..."           │   build SessionResult
+  │                                │   save merged trial CSV
+  receives finalize_complete ←────   emit("finalize_complete"), exit
+  │
+  ├──calls cleanup_session────→    _cleanup_worker()
   shows "Cleaning up..."          │   link.shutdown()
   │                                │   serial.close()
   │                                │   peripheral_manager.stop()
-  receives cleanup_complete  ←────┘   done
+  receives cleanup_complete  ←────   emit("cleanup_complete"), exit
   │
 PostSessionMode visible
 ```

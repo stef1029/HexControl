@@ -76,14 +76,16 @@ This pattern keeps the core layer unaware of tkinter while ensuring thread safet
 | Event | Source | Data | Purpose |
 |-------|--------|------|---------|
 | `startup_status` | SessionController | `message` | Progress updates during startup |
-| `startup_complete` | SessionController | -- | Startup succeeded, ready to run |
-| `startup_error` | SessionController | `error` | Startup failed |
+| `startup_complete` | SessionController | (session payload) | Startup phase finished — GUI calls `run_protocol` next |
+| `startup_error` | SessionController | `message` | Startup failed |
+| `startup_cancelled` | SessionController | -- | User cancelled during startup |
 | `protocol_log` | BaseProtocol | `message` | Protocol log messages |
-| `performance_update` | PerformanceTracker | `tracker` | Trial outcome recorded |
+| `performance_update` | PerformanceTracker | `tracker_groups`, `updated` | Trial outcome recorded |
 | `stimulus` | PerformanceTracker | `port` | Stimulus presented |
-| `protocol_complete` | SessionController | `result` | Protocol finished |
+| `protocol_complete` | SessionController | `final_status` | Protocol phase finished — GUI calls `finalize_protocol` next |
+| `finalize_complete` | SessionController | `result` | `SessionResult` built — GUI calls `cleanup_session` next |
 | `cleanup_log` | SessionController | `message` | Hardware shutdown messages |
-| `cleanup_complete` | SessionController | -- | All hardware shut down |
+| `cleanup_complete` | SessionController | -- | All hardware shut down — GUI shows Post-Session Mode |
 
 ## Configuration flow
 

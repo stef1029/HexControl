@@ -1,22 +1,37 @@
 """
 Session Controller - Business logic for session lifecycle.
 
-Manages the full session lifecycle (startup, protocol execution, cleanup)
-with no tkinter dependency. Emits named events so the GUI layer can
-react without the controller knowing about widgets.
+Manages the full session lifecycle with no tkinter dependency. Emits
+named events so the GUI layer can react without the controller knowing
+about widgets.
 
-Events emitted:
-    "status_changed"      (status: SessionStatus)
-    "startup_status"      (message: str)
-    "startup_complete"    (scales_client, virtual_rig_state, session_info: dict, mouse_params: dict|None)
+The lifecycle is split into four phases. Each phase is a small public
+method that spawns one short-lived worker thread, does its job, emits a
+single `*_complete` message, and exits. The GUI listens for each
+`*_complete` message and triggers the next phase by calling the next
+method on this controller.
+
+Lifecycle chain:
+    start_session       -> emits "startup_complete" / "startup_error" / "startup_cancelled"
+    run_protocol        -> emits "protocol_complete"
+    finalize_protocol   -> emits "finalize_complete"
+    cleanup_session     -> emits "cleanup_complete"
+
+Lifecycle events:
+    "startup_complete"    (scales_client, virtual_rig_state, session_info: dict, mouse_params, clock, tracker_definitions)
     "startup_error"       (message: str)
     "startup_cancelled"   ()
-    "protocol_log"        (message: str)
-    "performance_update"  (tracker: PerformanceTracker)
-    "stimulus"            (port: int)
-    "protocol_complete"   (result: SessionResult)
-    "cleanup_log"         (message: str)
+    "protocol_complete"   (final_status: ProtocolStatus)
+    "finalize_complete"   (result: SessionResult)
     "cleanup_complete"    ()
+
+Streaming events (fire repeatedly during a phase):
+    "status_changed"      (status: SessionStatus)
+    "startup_status"      (message: str)
+    "protocol_log"        (message: str)
+    "performance_update"  (tracker_groups, updated)
+    "stimulus"            (port: int)
+    "cleanup_log"         (message: str)
 """
 
 import json
@@ -157,7 +172,7 @@ class SessionController:
 
     def close(self) -> None:
         """Clean up all resources (window closing)."""
-        self._cleanup_session()
+        self.cleanup_session()
 
     # =========================================================================
     # Startup sequence (runs on background thread)
@@ -396,32 +411,42 @@ class SessionController:
     # =========================================================================
 
     def run_protocol(self) -> None:
-        """Start the protocol in a background thread. Called by GUI after startup_complete."""
+        """Public entry: spawn protocol worker, return immediately."""
         self._set_status(SessionStatus.RUNNING)
         self._protocol_thread = threading.Thread(
-            target=self._run_protocol_thread, daemon=True
+            target=self._protocol_worker, daemon=True
         )
         self._protocol_thread.start()
 
-    def _run_protocol_thread(self) -> None:
-        """Run the protocol (background thread)."""
+    def _protocol_worker(self) -> None:
+        """Run the protocol, emit protocol_complete, exit."""
         try:
             if self._current_protocol:
                 self._current_protocol.run()
         except Exception as e:
             self._emit("protocol_log", message=f"ERROR: {e}")
-        finally:
-            self._on_protocol_complete()
 
-    def _on_protocol_complete(self) -> None:
-        """Gather results and start cleanup after protocol finishes."""
-        self._set_status(SessionStatus.CLEANING_UP)
-
-        # Get final status
         final_status = ProtocolStatus.COMPLETED
         if self._current_protocol is not None:
             final_status = self._current_protocol.status
 
+        self._emit("protocol_complete", final_status=final_status)
+
+    # =========================================================================
+    # Finalize phase
+    # =========================================================================
+
+    def finalize_protocol(self, final_status) -> None:
+        """Public entry: spawn finalize worker, return immediately."""
+        self._set_status(SessionStatus.CLEANING_UP)
+        threading.Thread(
+            target=self._finalize_worker,
+            args=(final_status,),
+            daemon=True,
+        ).start()
+
+    def _finalize_worker(self, final_status) -> None:
+        """Build SessionResult, save trial data, emit finalize_complete, exit."""
         status_map = {
             ProtocolStatus.COMPLETED: "Completed",
             ProtocolStatus.STOPPED: "Stopped",
@@ -489,17 +514,14 @@ class SessionController:
             performance_reports=performance_reports,
         )
 
-        self._emit("protocol_complete", result=result, final_status=final_status)
-
-        # Start cleanup
-        self._cleanup_session()
+        self._emit("finalize_complete", result=result)
 
     # =========================================================================
-    # Cleanup
+    # Cleanup phase
     # =========================================================================
 
-    def _cleanup_session(self, on_done: Callable | None = None) -> None:
-        """Clean up all session resources."""
+    def cleanup_session(self) -> None:
+        """Public entry: spawn cleanup worker, return immediately."""
         self._current_protocol = None
         self._protocol_thread = None
         self._virtual_rig_state = None
@@ -517,17 +539,13 @@ class SessionController:
             if pm is not None:
                 pm.on("log", lambda message: self._emit("cleanup_log", message=message))
 
-            def _bg_cleanup():
+            def _cleanup_worker():
                 self._cleanup_hardware_blocking(pm, ser, link)
                 self._emit("cleanup_complete")
-                if on_done is not None:
-                    on_done()
 
-            threading.Thread(target=_bg_cleanup, daemon=True).start()
+            threading.Thread(target=_cleanup_worker, daemon=True).start()
         else:
             self._emit("cleanup_complete")
-            if on_done is not None:
-                on_done()
 
     def _cleanup_hardware_async(self) -> None:
         """Quick async cleanup for cancellation/error paths."""

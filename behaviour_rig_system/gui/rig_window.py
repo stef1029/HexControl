@@ -143,16 +143,22 @@ class RigWindow:
             return wrapper
 
         c = self.controller
-        c.on("startup_status",     on_main_thread(self._on_startup_status))
+
+        # Lifecycle chain: startup -> protocol -> finalize -> cleanup -> post-session.
+        # Each listener does its GUI work and ends by calling the next controller phase.
         c.on("startup_complete",   on_main_thread(self._on_startup_complete))
         c.on("startup_error",      on_main_thread(self._on_startup_error))
         c.on("startup_cancelled",  on_main_thread(self._on_startup_cancelled))
+        c.on("protocol_complete",  on_main_thread(self._on_protocol_complete))
+        c.on("finalize_complete",  on_main_thread(self._on_finalize_complete))
+        c.on("cleanup_complete",   on_main_thread(self._on_cleanup_complete))
+
+        # Streaming events (fire repeatedly during a phase).
+        c.on("startup_status",     on_main_thread(self._on_startup_status))
         c.on("protocol_log",       on_main_thread(self._on_protocol_log))
         c.on("performance_update", on_main_thread(self._on_performance_update))
         c.on("stimulus",           on_main_thread(self._on_stimulus))
-        c.on("protocol_complete",  on_main_thread(self._on_protocol_complete))
         c.on("cleanup_log",        on_main_thread(self._on_cleanup_log))
-        c.on("cleanup_complete",   on_main_thread(self._on_cleanup_complete))
         c.on("status_changed",     on_main_thread(self._on_status_changed))
 
     # =========================================================================
@@ -291,17 +297,20 @@ class RigWindow:
     def _on_stimulus(self, port: int) -> None:
         self.running_mode.log_stimulus(port)
 
-    def _on_protocol_complete(self, result, final_status) -> None:
+    def _on_protocol_complete(self, final_status) -> None:
         self.running_mode.stop_timer()
         self.running_mode.stop_scales_plot()
         self.running_mode.set_status(final_status)
+        self.running_mode.log_message(f"Session {final_status.name.lower()}")
+        self.running_mode.log_message("Finalising results...")
+        self.controller.finalize_protocol(final_status)
 
-        # Fill in elapsed time from the GUI timer
+    def _on_finalize_complete(self, result) -> None:
+        # Fill in elapsed time from the GUI timer (timer already stopped above)
         result.elapsed_time = self.running_mode.get_elapsed_time()
-
-        self.running_mode.log_message(f"Session {result.status.lower()}")
-        self.running_mode.log_message("Cleaning up...")
         self._pending_result = result
+        self.running_mode.log_message("Cleaning up...")
+        self.controller.cleanup_session()
 
     def _on_cleanup_log(self, message: str) -> None:
         self.running_mode.log_message(message)

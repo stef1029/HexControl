@@ -13,17 +13,20 @@ stateDiagram-v2
     RUNNING --> STOPPING: stop_session()
     RUNNING --> CLEANING_UP: protocol_complete
     STOPPING --> CLEANING_UP: protocol exits
+    CLEANING_UP --> CLEANING_UP: finalize_complete
     CLEANING_UP --> COMPLETED: cleanup_complete
     COMPLETED --> IDLE: new_session()
 ```
 
+The lifecycle is split into four phases. Each phase is its own public method on the controller that spawns one short-lived worker thread, emits a single `*_complete` event when done, and exits. The GUI listens for that event and triggers the next phase by calling the next controller method. This keeps every transition consistent: phase finishes → emit → listener handles GUI → listener calls next phase.
+
 | State | Description | Thread |
 |-------|-------------|--------|
 | `IDLE` | Setup Mode displayed. Waiting for user to configure and start | Main |
-| `STARTING` | Startup sequence running. Overlay shown | Background |
-| `RUNNING` | Protocol executing. Running Mode shown | Protocol thread |
-| `STOPPING` | Stop requested. Waiting for protocol to check `check_stop()` | Protocol thread |
-| `CLEANING_UP` | Hardware shutdown in progress | Cleanup thread |
+| `STARTING` | Startup sequence running. Overlay shown | Startup worker |
+| `RUNNING` | Protocol executing. Running Mode shown | Protocol worker |
+| `STOPPING` | Stop requested. Waiting for protocol to check `check_stop()` | Protocol worker |
+| `CLEANING_UP` | Building `SessionResult` then shutting down hardware | Finalize worker, then cleanup worker |
 | `COMPLETED` | Post-Session Mode shown. Results displayed | Main |
 
 ## Startup sequence
@@ -54,17 +57,17 @@ If any step fails, the controller emits `startup_error` with the error message a
 
 ## Protocol execution
 
-After startup completes, `controller.run_protocol()` spawns the protocol thread:
+After startup completes, the `_on_startup_complete` listener calls `controller.run_protocol()`, which spawns the protocol worker:
 
 1. Set status to `RUNNING`
 2. Call `protocol.run()` which executes:
     - `_setup()` (if overridden)
     - `_run_protocol()` (main experiment loop)
     - `_cleanup()` (always runs, even on error/stop)
-3. Gather performance reports from all trackers
-4. Save merged trial data as CSV
-5. Build `SessionResult` with status, reports, and elapsed time
-6. Emit `protocol_complete` with the result
+3. Capture the final `ProtocolStatus`
+4. Emit `protocol_complete` with the final status, then exit
+
+The worker does **not** chain into the next phase itself — it just exits. The GUI listener decides what happens next.
 
 ## Stop handling
 
@@ -75,21 +78,29 @@ When the user clicks Stop:
 3. The protocol checks `self.check_stop()` in its next loop iteration
 4. `check_stop()` returns `True`, the protocol returns early
 5. `_cleanup()` runs (always)
-6. Flow continues to protocol completion and cleanup
+6. The protocol worker emits `protocol_complete` and exits — the rest of the lifecycle continues from the GUI listener as in the normal path
+
+## Finalize sequence
+
+The `_on_protocol_complete` listener stops the timer + scales plot, sets the final status label, logs "Finalising results...", then calls `controller.finalize_protocol(final_status)`. This spawns the finalize worker:
+
+1. Set status to `CLEANING_UP`
+2. Gather performance reports from all trackers
+3. Save merged trial data as CSV
+4. Build `SessionResult` with status, reports, and an elapsed-time placeholder (the GUI fills this in)
+5. Emit `finalize_complete` with the result, then exit
 
 ## Cleanup sequence
 
-After the protocol finishes (success, stop, or error):
+The `_on_finalize_complete` listener fills in the elapsed time, stashes the result, logs "Cleaning up...", then calls `controller.cleanup_session()`. This spawns the cleanup worker:
 
-1. Set status to `CLEANING_UP`
-2. Spawn cleanup thread:
-    - Send `shutdown()` command to BehaviourRigLink
-    - Close serial port
-    - Stop PeripheralManager (DAQ, camera, scales subprocesses)
-3. Emit `cleanup_log` messages for each step
-4. Emit `cleanup_complete`
-5. Set status to `COMPLETED`
-6. GUI switches to Post-Session Mode
+1. Send `shutdown()` command to BehaviourRigLink
+2. Stop the receive thread (`link.stop()`)
+3. Close serial port
+4. Stop PeripheralManager (DAQ, camera, scales subprocesses) — emits `cleanup_log` messages along the way
+5. Emit `cleanup_complete`, then exit
+
+The `_on_cleanup_complete` listener tears down the simulated mouse and virtual rig window, then schedules the switch to Post-Session Mode after a short delay so the user can read the final cleanup log lines.
 
 ## SessionResult
 
