@@ -149,7 +149,7 @@ def save_hdf5_json(
                 valid_message_indices.append(i)
                 binary_list.append(bits)
             else:
-                error_messages.append([i, f"bit‑count {len(bits)}", timestamps[i]])
+                error_messages.append([i, f"bit-count {len(bits)}", timestamps[i]])
         except Exception as exc:  # noqa: BLE001
             error_messages.append([i, str(exc), timestamps[i]])
 
@@ -220,7 +220,7 @@ async def listen(
     board_tag:     str | None = None,
     registry_path: str | None = None,
 ) -> None:
-    """Serial acquisition task (top‑level coroutine).
+    """Serial acquisition task (top-level coroutine).
     
     Args:
         new_mouse_id: Mouse ID for the session
@@ -387,13 +387,13 @@ async def listen(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Entry‑point for command‑line execution.
+    """Entry-point for command-line execution.
     
     Command line Args:
         --id: mouse ID (default: NoID)
         --date: date_time stamp (YYMMDD_HHMMSS)
         --path: output directory
-        --rig: rig number [1‑4] (default: 1)
+        --rig: rig number [1-4] (default: 1)
         --port: COM port to use (e.g., COM7). If provided, overrides all other port selection.
         --board-tag: Human-readable board tag (e.g., rig_1_daq). Resolved via registry.
         --registry: Path to board_registry.json file.
@@ -402,7 +402,7 @@ def main() -> None:
     parser.add_argument("--id",   type=str, help="mouse ID",  default="NoID")
     parser.add_argument("--date", type=str, help="date_time stamp (YYMMDD_HHMMSS)")
     parser.add_argument("--path", type=str, help="output directory")
-    parser.add_argument("--rig",  type=str, help="rig number [1‑4]", default="1")
+    parser.add_argument("--rig",  type=str, help="rig number [1-4]", default="1")
     parser.add_argument("--port", type=str, help="COM port (e.g., COM7). Overrides rig-based selection.", default=None)
     parser.add_argument("--board", type=str, help="Board registry name (e.g., rig_1_daq). Resolves port via board_registry.json.", default=None)
     parser.add_argument("--registry", type=str, help="Path to board_registry.json file.", default=None)
