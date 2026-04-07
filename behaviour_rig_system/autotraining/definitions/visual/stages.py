@@ -109,7 +109,7 @@ _register(Stage(
     ),
     overrides={
         "trial_mode": "scales",
-        "scales_reward_port": 0,
+        "scales_reward_port": 1,
         "collection_timeout": 30.0,
         "weight_offset": 3.0,
         "platform_settle_time": 0.0,
