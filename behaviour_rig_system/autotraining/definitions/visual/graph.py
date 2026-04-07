@@ -30,11 +30,11 @@ TRANSITIONS: list[Transition] = [
         from_stage="warm_up",
         to_stage="$saved",
         conditions=[
-            Condition("consecutive_correct", ">=", 5),
-            Condition("trials_in_stage", ">=", 10),
+            Condition("consecutive_correct", ">=", 10),
+            Condition("trials_in_stage", ">=", 30),
         ],
         priority=1,
-        description="Warm-up complete (5 consecutive correct, 10+ trials)",
+        description="Warm-up complete (10 consecutive correct, 30+ trials)",
     ),
 
     # -------------------------------------------------------------------------
@@ -172,50 +172,50 @@ TRANSITIONS: list[Transition] = [
         from_stage="multiple_leds_6x",
         to_stage="cue_duration_1000ms",
         conditions=[
-            Condition("rolling_accuracy", ">=", 90, window=30),
+            Condition("rolling_accuracy", ">=", 90, window=50),
         ],
         priority=10,
-        description="6-port mastered, beginning cue duration ladder (>90% over 30 trials)",
+        description="6-port mastered, beginning cue duration ladder (>90% over 50 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_1000ms",
         to_stage="cue_duration_750ms",
         conditions=[
-            Condition("rolling_accuracy", ">=", 75, window=30),
+            Condition("rolling_accuracy", ">=", 75, window=50),
         ],
         priority=10,
-        description="1000ms cue mastered (>=75% over 30 trials)",
+        description="1000ms cue mastered (>=75% over 50 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_750ms",
         to_stage="cue_duration_500ms",
         conditions=[
-            Condition("rolling_accuracy", ">=", 60, window=30),
+            Condition("rolling_accuracy", ">=", 60, window=50),
         ],
         priority=10,
-        description="750ms cue mastered (>=60% over 30 trials)",
+        description="750ms cue mastered (>=60% over 50 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_500ms",
         to_stage="cue_duration_250ms",
         conditions=[
-            Condition("rolling_accuracy", ">=", 50, window=30),
+            Condition("rolling_accuracy", ">=", 50, window=50),
         ],
         priority=10,
-        description="500ms cue mastered (>=50% over 30 trials)",
+        description="500ms cue mastered (>=50% over 50 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_250ms",
         to_stage="cue_duration_100ms",
         conditions=[
-            Condition("rolling_accuracy", ">=", 40, window=30),
+            Condition("rolling_accuracy", ">=", 40, window=50),
         ],
         priority=10,
-        description="250ms cue mastered (>=40% over 30 trials)",
+        description="250ms cue mastered (>=40% over 50 trials)",
     ),
 
     # -------------------------------------------------------------------------
@@ -226,30 +226,30 @@ TRANSITIONS: list[Transition] = [
         from_stage="cue_duration_1000ms",
         to_stage="multiple_leds_6x",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 50, window=50),
         ],
         priority=5,
-        description="Regression at 1000ms cue (<25% over 20 trials)",
+        description="Regression at 1000ms cue (<50% over 50 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_750ms",
         to_stage="cue_duration_1000ms",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 35, window=20),
         ],
         priority=5,
-        description="Regression at 750ms cue (<25% over 20 trials)",
+        description="Regression at 750ms cue (<35% over 20 trials)",
     ),
 
     Transition(
         from_stage="cue_duration_500ms",
         to_stage="cue_duration_750ms",
         conditions=[
-            Condition("rolling_accuracy", "<", 25, window=20),
+            Condition("rolling_accuracy", "<", 30, window=20),
         ],
         priority=5,
-        description="Regression at 500ms cue (<25% over 20 trials)",
+        description="Regression at 500ms cue (<30% over 20 trials)",
     ),
 
     Transition(
