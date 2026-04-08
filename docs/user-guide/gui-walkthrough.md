@@ -6,7 +6,7 @@ The application has two main windows: the **Launcher** (rig selector) and the **
 
 ## Launcher
 
-The Launcher is the first window you see when running `python main.py`. It displays a clock, a decorative generative-art background (different each launch), and all rigs defined in your `rigs.yaml` configuration. The colour palette is set by the `global.palette` key in your config.
+The Launcher is the first window you see when running `uv run python behaviour_rig_system/main.py`. It displays a clock, a decorative generative-art background (different each launch), and all rigs defined in your `rigs.yaml` configuration. The colour palette is set by the `global.palette` key in your config.
 
 ### Rig selection
 

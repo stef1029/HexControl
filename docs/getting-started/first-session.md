@@ -4,10 +4,13 @@ This walkthrough covers running a complete experiment session from launch to res
 
 ## 1. Launch the system
 
+From the `hex_behav_control` directory:
+
 ```bash
-cd behaviour_rig_system
-python main.py
+uv run python behaviour_rig_system/main.py
 ```
+
+(Or activate `.venv` and run `python behaviour_rig_system/main.py` directly — see [Installation](installation.md#4-run-the-system).)
 
 The **Launcher** window appears showing all configured rigs. Each rig displays its name, connection status, and controls.
 

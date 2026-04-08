@@ -1,7 +1,7 @@
-site_name: Hex Behav Control
+site_name: HexControl
 site_description: Modular behaviour rig control system for Arduino-based neuroscience experiments
-repo_url: https://github.com/your-org/hex_behav_control
-repo_name: hex_behav_control
+repo_url: https://github.com/stef1029/HexControl
+repo_name: stef1029/HexControl
 
 theme:
   name: material

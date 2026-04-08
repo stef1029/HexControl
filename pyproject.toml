@@ -6,21 +6,15 @@ requires-python = ">=3.10"
 dependencies = [
     "pyserial>=3.5",
     "pyyaml>=6.0",
+    "matplotlib>=3.10.8",
+    "opencv-python>=4.13.0.92",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.6",
+    "pytest",
     "behavlink",
     "daqlink",
     "scaleslink",
-    "matplotlib>=3.10.8",
-    "opencv-python>=4.13.0.92",
     "hex-behav-analysis",
-]
-
-[dependency-groups]
-docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.6",
-]
-dev = [
-    "pytest",
 ]
 
 [build-system]

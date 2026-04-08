@@ -1,4 +1,4 @@
-# Hex Behaviour Control
+# HexControl
 
 Behaviour rig control system for the hex maze, with peripheral libraries:
 
@@ -8,6 +8,12 @@ Behaviour rig control system for the hex maze, with peripheral libraries:
 
 The three sub-packages live as a uv workspace inside this repo and are
 installed editable, so you can edit them directly.
+
+> **Private dependency required.** HexControl depends on
+> [`hex_behav_analysis`](https://github.com/stef1029/hex_behav_analysis), which is a
+> **private repository**. You must be granted access by the maintainer
+> ([@stef1029](https://github.com/stef1029)) before you can install or run the system.
+> Without it, `uv sync` will fail.
 
 ## Quick start
 
@@ -28,11 +34,16 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 2. Clone and sync
+### 2. Clone the repos
+
+Clone HexControl and the private `hex_behav_analysis` library as **siblings** in the same parent folder. The `pyproject.toml` references the analysis library via the relative path `../hex_behav_analysis`, so the layout matters.
 
 ```bash
-git clone https://github.com/<you>/hex_behav.git
-cd hex_behav/hex_behav_control
+mkdir hex_behav
+cd hex_behav
+git clone https://github.com/stef1029/HexControl.git hex_behav_control
+git clone https://github.com/stef1029/hex_behav_analysis.git
+cd hex_behav_control
 uv sync
 ```
 
@@ -40,8 +51,8 @@ That's it. `uv sync` will:
 
 - Download Python 3.10 if you don't have it (the version is pinned in `.python-version`)
 - Create a `.venv/` in this directory
-- Install all runtime + dev dependencies from `uv.lock`
-- Install `BehavLink`, `DAQLink`, `ScalesLink`, and `hex-behav-control` as editable workspace members
+- Install every dependency listed in `uv.lock` (everything needed to run, develop, and build the docs — there are no optional groups)
+- Install `BehavLink`, `DAQLink`, `ScalesLink`, and `hex-behav-control` as editable workspace members, plus `hex_behav_analysis` as an editable path dependency
 
 ### 3. Run the system
 
@@ -80,12 +91,9 @@ without reinstalling.
 ### Adding a dependency
 
 ```bash
-uv add numpy                    # runtime dep
-uv add --group dev pytest-cov   # dev-only
-uv add --group docs mkdocs-foo  # docs-only
+uv add numpy        # adds to pyproject.toml, updates uv.lock, installs into .venv
+uv remove pyserial  # removes a dep
 ```
-
-These commands update `pyproject.toml` and `uv.lock` and install into `.venv`.
 
 ### Updating dependencies
 
@@ -102,9 +110,12 @@ uv run pytest
 
 ### Building docs
 
+`mkdocs` and `mkdocs-material` are installed by default with `uv sync`, so you
+can build the docs straight away:
+
 ```bash
-uv sync --group docs
-uv run mkdocs serve
+uv run mkdocs serve   # local preview at http://127.0.0.1:8000
+uv run mkdocs build   # static site → site/
 ```
 
 ## Alternative install (without uv)
@@ -113,7 +124,7 @@ If you can't use uv — e.g. you need to install into an existing conda env —
 you can fall back to plain pip:
 
 ```bash
-pip install -e ./BehavLink -e ./DAQLink -e ./ScalesLink -e .
+pip install -e ./BehavLink -e ./DAQLink -e ./ScalesLink -e ../hex_behav_analysis -e .
 ```
 
 You won't get the locked dependency versions from `uv.lock`, only the version
