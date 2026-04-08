@@ -6,11 +6,21 @@ requires-python = ">=3.10"
 dependencies = [
     "pyserial>=3.5",
     "pyyaml>=6.0",
+    "behavlink",
+    "daqlink",
+    "scaleslink",
+    "matplotlib>=3.10.8",
+    "opencv-python>=4.13.0.92",
+    "hex-behav-analysis",
+]
+
+[dependency-groups]
+docs = [
     "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.6"
-    "behavlink @ file:BehavLink",
-    "daqlink @ file:DAQLink",
-    "scaleslink @ file:ScalesLink",
+    "mkdocs-material>=9.7.6",
+]
+dev = [
+    "pytest",
 ]
 
 [build-system]
@@ -22,3 +32,12 @@ packages = ["hex_behav_control", "behaviour_rig_system"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.workspace]
+members = ["BehavLink", "DAQLink", "ScalesLink"]
+
+[tool.uv.sources]
+behavlink = { workspace = true }
+daqlink = { workspace = true }
+scaleslink = { workspace = true }
+hex-behav-analysis = { path = "../hex_behav_analysis", editable = true }

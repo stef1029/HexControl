@@ -1,5 +1,23 @@
-Camera/
+# Python
 __pycache__/
-activity.log
+*.pyc
+*.pyo
 *.egg-info/
 .eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Project-specific
+Camera/
+activity.log
+logs/
+site/
