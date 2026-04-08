@@ -18,8 +18,8 @@ from autotraining.persistence import (
     save_training_state,
 )
 from core.parameter_types import BoolParameter, StringParameter
-from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class VisualAutoTrainingProtocol(BaseProtocol):
@@ -74,14 +74,14 @@ class VisualAutoTrainingProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_trackers = self.perf_trackers
+        trackers = self.trackers
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
         # Reset all trackers
-        for tracker in perf_trackers.values():
+        for tracker in trackers.values():
             tracker.reset()
 
         num_trials = params["num_trials"]
@@ -120,7 +120,7 @@ class VisualAutoTrainingProtocol(BaseProtocol):
         )
 
         engine.initialise_session(
-            perf_trackers=perf_trackers,
+            trackers=trackers,
             log=self.log,
             skip_warmup=params.get("skip_warmup", False),
         )
@@ -181,48 +181,52 @@ class VisualAutoTrainingProtocol(BaseProtocol):
 
                     trial_num += 1
                     target_port = scales_reward_port
-                    trial_start_time = self.now()
-
-                    tracker = perf_trackers.get(engine.current_stage_name)
-                    if tracker is not None:
-                        tracker.stimulus(target_port)
-
-                    # Deliver reward immediately
-                    self.link.valve_pulse(target_port, self.reward_durations[target_port])
-
-                    # Wait for mouse to visit the reward port or timeout
-                    event = None
-                    while not self.check_stop():
-                        elapsed = self.now() - trial_start_time
-                        if elapsed >= collection_timeout:
-                            break
-                        remaining = collection_timeout - elapsed
-                        event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                        if event is not None and event.port == target_port:
-                            break
-                        event = None  # ignore visits to other ports
-
-                    trial_duration = self.now() - trial_start_time
-
-                    if self.check_stop():
+                    tracker = trackers.get(engine.current_stage_name)
+                    if tracker is None:
+                        self.log(f"ERROR: no tracker for stage {engine.current_stage_name}")
                         break
 
-                    if event is not None and event.port == target_port:
-                        if tracker is not None:
-                            tracker.success(correct_port=target_port, trial_duration=trial_duration)
-                        outcome = "success"
-                        chosen_port = target_port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} COLLECTED port {target_port} ({trial_duration:.1f}s)"
-                        )
-                    else:
-                        if tracker is not None:
-                            tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
-                        outcome = "timeout"
-                        chosen_port = None
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
-                        )
+                    trial_start_time = self.now()
+                    outcome = "timeout"
+                    chosen_port = None
+
+                    with Trial(tracker, correct_port=target_port) as t:
+                        t.stimulus(port=target_port, modality="scales")
+
+                        # Deliver reward immediately
+                        self.link.valve_pulse(target_port, self.reward_durations[target_port])
+
+                        # Wait for mouse to visit the reward port or timeout
+                        event = None
+                        while not self.check_stop():
+                            elapsed = self.now() - trial_start_time
+                            if elapsed >= collection_timeout:
+                                break
+                            remaining = collection_timeout - elapsed
+                            event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                            if event is not None and event.port == target_port:
+                                break
+                            event = None  # ignore visits to other ports
+
+                        if self.check_stop():
+                            break  # Trial auto-abandons
+
+                        if event is not None and event.port == target_port:
+                            t.success()
+                            outcome = "success"
+                            chosen_port = target_port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} COLLECTED port {target_port}"
+                            )
+                        else:
+                            t.timeout()
+                            outcome = "timeout"
+                            chosen_port = None
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
+                            )
+
+                    trial_duration = self.now() - trial_start_time
 
                 # --- Visual mode trial ---
 
@@ -269,81 +273,79 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                         self.sleep(iti)
                         continue
 
-                    tracker = perf_trackers.get(engine.current_stage_name)
-                    if tracker is not None:
-                        tracker.stimulus(target_port)
+                    tracker = trackers.get(engine.current_stage_name)
+                    if tracker is None:
+                        self.log(f"ERROR: no tracker for stage {engine.current_stage_name}")
+                        break
+
                     trial_start_time = self.now()
-
-                    self.link.led_set(target_port, led_brightness)
-
-                    cue_on = True
-                    event = None
-                    while True:
-                        if self.check_stop():
-                            break
-
-                        elapsed = self.now() - trial_start_time
-                        if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                            self.link.led_set(target_port, 0)
-                            cue_on = False
-
-                        if elapsed >= response_timeout:
-                            break
-
-                        remaining = response_timeout - elapsed
-                        event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                        if event is not None:
-                            if not ignore_incorrect or event.port == target_port:
-                                break
-                            # Incorrect touch ignored — keep waiting
-
-                    trial_duration = self.now() - trial_start_time
-                    if cue_on:
-                        self.link.led_set(target_port, 0)
-
                     outcome = "timeout"
                     chosen_port = None
 
-                    if self.check_stop():
-                        break
+                    with Trial(tracker, correct_port=target_port) as t:
+                        t.stimulus(port=target_port, modality="visual", stage=engine.current_stage_name)
 
-                    if event is None:
-                        if tracker is not None:
-                            tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
-                        outcome = "timeout"
-                        self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
-                    elif event.port == target_port:
-                        if tracker is not None:
-                            tracker.success(correct_port=target_port, trial_duration=trial_duration)
-                        self.link.valve_pulse(target_port, self.reward_durations[target_port])
-                        outcome = "success"
-                        chosen_port = event.port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
-                        )
-                    else:
-                        if tracker is not None:
-                            tracker.failure(
-                                correct_port=target_port,
-                                chosen_port=event.port,
-                                trial_duration=trial_duration,
+                        self.link.led_set(target_port, led_brightness)
+
+                        cue_on = True
+                        event = None
+                        while True:
+                            if self.check_stop():
+                                break
+
+                            elapsed = self.now() - trial_start_time
+                            if cue_on and cue_duration > 0 and elapsed >= cue_duration:
+                                self.link.led_set(target_port, 0)
+                                cue_on = False
+
+                            if elapsed >= response_timeout:
+                                break
+
+                            remaining = response_timeout - elapsed
+                            event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                            if event is not None:
+                                if not ignore_incorrect or event.port == target_port:
+                                    break
+                                # Incorrect touch ignored — keep waiting
+
+                        if cue_on:
+                            self.link.led_set(target_port, 0)
+
+                        if self.check_stop():
+                            break  # Trial auto-abandons
+
+                        if event is None:
+                            t.timeout(stage=engine.current_stage_name)
+                            outcome = "timeout"
+                            self.log(f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)")
+                        elif event.port == target_port:
+                            t.success(stage=engine.current_stage_name)
+                            self.link.valve_pulse(target_port, self.reward_durations[target_port])
+                            outcome = "success"
+                            chosen_port = event.port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port}"
                             )
-                        outcome = "failure"
-                        chosen_port = event.port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
-                        )
+                        else:
+                            t.failure(chosen_port=event.port, stage=engine.current_stage_name)
+                            outcome = "failure"
+                            chosen_port = event.port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
+                            )
 
-                        if incorrect_timeout > 0:
-                            if spotlight_duration > 0:
-                                self.link.spotlight_set(255, spotlight_brightness)
-                                self.sleep(min(spotlight_duration, incorrect_timeout))
-                                self.link.spotlight_set(255, 0)
-                                remaining_timeout = incorrect_timeout - spotlight_duration
-                                if remaining_timeout > 0:
-                                    self.sleep(remaining_timeout)
-                            else:
-                                self.sleep(incorrect_timeout)
+                            if incorrect_timeout > 0:
+                                if spotlight_duration > 0:
+                                    self.link.spotlight_set(255, spotlight_brightness)
+                                    self.sleep(min(spotlight_duration, incorrect_timeout))
+                                    self.link.spotlight_set(255, 0)
+                                    remaining_timeout = incorrect_timeout - spotlight_duration
+                                    if remaining_timeout > 0:
+                                        self.sleep(remaining_timeout)
+                                else:
+                                    self.sleep(incorrect_timeout)
+
+                    trial_duration = self.now() - trial_start_time
 
                 # --- Common post-trial (both modes) ---
 
@@ -355,9 +357,9 @@ class VisualAutoTrainingProtocol(BaseProtocol):
                 )
 
                 if new_stage is not None:
-                    tracker = perf_trackers.get(engine.current_stage_name)
-                    if tracker is not None:
-                        self.log(f"    Rolling accuracy: {tracker.rolling_accuracy(10):.0f}% (last 10)")
+                    new_tracker = trackers.get(engine.current_stage_name)
+                    if new_tracker is not None:
+                        self.log(f"    Rolling accuracy: {new_tracker.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:

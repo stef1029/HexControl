@@ -17,8 +17,8 @@ the preference ratio at a glance.
 import random
 
 from core.parameter_types import FloatParameter, IntParameter
-from core.performance_tracker import TrackerGroupDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class CueConflictTestProtocol(BaseProtocol):
@@ -39,7 +39,7 @@ class CueConflictTestProtocol(BaseProtocol):
     @classmethod
     def get_tracker_definitions(cls) -> list:
         return [
-            TrackerGroupDefinition(
+            TrackerDefinition(
                 name="conflict",
                 display_name="Cue Conflict",
                 sub_trackers=["visual", "audio"],
@@ -133,14 +133,17 @@ class CueConflictTestProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        group = self.tracker_groups.get("conflict")
+        tracker = self.trackers.get("conflict")
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        if group is not None:
-            group.reset()
+        if tracker is None:
+            self.log("ERROR: 'conflict' tracker not available!")
+            return
+
+        tracker.reset()
 
         mouse_weight = params["mouse_weight"]
         num_trials = params["num_trials"]
@@ -239,99 +242,87 @@ class CueConflictTestProtocol(BaseProtocol):
                 self.sleep(iti)
                 continue
 
-            # --- Present conflicting cues ---
+            # --- Present conflicting cues inside a Trial context ---
 
-            if group is not None:
-                group.stimulus(visual_port)
-            trial_start_time = self.now()
+            with Trial(tracker, correct_port=visual_port) as t:
+                t.stimulus(port=visual_port, modality="visual")
+                t.stimulus(port=audio_port, modality="audio")
 
-            self.link.led_set(visual_port, led_brightness)
-            self.link.noise_set(audio_port, True)
+                self.link.led_set(visual_port, led_brightness)
+                self.link.noise_set(audio_port, True)
 
-            # --- Wait for response (any port touch) ---
+                # --- Wait for response (any port touch) ---
+                trial_start_time = self.now()
+                event = None
+                while True:
+                    if self.check_stop():
+                        break
 
-            event = None
-            while True:
+                    elapsed = self.now() - trial_start_time
+                    if elapsed >= response_timeout:
+                        break
+
+                    remaining = response_timeout - elapsed
+                    event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                    if event is not None:
+                        break
+
+                # Turn off both cues
+                self.link.led_set(visual_port, 0)
+                self.link.noise_set(audio_port, False)
+
                 if self.check_stop():
-                    break
+                    break  # Trial context manager will auto-abandon
 
-                elapsed = self.now() - trial_start_time
-                if elapsed >= response_timeout:
-                    break
+                # --- Outcome ---
+                if event is None:
+                    # Timeout — record on the visual sub by convention
+                    t.timeout(sub="visual")
+                    self.log(
+                        f"  T{trial_num} TIMEOUT ({response_timeout:.0f}s) "
+                        f"[LED={visual_port} noise={audio_port}]"
+                    )
 
-                remaining = response_timeout - elapsed
-                event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                if event is not None:
-                    break
+                elif event.port == visual_port:
+                    # Chose the visual cue
+                    visual_chosen += 1
+                    t.success(sub="visual")
+                    self.link.valve_pulse(visual_port, self.reward_durations[visual_port])
+                    self.log(
+                        f"  T{trial_num} VISUAL port {visual_port} "
+                        f"[LED={visual_port} noise={audio_port}] "
+                        f"(V:{visual_chosen} A:{audio_chosen})"
+                    )
 
-            trial_duration = self.now() - trial_start_time
+                elif event.port == audio_port:
+                    # Chose the audio cue — record under audio sub with audio_port as correct
+                    audio_chosen += 1
+                    t.success(correct_port=audio_port, sub="audio")
+                    self.link.valve_pulse(audio_port, self.reward_durations[audio_port])
+                    self.log(
+                        f"  T{trial_num} AUDIO port {audio_port} "
+                        f"[LED={visual_port} noise={audio_port}] "
+                        f"(V:{visual_chosen} A:{audio_chosen})"
+                    )
 
-            # Turn off both cues
-            self.link.led_set(visual_port, 0)
-            self.link.noise_set(audio_port, False)
+                else:
+                    # Chose neither cue port — incorrect, recorded against visual
+                    t.failure(chosen_port=event.port, sub="visual")
+                    self.log(
+                        f"  T{trial_num} INCORRECT port {event.port} "
+                        f"[LED={visual_port} noise={audio_port}]"
+                    )
 
-            if self.check_stop():
-                break
-
-            # --- Outcome ---
-
-            if event is None:
-                # Timeout
-                if group is not None:
-                    group.timeout(correct_port=visual_port, trial_duration=trial_duration,
-                                  sub_tracker="visual")
-                self.log(
-                    f"  T{trial_num} TIMEOUT ({response_timeout:.0f}s) "
-                    f"[LED={visual_port} noise={audio_port}]"
-                )
-
-            elif event.port == visual_port:
-                # Chose the visual cue
-                visual_chosen += 1
-                if group is not None:
-                    group.success(correct_port=visual_port, trial_duration=trial_duration,
-                                  sub_tracker="visual")
-                self.link.valve_pulse(visual_port, self.reward_durations[visual_port])
-                self.log(
-                    f"  T{trial_num} VISUAL port {visual_port} ({trial_duration:.1f}s) "
-                    f"[LED={visual_port} noise={audio_port}] "
-                    f"(V:{visual_chosen} A:{audio_chosen})"
-                )
-
-            elif event.port == audio_port:
-                # Chose the audio cue
-                audio_chosen += 1
-                if group is not None:
-                    group.success(correct_port=audio_port, trial_duration=trial_duration,
-                                  sub_tracker="audio")
-                self.link.valve_pulse(audio_port, self.reward_durations[audio_port])
-                self.log(
-                    f"  T{trial_num} AUDIO port {audio_port} ({trial_duration:.1f}s) "
-                    f"[LED={visual_port} noise={audio_port}] "
-                    f"(V:{visual_chosen} A:{audio_chosen})"
-                )
-
-            else:
-                # Chose neither cue port — incorrect
-                modality = "visual"
-                if group is not None:
-                    group.failure(correct_port=visual_port, chosen_port=event.port,
-                                  trial_duration=trial_duration, sub_tracker=modality)
-                self.log(
-                    f"  T{trial_num} INCORRECT port {event.port} ({trial_duration:.1f}s) "
-                    f"[LED={visual_port} noise={audio_port}]"
-                )
-
-                if incorrect_timeout > 0:
-                    if spotlight_duration > 0:
-                        self.link.spotlight_set(255, spotlight_brightness)
-                        self.sleep(min(spotlight_duration, incorrect_timeout))
-                        self.link.spotlight_set(255, 0)
-                        remaining_timeout = incorrect_timeout - spotlight_duration
-                        if remaining_timeout > 0:
-                            self.sleep(remaining_timeout)
-                    else:
-                        self.sleep(incorrect_timeout)
+                    if incorrect_timeout > 0:
+                        if spotlight_duration > 0:
+                            self.link.spotlight_set(255, spotlight_brightness)
+                            self.sleep(min(spotlight_duration, incorrect_timeout))
+                            self.link.spotlight_set(255, 0)
+                            remaining_timeout = incorrect_timeout - spotlight_duration
+                            if remaining_timeout > 0:
+                                self.sleep(remaining_timeout)
+                        else:
+                            self.sleep(incorrect_timeout)
 
             if not self.check_stop() and iti > 0:
                 self.sleep(iti)

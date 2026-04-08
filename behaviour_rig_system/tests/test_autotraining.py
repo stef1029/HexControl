@@ -10,21 +10,38 @@ if str(_PROJECT_DIR) not in sys.path:
 from autotraining.engine import AutotrainingEngine
 from autotraining.definitions.visual.stages import STAGES
 from autotraining.definitions.visual.graph import TRANSITIONS
-from core.performance_tracker import PerformanceTracker
+from core.tracker import Tracker, TrackerDefinition, Trial
 
-# Create a tracker and engine (fresh mouse, no saved state)
-tracker = PerformanceTracker()
-tracker.reset()
+# Build one tracker per stage so the engine can map every stage to a tracker
+trackers = {
+    name: Tracker(TrackerDefinition(name=name, display_name=name))
+    for name in STAGES
+}
+for tracker in trackers.values():
+    tracker.reset()
 
 engine = AutotrainingEngine(STAGES, TRANSITIONS)
 logs = []
-engine.initialise_session({"warm_up": tracker}, lambda msg: logs.append(msg))
+engine.initialise_session(trackers, lambda msg: logs.append(msg))
 
 print(f"Started in: {engine.current_stage_name} (warmup={engine.in_warmup})")
 
+
+def record_trial(outcome: str, correct_port: int, chosen_port: int | None) -> None:
+    """Run a fake trial through the active tracker via the Trial context manager."""
+    tracker = engine.active_tracker
+    with Trial(tracker, correct_port=correct_port) as t:
+        if outcome == "success":
+            t.success()
+        elif outcome == "failure":
+            t.failure(chosen_port=chosen_port)
+        else:
+            t.timeout()
+
+
 # Simulate 15 successful warm-up trials
 for i in range(15):
-    tracker.success(correct_port=0, trial_duration=1.0)
+    record_trial("success", 0, 0)
     result = engine.on_trial_complete("success", 0, 0, 1.0)
     if result:
         print(f"  Trial {i+1}: transitioned to {result}")
@@ -34,14 +51,14 @@ print(f"After warm-up: {engine.current_stage_name} (warmup={engine.in_warmup})")
 # Simulate progress through phase 1a (50+ trials, 80%+ accuracy)
 for i in range(60):
     if i % 5 == 0:
-        tracker.failure(correct_port=0, chosen_port=1, trial_duration=1.0)
-        engine.on_trial_complete("failure", 0, 1, 1.0)
+        record_trial("failure", 0, 1)
+        result = engine.on_trial_complete("failure", 0, 1, 1.0)
     else:
-        tracker.success(correct_port=0, trial_duration=1.0)
+        record_trial("success", 0, 0)
         result = engine.on_trial_complete("success", 0, 0, 1.0)
-        if result:
-            print(f"  Phase 1a trial {i+1}: transitioned to {result}")
-            break
+    if result:
+        print(f"  Phase 1a trial {i+1}: transitioned to {result}")
+        break
 
 print(f"After phase 1a: {engine.current_stage_name}")
 

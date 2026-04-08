@@ -289,10 +289,8 @@ class RigWindow:
     def _on_protocol_log(self, message: str) -> None:
         self.running_mode.log_message(message)
 
-    def _on_performance_update(self, tracker_groups=None, trackers=None, updated="") -> None:
-        self.running_mode.update_performance(
-            tracker_groups=tracker_groups or trackers, updated=updated
-        )
+    def _on_performance_update(self, trackers=None, updated="") -> None:
+        self.running_mode.update_performance(trackers=trackers, updated=updated)
 
     def _on_stimulus(self, port: int) -> None:
         self.running_mode.log_stimulus(port)

@@ -29,6 +29,7 @@ Everything else in this template is optional quality-of-life.
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter, StringParameter
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class ProtocolTemplate(BaseProtocol):
@@ -74,13 +75,20 @@ class ProtocolTemplate(BaseProtocol):
             ),
         ]
 
+    @classmethod
+    def get_tracker_definitions(cls) -> list:
+        """OPTIONAL: declare named trackers. Each appears as a tab in the GUI."""
+        return [TrackerDefinition(name="trials", display_name="Trials")]
+
     def _run_protocol(self) -> None:
         """REQUIRED: main protocol body."""
         scales = self.scales
-        perf_tracker = self.perf_trackers.get("trials")
+        tracker = self.trackers.get("trials")
 
-        if perf_tracker is not None:
-            perf_tracker.reset()
+        if tracker is None:
+            self.log("ERROR: 'trials' tracker not available!")
+            return
+        tracker.reset()
 
         self.log("Template protocol started")
         self.log(f"Parameters: {self.parameters}")
@@ -90,11 +98,20 @@ class ProtocolTemplate(BaseProtocol):
             if weight is not None:
                 self.log(f"Current weight: {weight:.2f} g")
 
-        for trial in range(self.parameters["example_int"]):
+        for trial_num in range(self.parameters["example_int"]):
             if self.check_stop():
                 self.log("Stopped by user")
                 return
 
-            self.sleep(0.1)
+            # Standard trial pattern: wrap each trial in a Trial context manager.
+            # The lifecycle is enforced — every begin must be followed by an
+            # outcome (success/failure/timeout) or the trial auto-abandons.
+            target_port = 0
+            with Trial(tracker, correct_port=target_port) as t:
+                t.stimulus(port=target_port, modality="visual")
+                # ... present cue, wait for response, etc. ...
+                self.sleep(0.1)
+                # Record one of: t.success() / t.failure(chosen_port=X) / t.timeout()
+                t.success()
 
         self.log("Template protocol complete")

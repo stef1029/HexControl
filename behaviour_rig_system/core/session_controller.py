@@ -29,7 +29,7 @@ Streaming events (fire repeatedly during a phase):
     "status_changed"      (status: SessionStatus)
     "startup_status"      (message: str)
     "protocol_log"        (message: str)
-    "performance_update"  (tracker_groups, updated)
+    "performance_update"  (trackers: dict[str, Tracker], updated: str)
     "stimulus"            (port: int)
     "cleanup_log"         (message: str)
 """
@@ -45,7 +45,7 @@ from BehavLink import SimulatedRig, VirtualRigState
 from simulation import BehaviourClock
 from BehavLink.mock import MockSerial, mock_reset_arduino_via_dtr
 
-from .performance_tracker import PerformanceTracker
+from .tracker import Tracker, TrackerDefinition, save_merged_trials
 from .peripheral_manager import PeripheralManager, load_peripheral_config
 from .protocol_base import BaseProtocol, ProtocolStatus
 from .session_state import SessionStatus, SessionConfig, SessionResult
@@ -81,7 +81,7 @@ class SessionController:
         self._link: BehaviourRigLink | None = None
         self._peripheral_manager: PeripheralManager | None = None
         self._current_protocol: BaseProtocol | None = None
-        self._perf_trackers: dict[str, PerformanceTracker] = {}
+        self._trackers: dict[str, Tracker] = {}
         self._tracker_definitions: list = []
         self._virtual_rig_state: VirtualRigState | None = None
 
@@ -317,26 +317,24 @@ class SessionController:
                 link=self._link,
             )
 
-            # Create tracker groups from protocol definitions
-            from .performance_tracker import TrackerGroup, TrackerGroupDefinition
+            # Create trackers from protocol definitions
             tracker_defs = config["protocol_class"].get_tracker_definitions()
-            self._tracker_groups: dict[str, TrackerGroup] = {}
+            self._trackers: dict[str, Tracker] = {}
             self._tracker_definitions = tracker_defs
-            for gdef in tracker_defs:
-                group = TrackerGroup(gdef, clock=clock)
-                self._tracker_groups[gdef.name] = group
-                group.on(
+            for tdef in tracker_defs:
+                tracker = Tracker(tdef, clock=clock)
+                self._trackers[tdef.name] = tracker
+                tracker.on(
                     "update",
-                    lambda group, sub_tracker, _name=gdef.name: self._emit(
-                        "performance_update", tracker_groups=self._tracker_groups, updated=_name
+                    lambda tracker=None, sub=None, _name=tdef.name: self._emit(
+                        "performance_update", trackers=self._trackers, updated=_name
                     ),
                 )
-                group.on(
-                    "stimulus", lambda port: self._emit("stimulus", port=port)
+                tracker.on(
+                    "stimulus",
+                    lambda tracker=None, port=None, modality=None, t_offset=None, details=None:
+                        self._emit("stimulus", port=port),
                 )
-
-            # Legacy alias for backwards compatibility
-            self._perf_trackers = self._tracker_groups
 
             scales_client = None
             if self._peripheral_manager.scales_client is not None:
@@ -347,7 +345,7 @@ class SessionController:
 
             self._current_protocol.set_runtime_context(
                 scales=scales_client,
-                perf_trackers=self._tracker_groups,
+                trackers=self._trackers,
                 rig_number=rig_number,
                 clock=clock,
                 reward_durations=reward_durations,
@@ -456,20 +454,11 @@ class SessionController:
 
         # Get performance reports (raw trial data) and save merged trial data
         performance_reports: dict[str, dict] | None = None
-        if self._tracker_groups:
+        if self._trackers:
             performance_reports = {}
-            for name, group in self._tracker_groups.items():
-                all_trials = group.get_all_trials()
-                first_start = None
-                last_ts = None
-                for sub in group._sub_trackers.values():
-                    if sub._trials and sub._start_time:
-                        if first_start is None or sub._start_time < first_start:
-                            first_start = sub._start_time
-                        if sub._trials:
-                            ts = sub._trials[-1].timestamp
-                            if last_ts is None or ts > last_ts:
-                                last_ts = ts
+            for name, tracker in self._trackers.items():
+                all_trials = tracker.get_all_trials()
+                start_ts, last_ts = tracker.get_time_span()
 
                 performance_reports[name] = {
                     "trials": [
@@ -480,23 +469,23 @@ class SessionController:
                             "chosen_port": t.chosen_port,
                             "trial_duration": t.trial_duration,
                             "trial_type": t.trial_type,
+                            "stimuli": list(t.stimuli),
                         }
                         for t in all_trials
                     ],
                     "session_duration": (
-                        (last_ts - first_start) if first_start and last_ts else 0.0
+                        (last_ts - start_ts) if start_ts and last_ts else 0.0
                     ),
-                    "sub_trackers": group.sub_tracker_names,
-                    "is_simple": group.is_simple,
+                    "sub_trackers": tracker.sub_tracker_names,
+                    "is_simple": tracker.is_simple,
                 }
 
             # Save merged trial data to file
             if self._session_save_path:
                 try:
-                    from .performance_tracker import save_merged_trials
                     session_id = Path(self._session_save_path).name
                     saved_path = save_merged_trials(
-                        self._tracker_groups,
+                        self._trackers,
                         self._session_save_path,
                         session_id=session_id,
                     )

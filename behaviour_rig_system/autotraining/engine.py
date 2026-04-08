@@ -16,7 +16,7 @@ engine.on_trial_complete() after each trial.
 import time
 from typing import Any, Callable, Optional
 
-from core.performance_tracker import PerformanceTracker, TrackerGroup, TrackerGroupDefinition
+from core.tracker import Tracker, TrackerDefinition
 from .stage import Stage
 from .transitions import Transition, TransitionContext
 
@@ -28,7 +28,7 @@ class AutotrainingEngine:
     Usage in a protocol's run() function:
 
         engine = AutotrainingEngine(stages, transitions, persistence_state)
-        engine.initialise_session(perf_trackers, log)
+        engine.initialise_session(trackers, log)
 
         while running:
             params = engine.get_active_params()
@@ -81,17 +81,13 @@ class AutotrainingEngine:
         self._consecutive_timeout: int = 0
         self._in_warmup: bool = False
         self._session_start_time: float = 0.0
-        self._stage_start_trial_index: int = 0         # perf_tracker index when stage started
 
-        # Tracker group state
-        self._tracker_groups: dict[str, TrackerGroup] = {}
-        self._stage_to_group: dict[str, str] = {}  # stage_name -> group_name
-        self._active_group: Optional[TrackerGroup] = None
+        # Tracker state
+        self._trackers: dict[str, Tracker] = {}
+        self._stage_to_tracker: dict[str, str] = {}  # stage_name -> tracker name
+        self._active_tracker: Optional[Tracker] = None
         self._stage_start_indices: dict[str, int] = {}  # sub_tracker_name -> trial index
 
-        # Callbacks (legacy _perf_tracker/_perf_trackers kept for compat)
-        self._perf_tracker: Any = None
-        self._perf_trackers: dict[str, Any] = {}
         self._log: Callable[[str], None] = lambda msg: None
 
         # Transition history for this session
@@ -103,54 +99,33 @@ class AutotrainingEngine:
 
     def initialise_session(
         self,
-        perf_trackers: dict[str, Any],
+        trackers: dict[str, Tracker],
         log: Callable[[str], None],
         skip_warmup: bool = False,
     ) -> None:
         """
         Set up the engine for a new session.
 
-        Accepts either:
-        - dict[str, TrackerGroup] (new grouped tracker system)
-        - dict[str, PerformanceTracker] (legacy flat tracker system)
-
         If a warm-up stage exists, start there. Otherwise go directly
         to the saved/first stage.
 
         Args:
-            perf_trackers: Dict of tracker_name -> TrackerGroup or PerformanceTracker.
-            log:          Logging function (prints to GUI)
-            skip_warmup:  If True, skip warm-up and go directly to the
+            trackers:    Dict of tracker_name -> Tracker.
+            log:         Logging function (prints to GUI)
+            skip_warmup: If True, skip warm-up and go directly to the
                          saved/first stage.
         """
         self._log = log
         self._session_start_time = time.time()
 
-        # Detect whether we got TrackerGroups or legacy PerformanceTrackers
-        first_val = next(iter(perf_trackers.values()), None) if perf_trackers else None
-        if isinstance(first_val, TrackerGroup):
-            self._tracker_groups = perf_trackers
-            # Build stage -> group mapping
-            self._stage_to_group = {}
-            for group_name, group in self._tracker_groups.items():
-                for stage_name in group.stages:
-                    self._stage_to_group[stage_name] = group_name
-        else:
-            # Legacy: wrap each PerformanceTracker in a simple TrackerGroup
-            self._tracker_groups = {}
-            self._stage_to_group = {}
-            for name, tracker in perf_trackers.items():
-                gdef = TrackerGroupDefinition(name=name, display_name=name)
-                group = TrackerGroup(gdef)
-                # Replace the auto-created sub-tracker with the actual tracker
-                group._sub_trackers = {"default": tracker}
-                self._tracker_groups[name] = group
-                self._stage_to_group[name] = name
+        self._trackers = trackers
+        # Build stage -> tracker name mapping
+        self._stage_to_tracker = {}
+        for tracker_name, tracker in self._trackers.items():
+            for stage_name in tracker.stages:
+                self._stage_to_tracker[stage_name] = tracker_name
 
-        # Keep legacy references for backwards compatibility
-        self._perf_trackers = perf_trackers
-        self._perf_tracker = first_val
-        self._active_group = next(iter(self._tracker_groups.values()), None)
+        self._active_tracker = next(iter(self._trackers.values()), None)
 
         if not skip_warmup and self._warmup_stage is not None and self._should_warmup():
             self._set_stage(self._warmup_stage, is_warmup_entry=True)
@@ -200,7 +175,7 @@ class AutotrainingEngine:
 
         Resets session-level counters. If entering a non-warmup stage that
         matches the saved stage, restores the cumulative trial count.
-        Switches to the tracker group that covers this stage.
+        Switches to the tracker that covers this stage.
         """
         self._current_stage = stage
         self._active_params = stage.get_params()
@@ -209,28 +184,20 @@ class AutotrainingEngine:
         self._consecutive_timeout = 0
         self._in_warmup = is_warmup_entry
 
-        # Switch to the tracker group that covers this stage
-        group_name = self._stage_to_group.get(stage.name)
-        if group_name and group_name in self._tracker_groups:
-            self._active_group = self._tracker_groups[group_name]
-        # else keep current active_group (fallback for stages not in any group)
+        # Switch to the tracker that covers this stage
+        tracker_name = self._stage_to_tracker.get(stage.name)
+        if tracker_name and tracker_name in self._trackers:
+            self._active_tracker = self._trackers[tracker_name]
+        # else keep current active_tracker (fallback for stages not in any tracker)
 
         # Record per-sub-tracker trial indices for stage isolation
-        if self._active_group is not None:
+        if self._active_tracker is not None:
             self._stage_start_indices = {
-                sub_name: sub_tracker.total_trials
-                for sub_name, sub_tracker in self._active_group._sub_trackers.items()
+                sub_name: self._active_tracker.get_sub_tracker(sub_name).total_trials
+                for sub_name in self._active_tracker.sub_tracker_names
             }
         else:
             self._stage_start_indices = {}
-
-        # Legacy: maintain _perf_tracker and _stage_start_trial_index
-        if stage.name in self._perf_trackers:
-            self._perf_tracker = self._perf_trackers[stage.name]
-        if self._perf_tracker is not None and hasattr(self._perf_tracker, 'total_trials'):
-            self._stage_start_trial_index = self._perf_tracker.total_trials
-        else:
-            self._stage_start_trial_index = 0
 
         # Restore cumulative trial count if resuming saved stage
         if not is_warmup_entry and stage.name == self._saved_stage_name:
@@ -262,14 +229,14 @@ class AutotrainingEngine:
         return self._current_stage.display_name if self._current_stage else "Unknown"
 
     @property
-    def active_group(self) -> Optional[TrackerGroup]:
-        """The tracker group covering the current stage."""
-        return self._active_group
+    def active_tracker(self) -> Optional[Tracker]:
+        """The tracker covering the current stage."""
+        return self._active_tracker
 
     @property
-    def active_group_name(self) -> str:
-        """Name of the tracker group covering the current stage."""
-        return self._active_group.name if self._active_group else ""
+    def active_tracker_name(self) -> str:
+        """Name of the tracker covering the current stage."""
+        return self._active_tracker.name if self._active_tracker else ""
 
     @property
     def in_warmup(self) -> bool:
@@ -341,21 +308,20 @@ class AutotrainingEngine:
         """
         if self._current_stage is None:
             return None
-        if not self._tracker_groups and not self._perf_trackers:
+        if not self._trackers:
             return None
 
         session_minutes = (time.time() - self._session_start_time) / 60.0
 
         context = TransitionContext(
-            perf_trackers=self._perf_trackers,
+            trackers=self._trackers,
             current_stage_name=self._current_stage.name,
-            stage_start_trial_index=self._stage_start_trial_index,
             trials_in_stage=self._trials_in_stage,
             total_trials_in_stage=self._total_trials_in_stage,
             consecutive_correct=self._consecutive_correct,
             consecutive_timeout=self._consecutive_timeout,
             session_time_minutes=session_minutes,
-            active_group=self._active_group,
+            active_tracker=self._active_tracker,
             stage_start_indices=self._stage_start_indices,
         )
 
@@ -394,10 +360,8 @@ class AutotrainingEngine:
 
         # Record in transition log
         trial_num = 0
-        if self._active_group is not None:
-            trial_num = self._active_group.total_trials
-        elif self._perf_tracker is not None and hasattr(self._perf_tracker, 'total_trials'):
-            trial_num = self._perf_tracker.total_trials
+        if self._active_tracker is not None:
+            trial_num = self._active_tracker.total_trials
         self._transition_log.append({
             "timestamp": time.time(),
             "from_stage": old_stage.name,

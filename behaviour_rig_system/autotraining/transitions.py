@@ -6,15 +6,16 @@ Each Transition has a source stage, a destination stage, a priority,
 and one or more Conditions that must ALL be met for the transition to fire.
 
 Conditions are structured data evaluated against a context object that
-exposes performance metrics from the PerformanceTracker plus autotraining-
-specific counters (trials in current stage, consecutive outcomes, etc.).
+exposes performance metrics from the active :class:`Tracker` plus
+autotraining-specific counters (trials in current stage, consecutive
+outcomes, etc.).
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from core.performance_tracker import TrialOutcome
+from core.tracker import TrialOutcome
 
 
 # =============================================================================
@@ -167,45 +168,34 @@ class TransitionContext:
     """
     Provides metric values for condition evaluation.
 
-    Built from the engine's runtime state. Supports two evaluation modes:
-
-    **Grouped mode** (active_group provided): All accuracy queries are
-    stage-isolated via stage_start_indices. A Condition with no ``tracker``
-    queries the group aggregate; a Condition with ``tracker="audio"``
-    queries the "audio" sub-tracker within the active group.
-
-    **Legacy mode** (active_group is None): Falls back to the flat
-    perf_trackers dict. Per-stage tracker with stage isolation (no tracker
-    param) or named tracker without isolation (tracker param).
+    Built from the engine's runtime state. All accuracy queries are
+    stage-isolated via ``stage_start_indices``. A Condition with no
+    ``tracker`` queries the active tracker's aggregate (across all
+    sub-trackers); a Condition with ``tracker="audio"`` queries the
+    named sub-tracker within the active tracker.
     """
 
     def __init__(
         self,
-        perf_trackers: dict[str, Any],
+        trackers: dict[str, Any],
         current_stage_name: str,
-        stage_start_trial_index: int = 0,
         trials_in_stage: int = 0,
         total_trials_in_stage: int = 0,
         consecutive_correct: int = 0,
         consecutive_timeout: int = 0,
         session_time_minutes: float = 0.0,
-        active_group: Any = None,
+        active_tracker: Any = None,
         stage_start_indices: dict[str, int] | None = None,
     ):
-        self._perf_trackers = perf_trackers
+        self._trackers = trackers
         self._current_stage_name = current_stage_name
-        self._stage_start_trial_index = stage_start_trial_index
         self._trials_in_stage = trials_in_stage
         self._total_trials_in_stage = total_trials_in_stage
         self._consecutive_correct = consecutive_correct
         self._consecutive_timeout = consecutive_timeout
         self._session_time_minutes = session_time_minutes
-        self._active_group = active_group
+        self._active_tracker = active_tracker
         self._stage_start_indices = stage_start_indices or {}
-
-    def _get_stage_tracker(self) -> Any | None:
-        """Get the per-stage tracker for the current stage (may be None)."""
-        return self._perf_trackers.get(self._current_stage_name)
 
     def get_metric(
         self,
@@ -219,13 +209,11 @@ class TransitionContext:
         Args:
             metric:       Name of the metric (see METRIC_DESCRIPTIONS)
             window:       Rolling window size (for rolling_accuracy)
-            tracker_name: If set and active_group exists, queries the named
-                          sub-tracker within the active group (stage-isolated).
-                          In legacy mode, queries a named tracker without
-                          stage isolation. If None, queries the group
-                          aggregate or per-stage tracker.
+            tracker_name: If set, queries the named sub-tracker within
+                          the active tracker (stage-isolated). If None,
+                          queries the active tracker aggregate.
 
-        Returns None if the metric is unknown or if no suitable tracker
+        Returns None if the metric is unknown or if no active tracker
         is available (condition will not fire).
         """
         if metric == "rolling_accuracy":
@@ -241,10 +229,9 @@ class TransitionContext:
         elif metric == "consecutive_timeout":
             return float(self._consecutive_timeout)
         elif metric == "total_trials":
-            if self._active_group is not None:
-                return float(self._active_group.total_trials)
-            tracker = self._get_stage_tracker()
-            return float(tracker.total_trials) if tracker else None
+            if self._active_tracker is not None:
+                return float(self._active_tracker.total_trials)
+            return None
         elif metric == "session_time_minutes":
             return self._session_time_minutes
         elif metric == "rolling_trial_duration":
@@ -257,54 +244,33 @@ class TransitionContext:
         """
         Compute rolling accuracy using only trials from the current stage.
 
-        If an active group exists, merges all sub-trackers and uses
-        stage_start_indices for isolation. Otherwise falls back to the
-        legacy per-stage tracker with stage_start_trial_index.
-
-        Returns None if no tracker or fewer non-timeout trials than window.
+        Merges all sub-trackers of the active tracker, isolated by
+        ``stage_start_indices``. Returns None if no active tracker or
+        fewer than ``window`` non-timeout trials.
         """
-        if self._active_group is not None:
-            return self._active_group.rolling_accuracy_since(window, self._stage_start_indices)
-
-        # Legacy fallback
-        tracker = self._get_stage_tracker()
-        if tracker is None:
+        if self._active_tracker is None:
             return None
-        stage_trials = tracker.get_trials_since(self._stage_start_trial_index)
-        recent = [t for t in stage_trials if t.outcome != TrialOutcome.TIMEOUT][-window:]
-        if len(recent) < window:
-            return None
-        successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
-        return (successes / len(recent)) * 100
+        return self._active_tracker.rolling_accuracy_since(
+            window, self._stage_start_indices
+        )
 
     def _rolling_accuracy_named(self, window: int, tracker_name: str) -> float | None:
         """
         Compute rolling accuracy from a named sub-tracker, stage-isolated.
 
-        If an active group exists, queries the named sub-tracker within it
-        using stage_start_indices for isolation. Otherwise falls back to
-        the legacy flat tracker dict (no isolation).
-
-        Returns None if the tracker doesn't exist or there are fewer
-        non-timeout trials than the window size.
+        Queries the named sub-tracker within the active tracker, using
+        ``stage_start_indices`` for stage isolation. Returns None if the
+        sub-tracker doesn't exist or there are fewer non-timeout trials
+        than the window size.
         """
-        if self._active_group is not None:
-            sub = self._active_group.get_sub_tracker(tracker_name)
-            if sub is None:
-                return None
-            start_idx = self._stage_start_indices.get(tracker_name, 0)
-            stage_trials = sub.get_trials_since(start_idx)
-            recent = [t for t in stage_trials if t.outcome != TrialOutcome.TIMEOUT][-window:]
-            if len(recent) < window:
-                return None
-            successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
-            return (successes / len(recent)) * 100
-
-        # Legacy fallback: named tracker without stage isolation
-        tracker = self._perf_trackers.get(tracker_name)
-        if tracker is None:
+        if self._active_tracker is None:
             return None
-        recent = [t for t in tracker.get_trials() if t.outcome != TrialOutcome.TIMEOUT][-window:]
+        sub = self._active_tracker.get_sub_tracker(tracker_name)
+        if sub is None:
+            return None
+        start_idx = self._stage_start_indices.get(tracker_name, 0)
+        stage_trials = sub.get_trials_since(start_idx)
+        recent = [t for t in stage_trials if t.outcome != TrialOutcome.TIMEOUT][-window:]
         if len(recent) < window:
             return None
         successes = sum(1 for t in recent if t.outcome == TrialOutcome.SUCCESS)
@@ -314,23 +280,13 @@ class TransitionContext:
         """
         Average trial_duration (s) over the last N trials in the current stage.
 
-        Includes all trial outcomes (success, failure, timeout).
-        Returns None if the tracker doesn't exist or there are fewer
-        trials than the window size.
+        Includes all trial outcomes (success, failure, timeout). Returns
+        None if no active tracker or fewer trials than the window size.
         """
-        if self._active_group is not None:
-            trials = self._active_group.get_all_trials_since(self._stage_start_indices)
-            recent = trials[-window:]
-            if len(recent) < window:
-                return None
-            return sum(t.trial_duration for t in recent) / len(recent)
-
-        # Legacy fallback
-        tracker = self._get_stage_tracker()
-        if tracker is None:
+        if self._active_tracker is None:
             return None
-        stage_trials = tracker.get_trials_since(self._stage_start_trial_index)
-        recent = stage_trials[-window:]
+        trials = self._active_tracker.get_all_trials_since(self._stage_start_indices)
+        recent = trials[-window:]
         if len(recent) < window:
             return None
         return sum(t.trial_duration for t in recent) / len(recent)
@@ -339,24 +295,18 @@ class TransitionContext:
         """
         Average trial_duration (s) over the last N trials from a named sub-tracker.
 
-        Stage-isolated if active group available, otherwise legacy full history.
+        Stage-isolated via ``stage_start_indices``. Returns None if the
+        sub-tracker doesn't exist or there are fewer trials than the
+        window size.
         """
-        if self._active_group is not None:
-            sub = self._active_group.get_sub_tracker(tracker_name)
-            if sub is None:
-                return None
-            start_idx = self._stage_start_indices.get(tracker_name, 0)
-            stage_trials = sub.get_trials_since(start_idx)
-            recent = stage_trials[-window:]
-            if len(recent) < window:
-                return None
-            return sum(t.trial_duration for t in recent) / len(recent)
-
-        # Legacy fallback
-        tracker = self._perf_trackers.get(tracker_name)
-        if tracker is None:
+        if self._active_tracker is None:
             return None
-        recent = tracker.get_trials()[-window:]
+        sub = self._active_tracker.get_sub_tracker(tracker_name)
+        if sub is None:
+            return None
+        start_idx = self._stage_start_indices.get(tracker_name, 0)
+        stage_trials = sub.get_trials_since(start_idx)
+        recent = stage_trials[-window:]
         if len(recent) < window:
             return None
         return sum(t.trial_duration for t in recent) / len(recent)

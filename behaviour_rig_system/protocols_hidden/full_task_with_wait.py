@@ -7,8 +7,8 @@ Class-based version of the original full task protocol.
 import random
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter
-from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 try:
@@ -122,14 +122,17 @@ class FullTaskWithWaitProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_trackers.get("trials")
+        tracker = self.trackers.get("trials")
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        if perf_tracker is not None:
-            perf_tracker.reset()
+        if tracker is None:
+            self.log("ERROR: 'trials' tracker not available!")
+            return
+
+        tracker.reset()
 
         mouse_weight = params["mouse_weight"]
         num_trials = params["num_trials"]
@@ -263,67 +266,63 @@ class FullTaskWithWaitProtocol(BaseProtocol):
                     self.sleep(iti)
                 continue
 
-            if perf_tracker is not None:
-                perf_tracker.stimulus(target_port)
-            trial_start_time = self.now()
+            modality = "audio" if is_audio else "visual"
+            with Trial(tracker, correct_port=target_port) as t:
+                t.stimulus(port=target_port, modality=modality)
 
-            if is_audio:
-                try:
-                    self.link.speaker_set(SpeakerFrequency.FREQ_3300_HZ, SpeakerDuration.DURATION_500_MS)
-                except Exception as e:
-                    self.log(f"  Warning: Could not play audio cue: {e}")
-            else:
-                self.link.led_set(target_port, led_brightness)
+                trial_start_time = self.now()
 
-            cue_on = True
-            event = None
+                if is_audio:
+                    try:
+                        self.link.speaker_set(SpeakerFrequency.FREQ_3300_HZ, SpeakerDuration.DURATION_500_MS)
+                    except Exception as e:
+                        self.log(f"  Warning: Could not play audio cue: {e}")
+                else:
+                    self.link.led_set(target_port, led_brightness)
 
-            while True:
+                cue_on = True
+                event = None
+
+                while True:
+                    if self.check_stop():
+                        break
+
+                    elapsed = self.now() - trial_start_time
+
+                    if cue_on and cue_duration > 0 and elapsed >= cue_duration:
+                        if not is_audio:
+                            self.link.led_set(target_port, 0)
+                        cue_on = False
+
+                    if elapsed >= response_timeout:
+                        break
+
+                    remaining = response_timeout - elapsed
+                    event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                    if event is not None:
+                        break
+
+                if cue_on and not is_audio:
+                    self.link.led_set(target_port, 0)
+
                 if self.check_stop():
-                    break
+                    break  # Trial auto-abandons
 
-                elapsed = self.now() - trial_start_time
+                if event is None:
+                    t.timeout()
+                    self.log(f"  TIMEOUT - no response in {response_timeout:.1f}s")
+                elif event.port == target_port:
+                    t.success()
+                    self.link.valve_pulse(target_port, self.reward_durations[target_port])
+                    self.log(f"  SUCCESS - correct port {event.port}, reward delivered")
+                else:
+                    t.failure(chosen_port=event.port)
+                    self.log(f"  FAILURE - chose port {event.port}, expected port {target_port}")
 
-                if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                    if not is_audio:
-                        self.link.led_set(target_port, 0)
-                    cue_on = False
-
-                if elapsed >= response_timeout:
-                    break
-
-                remaining = response_timeout - elapsed
-                event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                if event is not None:
-                    break
-
-            trial_duration = self.now() - trial_start_time
-
-            if cue_on and not is_audio:
-                self.link.led_set(target_port, 0)
-
-            if event is None:
-                if perf_tracker is not None:
-                    perf_tracker.timeout(correct_port=target_port, trial_duration=trial_duration)
-                self.log(f"  TIMEOUT - no response in {response_timeout:.1f}s")
-            elif event.port == target_port:
-                if perf_tracker is not None:
-                    perf_tracker.success(correct_port=target_port, trial_duration=trial_duration)
-                self.link.valve_pulse(target_port, self.reward_durations[target_port])
-                self.log(f"  SUCCESS - correct port {event.port}, reward delivered")
-            else:
-                if perf_tracker is not None:
-                    perf_tracker.failure(
-                        correct_port=target_port,
-                        chosen_port=event.port,
-                        trial_duration=trial_duration,
-                    )
-                self.log(f"  FAILURE - chose port {event.port}, expected port {target_port}")
-
-                if punishment_s > 0:
-                    self.link.spotlight_set(255, 255)
-                    self.sleep(punishment_s)
-                    self.link.spotlight_set(255, 0)
+                    if punishment_s > 0:
+                        self.link.spotlight_set(255, 255)
+                        self.sleep(punishment_s)
+                        self.link.spotlight_set(255, 0)
 
             if not self.check_stop() and iti > 0:
                 self.sleep(iti)

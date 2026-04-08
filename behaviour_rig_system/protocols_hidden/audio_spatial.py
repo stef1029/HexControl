@@ -12,8 +12,8 @@ with spatial noise cues via noise_set().
 import random
 
 from core.parameter_types import BoolParameter, FloatParameter, IntParameter
-from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class AudioSpatialProtocol(BaseProtocol):
@@ -126,14 +126,17 @@ class AudioSpatialProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_trackers.get("trials")
+        tracker = self.trackers.get("trials")
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        if perf_tracker is not None:
-            perf_tracker.reset()
+        if tracker is None:
+            self.log("ERROR: 'trials' tracker not available!")
+            return
+
+        tracker.reset()
 
         mouse_weight = params["mouse_weight"]
         num_trials = params["num_trials"]
@@ -238,83 +241,69 @@ class AudioSpatialProtocol(BaseProtocol):
 
             # --- Cue presentation: noise on target buzzer ---
 
-            if perf_tracker is not None:
-                perf_tracker.stimulus(target_port)
-            trial_start_time = self.now()
+            with Trial(tracker, correct_port=target_port) as t:
+                t.stimulus(port=target_port, modality="audio")
 
-            self.link.noise_set(target_port, True)
+                trial_start_time = self.now()
+                self.link.noise_set(target_port, True)
 
-            cue_on = True
-            event = None
+                cue_on = True
+                event = None
 
-            while True:
-                if self.check_stop():
-                    break
-
-                elapsed = self.now() - trial_start_time
-
-                if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                    self.link.noise_set(target_port, False)
-                    cue_on = False
-
-                if elapsed >= response_timeout:
-                    break
-
-                remaining = response_timeout - elapsed
-                event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                if event is not None:
-                    if not ignore_incorrect or event.port == target_port:
+                while True:
+                    if self.check_stop():
                         break
 
-            trial_duration = self.now() - trial_start_time
+                    elapsed = self.now() - trial_start_time
 
-            # Always turn off noise at end of trial
-            if cue_on:
-                self.link.noise_set(target_port, False)
+                    if cue_on and cue_duration > 0 and elapsed >= cue_duration:
+                        self.link.noise_set(target_port, False)
+                        cue_on = False
 
-            if self.check_stop():
-                break
+                    if elapsed >= response_timeout:
+                        break
 
-            # --- Outcome ---
+                    remaining = response_timeout - elapsed
+                    event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                    if event is not None:
+                        if not ignore_incorrect or event.port == target_port:
+                            break
 
-            if event is None:
-                if perf_tracker is not None:
-                    perf_tracker.timeout(
-                        correct_port=target_port, trial_duration=trial_duration
+                # Always turn off noise at end of trial
+                if cue_on:
+                    self.link.noise_set(target_port, False)
+
+                if self.check_stop():
+                    break  # Trial auto-abandons
+
+                # --- Outcome ---
+                if event is None:
+                    t.timeout()
+                    self.log(
+                        f"  T{trial_num} TIMEOUT ({response_timeout:.0f}s)"
                     )
-                self.log(
-                    f"  T{trial_num} TIMEOUT ({response_timeout:.0f}s)"
-                )
-            elif event.port == target_port:
-                if perf_tracker is not None:
-                    perf_tracker.success(
-                        correct_port=target_port, trial_duration=trial_duration
+                elif event.port == target_port:
+                    t.success()
+                    self.link.valve_pulse(target_port, self.reward_durations[target_port])
+                    self.log(
+                        f"  T{trial_num} SUCCESS port {event.port}"
                     )
-                self.link.valve_pulse(target_port, self.reward_durations[target_port])
-                self.log(
-                    f"  T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
-                )
-            else:
-                if perf_tracker is not None:
-                    perf_tracker.failure(
-                        correct_port=target_port,
-                        chosen_port=event.port,
-                        trial_duration=trial_duration,
+                else:
+                    t.failure(chosen_port=event.port)
+                    self.log(
+                        f"  T{trial_num} FAILURE port {event.port} (expected {target_port})"
                     )
-                self.log(
-                    f"  T{trial_num} FAILURE port {event.port} (expected {target_port})"
-                )
 
-                if incorrect_timeout > 0:
-                    if spotlight_duration > 0:
-                        self.link.spotlight_set(255, spotlight_brightness)
-                        self.sleep(min(spotlight_duration, incorrect_timeout))
-                        self.link.spotlight_set(255, 0)
-                        remaining_timeout = incorrect_timeout - spotlight_duration
-                        if remaining_timeout > 0:
-                            self.sleep(remaining_timeout)
-                    else:
-                        self.sleep(incorrect_timeout)
+                    if incorrect_timeout > 0:
+                        if spotlight_duration > 0:
+                            self.link.spotlight_set(255, spotlight_brightness)
+                            self.sleep(min(spotlight_duration, incorrect_timeout))
+                            self.link.spotlight_set(255, 0)
+                            remaining_timeout = incorrect_timeout - spotlight_duration
+                            if remaining_timeout > 0:
+                                self.sleep(remaining_timeout)
+                        else:
+                            self.sleep(incorrect_timeout)
 
             if not self.check_stop() and iti > 0:
                 self.sleep(iti)

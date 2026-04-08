@@ -380,40 +380,37 @@ class RunningMode(ttk.Frame):
         self._trial_log.see(tk.END)
         self._trial_log.config(state="disabled")
 
-    def update_performance(self, tracker_groups: dict = None, trackers: dict = None,
-                           updated: str = "") -> None:
+    def update_performance(self, trackers: dict = None, updated: str = "") -> None:
         """
-        Update the performance display for the tracker group that changed.
+        Update the performance display for the tracker that changed.
 
         Must be called on the main thread (marshalling is done by RigWindow).
 
         Args:
-            tracker_groups: Dict of group_name -> TrackerGroup (new style).
-            trackers:       Legacy alias for tracker_groups.
-            updated:        Name of the group that just changed.
+            trackers: Dict of tracker_name -> Tracker.
+            updated:  Name of the tracker that just changed.
         """
-        groups = tracker_groups or trackers
-        if groups is None or updated not in self._tracker_widgets or updated not in groups:
+        if trackers is None or updated not in self._tracker_widgets or updated not in trackers:
             return
 
-        group = groups[updated]
+        tracker = trackers[updated]
         w = self._tracker_widgets[updated]
         palette = Theme.palette
 
         if "_overall" in w:
-            # Multi-sub-tracker group: update overall + sub-tracker tabs
-            self._update_tracker_widgets(w["_overall"], group, palette)
+            # Multi-sub-tracker: update overall + sub-tracker tabs
+            self._update_tracker_widgets(w["_overall"], tracker, palette)
             for sub_name, sub_widgets in w["_sub"].items():
-                sub = group.get_sub_tracker(sub_name)
+                sub = tracker.get_sub_tracker(sub_name)
                 if sub is not None:
                     self._update_tracker_widgets(sub_widgets, sub, palette)
         else:
-            # Simple group: update single tab
-            self._update_tracker_widgets(w, group, palette)
+            # Simple tracker: update single tab
+            self._update_tracker_widgets(w, tracker, palette)
 
         # Log new trials to the shared trial log
         last = self._last_logged_trials.get(updated, 0)
-        all_trials = group.get_all_trials()
+        all_trials = tracker.get_all_trials()
         new_trials = all_trials[last:]
         multi = len(self._tracker_definitions) > 1
         display_name = updated
@@ -426,7 +423,7 @@ class RunningMode(ttk.Frame):
             self._last_logged_trials[updated] = last + 1
             last += 1
 
-        # Auto-switch to the updated group's tab (unless locked)
+        # Auto-switch to the updated tracker's tab (unless locked)
         if (
             not self._lock_tracker_view.get()
             and self._perf_notebook is not None
@@ -459,7 +456,7 @@ class RunningMode(ttk.Frame):
 
     def _log_trial(self, trial, prefix: str = "") -> None:
         """Log a single trial to the trial log with colored output."""
-        from core.performance_tracker import TrialOutcome
+        from core.tracker import TrialOutcome
 
         trial_num = trial.trial_number
         outcome = trial.outcome

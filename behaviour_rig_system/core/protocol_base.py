@@ -67,8 +67,7 @@ class BaseProtocol(ABC):
         self.link = link              # BehaviourRigLink (direct hardware access)
         self.status = ProtocolStatus.IDLE
         self.scales = None
-        self.perf_trackers: dict[str, Any] = {}  # TrackerGroups (or legacy PerformanceTrackers)
-        self.tracker_groups: dict[str, Any] = {}  # Same reference as perf_trackers (new name)
+        self.trackers: dict[str, Any] = {}  # dict[str, Tracker]
         self.rig_number: int | None = None
         self.reward_durations: list[int] = [500] * 6  # Per-port reward durations (ms)
 
@@ -216,15 +215,14 @@ class BaseProtocol(ABC):
         self,
         *,
         scales=None,
-        perf_trackers: dict | None = None,
+        trackers: dict | None = None,
         rig_number: int | None = None,
         clock=None,
         reward_durations: list[int] | None = None,
     ) -> None:
         """Attach runtime services provided by the GUI/orchestrator."""
         self.scales = scales
-        self.perf_trackers = perf_trackers or {}
-        self.tracker_groups = self.perf_trackers  # Alias for new code
+        self.trackers = trackers or {}
         self.rig_number = rig_number
         self._clock = clock
         if reward_durations is not None:

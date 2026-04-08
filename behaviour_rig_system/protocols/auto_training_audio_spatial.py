@@ -22,8 +22,8 @@ from autotraining.persistence import (
     save_training_state,
 )
 from core.parameter_types import BoolParameter, StringParameter
-from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class AudioSpatialAutoTrainingProtocol(BaseProtocol):
@@ -80,14 +80,14 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        tracker_groups = self.tracker_groups
+        trackers = self.trackers
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        for group in tracker_groups.values():
-            group.reset()
+        for tracker in trackers.values():
+            tracker.reset()
 
         num_trials = params["num_trials"]
         mouse_id = params.get("mouse_id", "unknown")
@@ -125,7 +125,7 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
         )
 
         engine.initialise_session(
-            perf_trackers=tracker_groups,
+            trackers=trackers,
             log=self.log,
             skip_warmup=params.get("skip_warmup", False),
         )
@@ -187,48 +187,50 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
 
                     trial_num += 1
                     target_port = scales_reward_port
-                    trial_start_time = self.now()
-
-                    group = engine.active_group
-                    if group is not None:
-                        group.stimulus(target_port)
-
-                    self.link.valve_pulse(target_port, self.reward_durations[target_port])
-
-                    event = None
-                    while not self.check_stop():
-                        elapsed = self.now() - trial_start_time
-                        if elapsed >= collection_timeout:
-                            break
-                        remaining = collection_timeout - elapsed
-                        event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                        if event is not None and event.port == target_port:
-                            break
-                        event = None
-
-                    trial_duration = self.now() - trial_start_time
-
-                    if self.check_stop():
+                    tracker = engine.active_tracker
+                    if tracker is None:
+                        self.log(f"ERROR: no tracker for stage {stage_name}")
                         break
 
-                    if event is not None and event.port == target_port:
-                        if group is not None:
-                            group.success(correct_port=target_port, trial_duration=trial_duration,
-                                          stage=stage_name)
-                        outcome = "success"
-                        chosen_port = target_port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} COLLECTED port {target_port} ({trial_duration:.1f}s)"
-                        )
-                    else:
-                        if group is not None:
-                            group.timeout(correct_port=target_port, trial_duration=trial_duration,
-                                          stage=stage_name)
-                        outcome = "timeout"
-                        chosen_port = None
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
-                        )
+                    trial_start_time = self.now()
+                    outcome = "timeout"
+                    chosen_port = None
+
+                    with Trial(tracker, correct_port=target_port) as t:
+                        t.stimulus(port=target_port, modality="scales", stage=stage_name)
+
+                        self.link.valve_pulse(target_port, self.reward_durations[target_port])
+
+                        event = None
+                        while not self.check_stop():
+                            elapsed = self.now() - trial_start_time
+                            if elapsed >= collection_timeout:
+                                break
+                            remaining = collection_timeout - elapsed
+                            event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                            if event is not None and event.port == target_port:
+                                break
+                            event = None
+
+                        if self.check_stop():
+                            break  # Trial auto-abandons
+
+                        if event is not None and event.port == target_port:
+                            t.success(stage=stage_name)
+                            outcome = "success"
+                            chosen_port = target_port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} COLLECTED port {target_port}"
+                            )
+                        else:
+                            t.timeout(stage=stage_name)
+                            outcome = "timeout"
+                            chosen_port = None
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} NOT COLLECTED (timeout {collection_timeout:.0f}s)"
+                            )
+
+                    trial_duration = self.now() - trial_start_time
 
                 # --- Combined cue trial (LED + noise) ---
 
@@ -277,100 +279,88 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                         self.sleep(iti)
                         continue
 
-                    # --- Record to tracker group ---
-                    group = engine.active_group
-                    if group is not None:
-                        group.stimulus(target_port)
+                    # --- Record to tracker ---
+                    tracker = engine.active_tracker
+                    if tracker is None:
+                        self.log(f"ERROR: no tracker for stage {stage_name}")
+                        break
+
                     trial_start_time = self.now()
-
-                    # --- Present combined cue (LED + noise) ---
-
-                    self.link.led_set(target_port, led_brightness)
-                    self.link.noise_set(target_port, True)
-
-                    # --- Wait for response ---
-
-                    cue_on = True
-                    event = None
-                    while True:
-                        if self.check_stop():
-                            break
-
-                        elapsed = self.now() - trial_start_time
-
-                        if cue_on and cue_duration > 0 and elapsed >= cue_duration:
-                            self.link.led_set(target_port, 0)
-                            self.link.noise_set(target_port, False)
-                            cue_on = False
-
-                        if elapsed >= response_timeout:
-                            break
-
-                        remaining = response_timeout - elapsed
-                        event = self.link.wait_for_event(timeout=min(0.1, remaining))
-                        if event is not None:
-                            if not ignore_incorrect or event.port == target_port:
-                                break
-
-                    trial_duration = self.now() - trial_start_time
-
-                    # Turn off cues
-                    if cue_on:
-                        self.link.led_set(target_port, 0)
-                        self.link.noise_set(target_port, False)
-
-                    # --- Record outcome ---
-
                     outcome = "timeout"
                     chosen_port = None
 
-                    if self.check_stop():
-                        break
+                    with Trial(tracker, correct_port=target_port) as t:
+                        t.stimulus(port=target_port, modality="combined", stage=stage_name)
 
-                    if event is None:
-                        if group is not None:
-                            group.timeout(
-                                correct_port=target_port, trial_duration=trial_duration,
-                                stage=stage_name,
-                            )
-                        outcome = "timeout"
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)"
-                        )
-                    elif event.port == target_port:
-                        if group is not None:
-                            group.success(
-                                correct_port=target_port, trial_duration=trial_duration,
-                                stage=stage_name,
-                            )
-                        self.link.valve_pulse(target_port, self.reward_durations[target_port])
-                        outcome = "success"
-                        chosen_port = event.port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port} ({trial_duration:.1f}s)"
-                        )
-                    else:
-                        if group is not None:
-                            group.failure(
-                                correct_port=target_port, chosen_port=event.port,
-                                trial_duration=trial_duration, stage=stage_name,
-                            )
-                        outcome = "failure"
-                        chosen_port = event.port
-                        self.log(
-                            f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
-                        )
+                        # --- Present combined cue (LED + noise) ---
+                        self.link.led_set(target_port, led_brightness)
+                        self.link.noise_set(target_port, True)
 
-                        if incorrect_timeout > 0:
-                            if spotlight_duration > 0:
-                                self.link.spotlight_set(255, spotlight_brightness)
-                                self.sleep(min(spotlight_duration, incorrect_timeout))
-                                self.link.spotlight_set(255, 0)
-                                remaining_timeout = incorrect_timeout - spotlight_duration
-                                if remaining_timeout > 0:
-                                    self.sleep(remaining_timeout)
-                            else:
-                                self.sleep(incorrect_timeout)
+                        # --- Wait for response ---
+                        cue_on = True
+                        event = None
+                        while True:
+                            if self.check_stop():
+                                break
+
+                            elapsed = self.now() - trial_start_time
+
+                            if cue_on and cue_duration > 0 and elapsed >= cue_duration:
+                                self.link.led_set(target_port, 0)
+                                self.link.noise_set(target_port, False)
+                                cue_on = False
+
+                            if elapsed >= response_timeout:
+                                break
+
+                            remaining = response_timeout - elapsed
+                            event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                            if event is not None:
+                                if not ignore_incorrect or event.port == target_port:
+                                    break
+
+                        # Turn off cues
+                        if cue_on:
+                            self.link.led_set(target_port, 0)
+                            self.link.noise_set(target_port, False)
+
+                        if self.check_stop():
+                            break  # Trial auto-abandons
+
+                        if event is None:
+                            t.timeout(stage=stage_name)
+                            outcome = "timeout"
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} TIMEOUT ({response_timeout:.0f}s)"
+                            )
+                        elif event.port == target_port:
+                            t.success(stage=stage_name)
+                            self.link.valve_pulse(target_port, self.reward_durations[target_port])
+                            outcome = "success"
+                            chosen_port = event.port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} SUCCESS port {event.port}"
+                            )
+                        else:
+                            t.failure(chosen_port=event.port, stage=stage_name)
+                            outcome = "failure"
+                            chosen_port = event.port
+                            self.log(
+                                f"  [{engine.current_stage_display}] T{trial_num} FAILURE port {event.port} (expected {target_port})"
+                            )
+
+                            if incorrect_timeout > 0:
+                                if spotlight_duration > 0:
+                                    self.link.spotlight_set(255, spotlight_brightness)
+                                    self.sleep(min(spotlight_duration, incorrect_timeout))
+                                    self.link.spotlight_set(255, 0)
+                                    remaining_timeout = incorrect_timeout - spotlight_duration
+                                    if remaining_timeout > 0:
+                                        self.sleep(remaining_timeout)
+                                else:
+                                    self.sleep(incorrect_timeout)
+
+                    trial_duration = self.now() - trial_start_time
 
                 # --- Common post-trial ---
 
@@ -382,8 +372,8 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                 )
 
                 if new_stage is not None:
-                    if engine.active_group is not None:
-                        self.log(f"    Rolling accuracy: {engine.active_group.rolling_accuracy(10):.0f}% (last 10)")
+                    if engine.active_tracker is not None:
+                        self.log(f"    Rolling accuracy: {engine.active_tracker.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:

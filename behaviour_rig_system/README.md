@@ -100,15 +100,19 @@ RigWindow (GUI)
     │   │ Protocol authors just call self.log("message") — they never
     │   │ touch .on() or ._emit() directly. The wiring is invisible to them.
     │   │
-    │   └── PerformanceTracker
-    │       emits: "update", "stimulus"
+    │   └── Tracker
+    │       emits: "trial_started", "trial_ended", "trial_abandoned",
+    │              "stimulus", "update", "warning"
     │
     │       controller wires these at tracker creation time:
     │         tracker.on("update", ...)   → controller emits "performance_update"
     │         tracker.on("stimulus", ...) → controller emits "stimulus"
     │
-    │       Protocol authors call tracker.success() / tracker.stimulus() —
-    │       the tracker emits events, the controller forwards them.
+    │       Protocol authors use the Trial context manager:
+    │           with Trial(tracker, correct_port=X) as t:
+    │               t.stimulus(port=X, modality="visual")
+    │               t.success()  # or t.failure(chosen_port=Y) / t.timeout()
+    │       The tracker emits events, the controller forwards them.
     │
     └── PeripheralManager
         │ emits: "log"
@@ -242,7 +246,7 @@ _startup_sequence(config)
 ├── _write_session_metadata()          Save JSON with session info
 │
 ├── Protocol(params, link)             Create protocol instance
-├── PerformanceTracker()               Create tracker, wire events
+├── Tracker(definition)                Create trackers from get_tracker_definitions(), wire events
 └── emit("startup_complete")           Tell GUI everything is ready
 ```
 
@@ -256,21 +260,27 @@ If anything fails, the controller emits `"startup_error"` and cleans up whatever
 
 **What happens:** After `"startup_complete"`, RigWindow switches to RunningMode and calls `controller.run_protocol()`, which spawns another background thread that calls `protocol.run()`.
 
-The protocol's `run()` method executes the lifecycle: `_setup()` → `_run_protocol()` → `_cleanup()`. Inside `_run_protocol()`, the protocol author writes their experiment loop:
+The protocol's `run()` method executes the lifecycle: `_setup()` → `_run_protocol()` → `_cleanup()`. Inside `_run_protocol()`, the protocol author writes their experiment loop using the `Trial` context manager from `core.tracker`:
 
 ```python
+from core.tracker import Trial
+
 def _run_protocol(self):
-    self.perf_tracker.reset()
-    for trial in range(self.parameters["num_trials"]):
+    tracker = self.trackers["trials"]
+    tracker.reset()
+    for trial_num in range(self.parameters["num_trials"]):
         if self.check_stop():
             return
-        self.log(f"Trial {trial + 1}")
-        # ... experiment logic using self.link ...
-        self.perf_tracker.success(correct_port=target, trial_duration=rt)
+        self.log(f"Trial {trial_num + 1}")
+        with Trial(tracker, correct_port=target) as t:
+            t.stimulus(port=target, modality="visual")
+            # ... experiment logic using self.link ...
+            t.success()  # or t.failure(chosen_port=X) / t.timeout()
 ```
 
 - `self.log("message")` → emits `"log"` → controller forwards as `"protocol_log"` → appears in session log
-- `self.perf_tracker.success(...)` → tracker emits `"update"` → controller forwards as `"performance_update"` → RunningMode updates accuracy display
+- The `Trial` context manager calls `tracker.begin_trial()` on `__enter__` and the outcome method on `t.success()`. If the body exits without an outcome the trial is auto-abandoned with a warning.
+- `tracker.success(...)` → tracker emits `"update"` → controller forwards as `"performance_update"` → RunningMode updates accuracy display
 - `self.check_stop()` → returns True if the user clicked Stop
 
 #### 4. Stopping (STOPPING phase)
@@ -354,7 +364,9 @@ behaviour_rig_system/
 │   ├── session_controller.py        # Session lifecycle — startup, run, cleanup
 │   ├── session_state.py             # SessionStatus, SessionConfig, SessionResult
 │   ├── protocol_base.py             # BaseProtocol — abstract class for all protocols
-│   ├── performance_tracker.py       # Trial outcome tracking and statistics
+│   ├── tracker/                     # Trial tracking package
+│   │   ├── __init__.py              #   Public API: Tracker, TrackerDefinition, Trial, ...
+│   │   └── _*.py                    #   Internal: lifecycle, sub-tracker, persistence
 │   ├── peripheral_manager.py        # Orchestrates DAQ, camera, scales managers
 │   ├── camera_manager.py            # Camera subprocess lifecycle
 │   ├── board_registry.py            # Maps board names to COM ports
@@ -409,7 +421,7 @@ behaviour_rig_system/
 | `gui/rig_window.py` | The "display" — receives events, updates widgets, delegates user actions to controller |
 | `core/protocol_base.py` | Abstract base class that all experiment protocols inherit from |
 | `core/peripheral_manager.py` | Starts/stops DAQ, camera, and scales subprocesses |
-| `core/performance_tracker.py` | Tracks trial outcomes (success/failure/timeout) and computes statistics |
+| `core/tracker/` | Trial outcome tracking package (Tracker, TrackerDefinition, Trial context manager) |
 | `gui/modes/setup_mode.py` | Config form — builds parameter widgets from protocol definitions |
 | `gui/modes/running_mode.py` | Live display — performance stats, trial log, scales plot, session log |
 
@@ -428,6 +440,7 @@ behaviour_rig_system/
 
 ```python
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 class MyProtocol(BaseProtocol):
     @classmethod
@@ -442,9 +455,20 @@ class MyProtocol(BaseProtocol):
     def get_parameters(cls) -> list:
         return []
 
+    @classmethod
+    def get_tracker_definitions(cls) -> list:
+        return [TrackerDefinition(name="trials", display_name="Trials")]
+
     def _run_protocol(self) -> None:
-        if self.check_stop():
-            return
+        tracker = self.trackers["trials"]
+        tracker.reset()
+        for i in range(self.parameters.get("num_trials", 10)):
+            if self.check_stop():
+                return
+            with Trial(tracker, correct_port=0) as t:
+                t.stimulus(port=0, modality="visual")
+                # ... present cue, wait for response ...
+                t.success()
         self.log("Done")
 ```
 
@@ -457,7 +481,7 @@ Inside `_run_protocol()`, you have access to:
 | `self.parameters` | Dict of parameter values from the GUI form |
 | `self.link` | `BehaviourRigLink` — controls LEDs, valves, sensors, etc. |
 | `self.scales` | Scales client (`.get_weight()`) or None |
-| `self.perf_tracker` | `PerformanceTracker` for recording trial outcomes |
+| `self.trackers` | Dict of `Tracker` instances built from `get_tracker_definitions()` |
 | `self.rig_number` | Which rig this is running on |
 
 Key methods:
@@ -466,11 +490,12 @@ Key methods:
 |--------|---------|
 | `self.log("message")` | Send a message to the session log |
 | `self.check_stop()` | Returns True if user clicked Stop — check this in your loop |
-| `self.perf_tracker.reset()` | Clear tracker and start timing |
-| `self.perf_tracker.success(correct_port, trial_duration)` | Record a correct trial |
-| `self.perf_tracker.failure(correct_port, chosen_port, trial_duration)` | Record an incorrect trial |
-| `self.perf_tracker.timeout(correct_port, trial_duration)` | Record a timeout |
-| `self.perf_tracker.stimulus(target_port)` | Log that a stimulus was presented |
+| `tracker.reset()` | Clear a tracker and set its session start time |
+| `with Trial(tracker, correct_port=X) as t:` | Open a trial context (mandatory for outcomes) |
+| `t.stimulus(port=X, modality="visual")` | Record a stimulus presentation during the trial |
+| `t.success()` | Record a correct trial (uses correct_port from `Trial(...)`) |
+| `t.failure(chosen_port=Y)` | Record an incorrect trial |
+| `t.timeout()` | Record a timeout trial |
 
 ### Optional Overrides
 

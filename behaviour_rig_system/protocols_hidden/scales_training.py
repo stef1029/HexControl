@@ -10,8 +10,8 @@ No LEDs, no error signals.
 """
 
 from core.parameter_types import FloatParameter, IntParameter
-from core.performance_tracker import TrackerDefinition
 from core.protocol_base import BaseProtocol
+from core.tracker import TrackerDefinition, Trial
 
 
 class ScalesTrainingProtocol(BaseProtocol):
@@ -83,14 +83,17 @@ class ScalesTrainingProtocol(BaseProtocol):
     def _run_protocol(self) -> None:
         params = self.parameters
         scales = self.scales
-        perf_tracker = self.perf_trackers.get("trials")
+        tracker = self.trackers.get("trials")
 
         if scales is None:
             self.log("ERROR: Scales not available!")
             return
 
-        if perf_tracker is not None:
-            perf_tracker.reset()
+        if tracker is None:
+            self.log("ERROR: 'trials' tracker not available!")
+            return
+
+        tracker.reset()
 
         mouse_weight = params["mouse_weight"]
         num_trials = params["num_trials"]
@@ -149,38 +152,36 @@ class ScalesTrainingProtocol(BaseProtocol):
                 break
 
             trial_num += 1
-            trial_start = self.now()
 
-            # Deliver reward immediately
-            self.link.valve_pulse(reward_port, reward_ms)
-            self.log(f"  T{trial_num}: Reward delivered at port {reward_port}")
+            with Trial(tracker, correct_port=reward_port) as t:
+                t.stimulus(port=reward_port, modality="scales")
 
-            if perf_tracker is not None:
-                perf_tracker.stimulus(reward_port)
+                # Deliver reward immediately
+                self.link.valve_pulse(reward_port, reward_ms)
+                self.log(f"  T{trial_num}: Reward delivered at port {reward_port}")
 
-            # Wait for mouse to visit the port (sensor activation) or timeout
-            event = None
-            while not self.check_stop():
-                elapsed = self.now() - trial_start
-                if elapsed >= collection_timeout:
-                    break
+                # Wait for mouse to visit the port (sensor activation) or timeout
+                trial_start = self.now()
+                event = None
+                while not self.check_stop():
+                    elapsed = self.now() - trial_start
+                    if elapsed >= collection_timeout:
+                        break
 
-                remaining = collection_timeout - elapsed
-                event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                    remaining = collection_timeout - elapsed
+                    event = self.link.wait_for_event(timeout=min(0.1, remaining))
+                    if event is not None and event.port == reward_port:
+                        break
+                    event = None  # ignore visits to other ports
+
+                trial_duration = self.now() - trial_start
+
                 if event is not None and event.port == reward_port:
-                    break
-                event = None  # ignore visits to other ports
-
-            trial_duration = self.now() - trial_start
-
-            if event is not None and event.port == reward_port:
-                if perf_tracker is not None:
-                    perf_tracker.success(correct_port=reward_port, trial_duration=trial_duration)
-                self.log(f"  T{trial_num}: Collected ({trial_duration:.1f}s)")
-            else:
-                if perf_tracker is not None:
-                    perf_tracker.timeout(correct_port=reward_port, trial_duration=trial_duration)
-                self.log(f"  T{trial_num}: Not collected (timeout {collection_timeout:.0f}s)")
+                    t.success()
+                    self.log(f"  T{trial_num}: Collected ({trial_duration:.1f}s)")
+                else:
+                    t.timeout()
+                    self.log(f"  T{trial_num}: Not collected (timeout {collection_timeout:.0f}s)")
 
             if not self.check_stop() and iti > 0:
                 self.sleep(iti)
