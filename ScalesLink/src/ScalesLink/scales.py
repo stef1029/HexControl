@@ -464,7 +464,7 @@ class Scales:
                 weight_g = ((raw_value - self._config.intercept) * self._config.scale) / 1000
                 self._update_weight(weight_g, raw_value, None)
         except (ValueError, UnicodeDecodeError) as e:
-            print(f"Warning: wireless scales parse error: {e}")
+            logger.warning(f"[Scales] wireless scales parse error: {e}")
 
     def _update_weight(
         self,

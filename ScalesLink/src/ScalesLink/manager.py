@@ -25,12 +25,15 @@ Usage:
     manager.stop()
 """
 
+import logging
 import os
 import subprocess
 import sys
 import threading
 import time
 from typing import Callable, Optional, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from .client import ScalesClient
 
@@ -241,9 +244,9 @@ class ScalesManager:
                         self._log_file_handle.write(raw_line.decode(errors="replace"))
                         self._log_file_handle.flush()
                     except Exception as e:
-                        print(f"Warning: scales log write error: {e}")
+                        logger.warning(f"[Scales] scales log write error: {e}")
         except Exception as e:
-            print(f"Warning: scales output reader error: {e}")
+            logger.warning(f"[Scales] scales output reader error: {e}")
 
     def stop(self) -> None:
         """Stop the scales server gracefully."""
@@ -289,7 +292,7 @@ class ScalesManager:
             try:
                 self._log_file_handle.close()
             except Exception as e:
-                print(f"Warning: error closing scales log file: {e}")
+                logger.warning(f"[Scales] error closing scales log file: {e}")
             self._log_file_handle = None
     
     def _cleanup_process(self) -> None:

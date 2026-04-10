@@ -97,6 +97,9 @@ class CameraManager:
 
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners."""
+        if event_name == "log":
+            message = kwargs.get("message", "")
+            logger.info(f"[Camera] {message}")
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)

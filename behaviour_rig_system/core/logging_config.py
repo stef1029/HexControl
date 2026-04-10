@@ -36,7 +36,11 @@ from typing import Optional
 # named "core.session_controller", "gui.launcher", etc. — not prefixed
 # with "behaviour_rig_system.". We configure handlers on each top-level
 # package name so all sub-loggers inherit them.
-_LOGGER_NAMES = ["core", "gui", "autotraining", "simulation", "protocols", "protocols_hidden"]
+_LOGGER_NAMES = [
+    "core", "gui", "autotraining", "simulation",
+    "protocols", "protocols_hidden",
+    "DAQLink", "ScalesLink", "BehavLink",  # workspace member packages
+]
 
 # Also exported so main.py can get a logger that hits the same handlers.
 ROOT_LOGGER_NAME = "core"

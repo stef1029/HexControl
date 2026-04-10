@@ -427,12 +427,8 @@ class RunningMode(ttk.Frame):
         last = self._last_logged_trials.get(updated, 0)
         all_trials = tracker.get_all_trials()
         new_trials = all_trials[last:]
-        multi = len(self._tracker_definitions) > 1
-        display_name = updated
-        for tdef in self._tracker_definitions:
-            if tdef.name == updated:
-                display_name = tdef.display_name
-                break
+        multi = len(self._tracker_widgets) > 1
+        display_name = tracker.display_name
         for trial in new_trials:
             self._log_trial(trial, prefix=f"[{display_name}] " if multi else "")
             self._last_logged_trials[updated] = last + 1

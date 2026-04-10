@@ -117,19 +117,18 @@ class SessionController:
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners.
 
-        Events that carry a ``message`` kwarg are also written to the
-        infrastructure logger so they appear in the log file and stderr.
-        The rig name is prepended for multi-rig clarity.
+        System-level events (startup, cleanup, errors) are also written
+        to the infrastructure logger so they appear in the log file and
+        stderr. Trial-level protocol messages are NOT logged here — they
+        go to the trials CSV instead.
         """
-        # Log message-bearing events to the infrastructure logger
+        # Log system events (not per-trial protocol messages)
         message = kwargs.get("message")
         if message is not None:
-            _LOGGED_EVENTS = {
-                "startup_status", "protocol_log", "cleanup_log",
-                "startup_error",
-            }
-            if event_name in _LOGGED_EVENTS:
+            if event_name in ("startup_status", "cleanup_log"):
                 logger.info(f"{self._rig_label} {message}")
+            elif event_name == "startup_error":
+                logger.error(f"{self._rig_label} {message}")
 
         for cb in self._listeners.get(event_name, []):
             try:
@@ -143,6 +142,7 @@ class SessionController:
 
     def _set_status(self, status: SessionStatus) -> None:
         self._status = status
+        logger.info(f"{self._rig_label} Session status: {status.name}")
         self._emit("status_changed", status=status)
 
     @property
@@ -385,15 +385,24 @@ class SessionController:
                 reward_durations=reward_durations,
             )
 
-            # Wire protocol events
+            # Wire protocol events.
+            # Protocol "log" events are forwarded to the GUI only — they
+            # contain per-trial messages that belong in the CSV, not the
+            # system log. Protocol "error" and "started" are system events.
             self._current_protocol.on(
                 "log", lambda message: self._emit("protocol_log", message=message)
             )
             self._current_protocol.on(
-                "error", lambda error: self._emit("protocol_log", message=f"ERROR: {error}")
+                "error", lambda error: (
+                    logger.error(f"{self._rig_label} Protocol error: {error}"),
+                    self._emit("protocol_log", message=f"ERROR: {error}"),
+                )
             )
             self._current_protocol.on(
-                "started", lambda: self._emit("protocol_log", message="Protocol started")
+                "started", lambda: (
+                    logger.info(f"{self._rig_label} Protocol started"),
+                    self._emit("protocol_log", message="Protocol started"),
+                )
             )
 
             self._emit("startup_status", message="Startup complete!")
@@ -456,6 +465,7 @@ class SessionController:
             if self._current_protocol:
                 self._current_protocol.run()
         except Exception as e:
+            logger.error(f"{self._rig_label} Protocol exception: {e}")
             self._emit("protocol_log", message=f"ERROR: {e}")
 
         final_status = ProtocolStatus.COMPLETED
@@ -527,8 +537,10 @@ class SessionController:
                         session_id=session_id,
                     )
                     if saved_path:
+                        logger.info(f"{self._rig_label} Trial data saved: {saved_path.name}")
                         self._emit("protocol_log", message=f"Trial data saved: {saved_path.name}")
                 except Exception as e:
+                    logger.error(f"{self._rig_label} Failed to save trial data: {e}")
                     self._emit("protocol_log", message=f"Failed to save trial data: {e}")
 
         result = SessionResult(

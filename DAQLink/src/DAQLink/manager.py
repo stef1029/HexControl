@@ -21,6 +21,7 @@ Usage:
     manager.stop()
 """
 
+import logging
 import os
 import subprocess
 import sys
@@ -28,6 +29,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 # Resolve the path to serial_listen.py within this package
 _SERIAL_LISTEN_SCRIPT = str(Path(__file__).parent / "serial_listen.py")
@@ -189,9 +192,9 @@ class DAQManager:
                         self._log_file_handle.write(raw_line.decode(errors="replace"))
                         self._log_file_handle.flush()
                     except Exception as e:
-                        print(f"Warning: DAQ log write error: {e}")
+                        logger.warning(f"[DAQ] log write error: {e}")
         except Exception as e:
-            print(f"Warning: DAQ output reader error: {e}")
+            logger.warning(f"[DAQ] output reader error: {e}")
 
     def wait_for_connection(self) -> bool:
         """
@@ -253,7 +256,7 @@ class DAQManager:
             try:
                 self._log_file_handle.close()
             except Exception as e:
-                print(f"Warning: error closing DAQ log file: {e}")
+                logger.warning(f"[DAQ] error closing log file: {e}")
             self._log_file_handle = None
         
         try:
@@ -306,7 +309,7 @@ class DAQManager:
             try:
                 self._log_file_handle.close()
             except Exception as e:
-                print(f"Warning: error closing DAQ log file: {e}")
+                logger.warning(f"[DAQ] error closing log file: {e}")
             self._log_file_handle = None
 
     def _cleanup_process(self) -> None:
@@ -347,4 +350,4 @@ class DAQManager:
                 try:
                     os.remove(path)
                 except Exception as e:
-                    print(f"Warning: error removing signal file: {e}")
+                    logger.warning(f"[DAQ] error removing signal file: {e}")

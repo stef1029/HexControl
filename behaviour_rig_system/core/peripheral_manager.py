@@ -205,7 +205,8 @@ class PeripheralManager:
                 logger.warning(f"listener error in '{event_name}': {e}")
 
     def _log(self, message: str) -> None:
-        """Internal log helper — emits a 'log' event."""
+        """Internal log helper — emits a 'log' event and logs to file."""
+        logger.info(f"[Peripherals] {message}")
         self._emit("log", message=message)
     
     def start_daq(self) -> bool:

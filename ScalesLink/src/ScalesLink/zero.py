@@ -14,11 +14,14 @@ Usage:
     results = zero_all_scales(rig_configs)
 """
 
+import logging
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import serial
 
@@ -75,7 +78,7 @@ def zero_scales(
             try:
                 ser.close()
             except Exception as e:
-                print(f"Warning: error closing serial: {e}")
+                logger.warning(f"[Scales] error closing serial: {e}")
 
 
 def zero_all_scales(

@@ -10,11 +10,14 @@ Usage:
         python -m ScalesLink.calibrate
 """
 
+import logging
 import struct
 import sys
 import time
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -89,7 +92,7 @@ def run_calibration(
                 line = ser.readline().decode('utf-8').strip()
                 return float(line) if line else None
             except (ValueError, UnicodeDecodeError) as e:
-                print(f"Warning: scales calibration parse error: {e}")
+                logger.warning(f"[Scales] scales calibration parse error: {e}")
                 return None
 
     def collect_readings(n: int = num_readings, label: str = "Reading") -> list[float]:
@@ -262,7 +265,7 @@ def run_calibration(
             try:
                 ser.write(b'e')  # Stop acquisition
             except Exception as e:
-                print(f"Warning: error stopping scales: {e}")
+                logger.warning(f"[Scales] error stopping scales: {e}")
         ser.close()
 
 

@@ -380,7 +380,7 @@ class RigWindow:
         """Handle window close event."""
         if self._current_mode == WindowMode.RUNNING:
             logger.warning("[Rig Window] Cannot close: session is currently running")
-            messagebox.showwarning(k 
+            messagebox.showwarning(
                 "Session Running",
                 "A session is currently running.\n\nPlease stop the session before closing the window."
             )

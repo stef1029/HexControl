@@ -15,10 +15,13 @@ The server accepts TCP commands:
 """
 
 import argparse
+import logging
 import socket
 import time
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 # Import the Scales class for hardware communication
@@ -156,14 +159,14 @@ class ScalesServer:
             client_socket.sendall(response.encode('utf-8'))
             
         except socket.timeout:
-            print("Warning: scales server client socket timeout")
+            logger.warning("[Scales] scales server client socket timeout")
         except Exception as e:
             print(f"[ScalesServer] Error handling client: {e}")
         finally:
             try:
                 client_socket.close()
             except Exception as e:
-                print(f"Warning: error closing client socket: {e}")
+                logger.warning(f"[Scales] error closing client socket: {e}")
     
     def _process_command(self, command: str) -> str:
         """
@@ -203,7 +206,7 @@ class ScalesServer:
             try:
                 self._server_socket.close()
             except Exception as e:
-                print(f"Warning: error closing server socket: {e}")
+                logger.warning(f"[Scales] error closing server socket: {e}")
             self._server_socket = None
         
         # Save readings to CSV before stopping scales

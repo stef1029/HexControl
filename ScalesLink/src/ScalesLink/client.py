@@ -84,7 +84,7 @@ class ScalesClient:
                 return True
             return False
         except Exception as e:
-            print(f"Warning: scales connect failed: {e}")
+            logger.warning(f"[Scales] scales connect failed: {e}")
             return False
     
     def disconnect(self) -> None:
@@ -109,7 +109,7 @@ class ScalesClient:
             self._connected = False
             return response == "OK"
         except Exception as e:
-            print(f"Warning: scales shutdown failed: {e}")
+            logger.warning(f"[Scales] scales shutdown failed: {e}")
             self._connected = False
             return False
     
@@ -127,7 +127,7 @@ class ScalesClient:
             response = self._send_command("PING", timeout=timeout)
             return response == "PONG"
         except Exception as e:
-            print(f"Warning: scales ping failed: {e}")
+            logger.warning(f"[Scales] scales ping failed: {e}")
             return False
     
     def get_weight(self, timeout: float = SOCKET_TIMEOUT) -> Optional[float]:
@@ -190,7 +190,7 @@ class ScalesClient:
                 try:
                     sock.close()
                 except OSError as e:
-                    print(f"Warning: error closing scales socket: {e}")
+                    logger.warning(f"[Scales] error closing scales socket: {e}")
 
 
 # =============================================================================
@@ -214,5 +214,5 @@ def quick_get_weight(tcp_port: int = DEFAULT_TCP_PORT) -> Optional[float]:
     try:
         return client.get_weight()
     except Exception as e:
-        print(f"Warning: scales quick_read failed: {e}")
+        logger.warning(f"[Scales] scales quick_read failed: {e}")
         return None
