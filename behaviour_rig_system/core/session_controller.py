@@ -98,6 +98,14 @@ class SessionController:
         self._protocol_thread: threading.Thread | None = None
         self._startup_cancelled = False
 
+    @property
+    def _rig_label(self) -> str:
+        """Short label for log messages, e.g. '[Rig 1]' or '[Rig 1 / mouse_001]'."""
+        name = self._rig_config.name if self._rig_config else "Rig"
+        if self._session_mouse_id:
+            return f"[{name} / {self._session_mouse_id}]"
+        return f"[{name}]"
+
     # =========================================================================
     # Event pattern
     # =========================================================================
@@ -107,7 +115,22 @@ class SessionController:
         self._listeners.setdefault(event_name, []).append(callback)
 
     def _emit(self, event_name: str, **kwargs) -> None:
-        """Fire an event to registered listeners."""
+        """Fire an event to registered listeners.
+
+        Events that carry a ``message`` kwarg are also written to the
+        infrastructure logger so they appear in the log file and stderr.
+        The rig name is prepended for multi-rig clarity.
+        """
+        # Log message-bearing events to the infrastructure logger
+        message = kwargs.get("message")
+        if message is not None:
+            _LOGGED_EVENTS = {
+                "startup_status", "protocol_log", "cleanup_log",
+                "startup_error",
+            }
+            if event_name in _LOGGED_EVENTS:
+                logger.info(f"{self._rig_label} {message}")
+
         for cb in self._listeners.get(event_name, []):
             try:
                 cb(**kwargs)

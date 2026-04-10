@@ -9,6 +9,7 @@ Provides a GUI for batch processing cohort data including:
 Uses a mode-based UI that switches between Configuration and Progress views.
 """
 
+import logging
 import sys
 import threading
 import tkinter as tk
@@ -17,9 +18,9 @@ from pathlib import Path
 from typing import Optional, Callable
 from enum import Enum, auto
 import multiprocessing as mp
-import yaml
-
 from .theme import apply_theme, Theme, style_scrolled_text, enable_mousewheel_scrolling
+
+logger = logging.getLogger(__name__)
 
 
 class WindowMode(Enum):
@@ -110,16 +111,16 @@ class PostProcessingWindow:
     them in a background thread with real-time progress display.
     """
 
-    def __init__(self, parent: tk.Tk, config_path: Path):
+    def __init__(self, parent: tk.Tk, cohort_folders: tuple = ()):
         """
         Initialize the post-processing window.
 
         Args:
             parent: Parent Tk window (launcher)
-            config_path: Path to rigs.yaml configuration file
+            cohort_folders: Tuple of CohortFolder from the config file
         """
         self.parent = parent
-        self.config_path = config_path
+        self._cohort_folders_typed = cohort_folders
 
         # Create modal window
         self.window = tk.Toplevel(parent)
@@ -157,14 +158,11 @@ class PostProcessingWindow:
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _load_cohort_folders(self) -> list[dict]:
-        """Load cohort folders from configuration file."""
-        if not self.config_path.exists():
-            return []
-
-        with open(self.config_path) as f:
-            config = yaml.safe_load(f)
-
-        return config.get("cohort_folders", [])
+        """Convert typed CohortFolder objects to dicts for the existing widget code."""
+        return [
+            {"name": c.name, "directory": c.directory, "description": c.description}
+            for c in self._cohort_folders_typed
+        ]
 
     def _create_widgets(self) -> None:
         """Create the window widgets."""
@@ -439,6 +437,7 @@ class PostProcessingWindow:
         ]
 
         if not selected_cohorts:
+            logger.warning("[Post-Processing] No cohorts selected")
             messagebox.showwarning(
                 "No Cohorts Selected",
                 "Please select at least one cohort to process."
@@ -449,6 +448,7 @@ class PostProcessingWindow:
         if not (self.recover_sessions_var.get() or
                 self.process_videos_var.get() or
                 self.run_analysis_var.get()):
+            logger.warning("[Post-Processing] No processing steps selected")
             messagebox.showwarning(
                 "No Steps Selected",
                 "Please select at least one processing step."
@@ -582,6 +582,7 @@ class PostProcessingWindow:
         self.back_button.configure(state="normal")
 
         if not self.cancel_requested:
+            logger.info("[Post-Processing] All selected cohorts have been processed")
             messagebox.showinfo(
                 "Processing Complete",
                 "All selected cohorts have been processed.\n\n"
@@ -590,6 +591,7 @@ class PostProcessingWindow:
 
     def _on_cancel_click(self) -> None:
         """Handle cancel button click."""
+        logger.info("[Post-Processing] User requested cancel processing")
         result = messagebox.askyesno(
             "Cancel Processing",
             "Are you sure you want to cancel processing?\n\n"
@@ -605,6 +607,7 @@ class PostProcessingWindow:
     def _on_close(self) -> None:
         """Handle window close."""
         if self.is_processing:
+            logger.warning("[Post-Processing] Cannot close window while processing is in progress")
             messagebox.showwarning(
                 "Processing In Progress",
                 "Cannot close window while processing is in progress.\n\n"
@@ -617,12 +620,12 @@ class PostProcessingWindow:
         self.window.destroy()
 
 
-def open_post_processing_window(parent: tk.Tk, config_path: Path) -> None:
+def open_post_processing_window(parent: tk.Tk, cohort_folders: tuple = ()) -> None:
     """
     Open the post-processing window.
 
     Args:
         parent: Parent Tk window (launcher)
-        config_path: Path to rigs.yaml configuration file
+        cohort_folders: Tuple of CohortFolder from the config file
     """
-    PostProcessingWindow(parent, config_path)
+    PostProcessingWindow(parent, cohort_folders)

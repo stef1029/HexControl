@@ -55,7 +55,8 @@ def main() -> None:
     from gui.launcher import launch
 
     configure_logging(level="INFO")
-    logger = logging.getLogger(__name__)
+    from core.logging_config import ROOT_LOGGER_NAME
+    logger = logging.getLogger(ROOT_LOGGER_NAME)
 
     logger.info("=" * 60)
     logger.info("  Behaviour Rig System")

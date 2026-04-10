@@ -17,6 +17,7 @@ from datetime import datetime
 from tkinter import ttk, messagebox
 from typing import TYPE_CHECKING
 
+import logging
 import serial
 
 from pathlib import Path
@@ -25,6 +26,8 @@ from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
 from core.board_registry import BoardRegistry
 from .launcher_background import draw_background
 from .theme import apply_theme, Theme, style_rig_button, create_rig_button
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .rig_window import RigWindow
@@ -371,6 +374,7 @@ class RigLauncher:
 
         self.status_var.set(f"Zeroing complete: {successful}/{total} successful")
 
+        logger.info(f"[Launcher] {summary}")
         messagebox.showinfo("Scales Zeroing Results", summary)
 
     def _on_rig_toggle(self, rig: dict) -> None:
@@ -401,6 +405,7 @@ class RigLauncher:
 
         # Use the first rig's config as a template
         if not self.rigs:
+            logger.warning("[Launcher] No rigs configured in rigs.yaml")
             messagebox.showwarning("No Rigs", "No rigs configured in rigs.yaml")
             return
 
@@ -419,6 +424,7 @@ class RigLauncher:
         mkdocs_config = project_root / "mkdocs.yml"
 
         if not mkdocs_config.exists():
+            logger.info(f"[Launcher] mkdocs.yml not found at: {project_root}")
             messagebox.showinfo("Docs", f"mkdocs.yml not found at:\n{project_root}")
             return
 
@@ -438,6 +444,7 @@ class RigLauncher:
             import threading
             threading.Thread(target=self._wait_for_docs_server, daemon=True).start()
         except Exception as e:
+            logger.error(f"[Launcher] Failed to start mkdocs: {e}")
             messagebox.showerror("Docs Error", f"Failed to start mkdocs:\n{e}")
 
     def _wait_for_docs_server(self, timeout: int = 30) -> None:
@@ -544,6 +551,7 @@ class RigLauncher:
                 f"  • {rig.name}: {msg}"
                 for rig, msg in failed_rigs
             ])
+            logger.warning(f"[Launcher] Some connections failed: {failure_msgs}")
             messagebox.showwarning(
                 "Some Connections Failed",
                 f"Could not connect to the following rigs:\n\n{failure_msgs}"
@@ -565,6 +573,7 @@ class RigLauncher:
         # Check if any rig windows are open
         if self.open_windows:
             open_rigs = ", ".join(self.open_windows.keys())
+            logger.warning(f"[Launcher] Cannot open post-processing while rigs are open: {open_rigs}")
             messagebox.showwarning(
                 "Rigs Open",
                 f"Cannot open post-processing while rig windows are open.\n\n"
@@ -582,7 +591,7 @@ class RigLauncher:
         self._disable_launcher()
 
         # Open the post-processing window (modal)
-        open_post_processing_window(self.root, self.config_path)
+        open_post_processing_window(self.root, self._rigs_file.cohort_folders)
 
         # Re-enable launcher when post-processing closes
         self._enable_launcher()
@@ -737,6 +746,7 @@ class RigLauncher:
             # Block close only while in running mode (active session or cleanup)
             from .rig_window import WindowMode
             if rig_window._current_mode == WindowMode.RUNNING:
+                logger.warning(f"[Launcher] Cannot close {rig_name}: session is running")
                 messagebox.showwarning(
                     "Session Running",
                     f"A session is currently running on {rig_name}.\n\n"
@@ -770,6 +780,7 @@ class RigLauncher:
         # Warn if rig windows are still open
         if self.open_windows:
             open_rigs = ", ".join(self.open_windows.keys())
+            logger.info(f"[Launcher] Confirm close with open rigs: {open_rigs}")
             result = messagebox.askyesno(
                 "Confirm Close",
                 f"The following rig windows are still open:\n\n{open_rigs}\n\n"

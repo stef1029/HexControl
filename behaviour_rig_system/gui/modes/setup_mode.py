@@ -8,12 +8,13 @@ Shows:
     - Start button
 """
 
+import logging
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 from typing import Callable
 
-
+logger = logging.getLogger(__name__)
 
 from core.protocol_base import BaseProtocol
 from protocols import get_available_protocols
@@ -135,7 +136,7 @@ class SetupMode(ttk.Frame):
         self._claim_mouse_fn = claim_mouse_fn
         self._get_claimed_mice_fn = get_claimed_mice_fn
         self._simulate = rig_config.simulate if rig_config else False
-        self._cohort_folders_typed = cohort_folders
+        self._cohort_folders = cohort_folders
         self._mice_typed = mice
         self._cohort_folders = []
         self._mice = []
@@ -151,12 +152,12 @@ class SetupMode(ttk.Frame):
         self.bind("<FocusIn>", lambda e: self._refresh_mouse_availability())
     
     def _load_session_options(self) -> None:
-        """Load cohort folder and mouse options from typed config data."""
+        """Load cohort folder and mouse options from config data."""
         # Convert typed tuples to dicts for the existing widget code
-        if self._cohort_folders_typed:
+        if self._cohort_folders:
             self._cohort_folders = [
                 {"name": c.name, "directory": c.directory, "description": c.description}
-                for c in self._cohort_folders_typed
+                for c in self._cohort_folders
             ]
         else:
             self._cohort_folders = [{"name": "default", "directory": "D:\\behaviour_data\\default"}]
@@ -473,15 +474,17 @@ class SetupMode(ttk.Frame):
                 raise ValueError("Mouse weight must be positive")
         except ValueError as e:
             from tkinter import messagebox
+            logger.error(f"[Setup] Invalid mouse weight: {e}")
             messagebox.showerror("Validation Error", f"Invalid mouse weight: {e}")
             return
-        
+
         try:
             num_trials = int(self.num_trials_var.get())
             if num_trials <= 0:
                 raise ValueError("Number of trials must be positive")
         except ValueError as e:
             from tkinter import messagebox
+            logger.error(f"[Setup] Invalid number of trials: {e}")
             messagebox.showerror("Validation Error", f"Invalid number of trials: {e}")
             return
 
@@ -491,6 +494,7 @@ class SetupMode(ttk.Frame):
                 raise ValueError("Max duration cannot be negative")
         except ValueError as e:
             from tkinter import messagebox
+            logger.error(f"[Setup] Invalid max duration: {e}")
             messagebox.showerror("Validation Error", f"Invalid max duration: {e}")
             return
         
@@ -502,6 +506,7 @@ class SetupMode(ttk.Frame):
                 from tkinter import messagebox
                 claimed = self._get_claimed_mice_fn() if self._get_claimed_mice_fn else {}
                 other_rig = claimed.get(mouse_id, "another rig")
+                logger.error(f"[Setup] Mouse '{mouse_id}' is already in use by {other_rig}")
                 messagebox.showerror(
                     "Mouse Already Selected",
                     f"Mouse '{mouse_id}' is already in use by {other_rig}."
@@ -513,6 +518,7 @@ class SetupMode(ttk.Frame):
         if not is_valid:
             from tkinter import messagebox
             error_msg = "\n".join(f"- {k}: {v}" for k, v in errors.items())
+            logger.error(f"[Setup] Validation errors: {error_msg}")
             messagebox.showerror("Validation Error", f"Please correct the following errors:\n{error_msg}")
             return
         

@@ -12,6 +12,7 @@ All business logic lives in SessionController. This class only:
     3. Marshals controller events onto the tkinter main thread
 """
 
+import logging
 import tkinter as tk
 from enum import Enum, auto
 from tkinter import messagebox, ttk
@@ -26,6 +27,9 @@ from .modes import SetupMode, RunningMode, PostSessionMode
 from .startup_overlay import StartupOverlay
 from .theme import apply_theme
 from .virtual_rig_window import VirtualRigWindow
+
+
+logger = logging.getLogger(__name__)
 
 
 class WindowMode(Enum):
@@ -103,7 +107,7 @@ class RigWindow:
         self.rig_name = self.rig_config.name if self.rig_config else "Unknown"
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
-        self.root.geometry("680x1200")
+        self.root.geometry("640x1200")
         self.root.minsize(580, 580)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -375,7 +379,8 @@ class RigWindow:
     def _on_close(self) -> None:
         """Handle window close event."""
         if self._current_mode == WindowMode.RUNNING:
-            messagebox.showwarning(
+            logger.warning("[Rig Window] Cannot close: session is currently running")
+            messagebox.showwarning(k 
                 "Session Running",
                 "A session is currently running.\n\nPlease stop the session before closing the window."
             )

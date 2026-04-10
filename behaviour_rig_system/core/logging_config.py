@@ -31,8 +31,15 @@ from pathlib import Path
 from typing import Optional
 
 
-# Top-level logger name. All module loggers inherit from this.
-ROOT_LOGGER_NAME = "behaviour_rig_system"
+# Logger names to configure. Because the project uses bare imports
+# (e.g. ``from core.X import ...`` via sys.path), module loggers end up
+# named "core.session_controller", "gui.launcher", etc. — not prefixed
+# with "behaviour_rig_system.". We configure handlers on each top-level
+# package name so all sub-loggers inherit them.
+_LOGGER_NAMES = ["core", "gui", "autotraining", "simulation", "protocols", "protocols_hidden"]
+
+# Also exported so main.py can get a logger that hits the same handlers.
+ROOT_LOGGER_NAME = "core"
 
 # Default log directory: %LOCALAPPDATA%\BehaviourRigSystem\logs
 # On Windows this is typically C:\Users\<name>\AppData\Local\BehaviourRigSystem\logs
@@ -54,27 +61,24 @@ def configure_logging(
                  ``%LOCALAPPDATA%\\BehaviourRigSystem\\logs``.
                  Set to ``None`` to use the default.
     """
-    root = logging.getLogger(ROOT_LOGGER_NAME)
-    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    log_level = getattr(logging, level.upper(), logging.INFO)
 
-    # Don't add handlers if already configured (avoids duplicates on restart)
-    if root.handlers:
+    # Check if already configured (avoid duplicates on restart)
+    first_logger = logging.getLogger(_LOGGER_NAMES[0])
+    if first_logger.handlers:
         return
 
-    # --- Console handler (stderr) ---
+    # --- Build handlers ---
     console_fmt = logging.Formatter(
         "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%H:%M:%S",
     )
     console = logging.StreamHandler(sys.stderr)
     console.setFormatter(console_fmt)
-    root.addHandler(console)
 
-    # --- File handler ---
     log_path = Path(log_dir) if log_dir else _DEFAULT_LOG_DIR
     log_path.mkdir(parents=True, exist_ok=True)
 
-    # One log file per day, named like "2026-04-10.log"
     filename = datetime.now().strftime("%Y-%m-%d") + ".log"
     filepath = log_path / filename
 
@@ -91,6 +95,12 @@ def configure_logging(
         encoding="utf-8",
     )
     fh.setFormatter(file_fmt)
-    root.addHandler(fh)
 
-    root.info(f"Log file: {filepath}")
+    # --- Attach handlers to every top-level package logger ---
+    for name in _LOGGER_NAMES:
+        lgr = logging.getLogger(name)
+        lgr.setLevel(log_level)
+        lgr.addHandler(console)
+        lgr.addHandler(fh)
+
+    logging.getLogger(_LOGGER_NAMES[0]).info(f"Log file: {filepath}")
