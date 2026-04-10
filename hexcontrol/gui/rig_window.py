@@ -173,6 +173,7 @@ class RigWindow:
         c.on("stimulus",           on_main_thread(self._on_stimulus))
         c.on("cleanup_log",        on_main_thread(self._on_cleanup_log))
         c.on("status_changed",     on_main_thread(self._on_status_changed))
+        c.on("peripheral_error",   on_main_thread(self._on_peripheral_error))
 
     # =========================================================================
     # Mode Management
@@ -358,6 +359,18 @@ class RigWindow:
 
     def _on_status_changed(self, status: SessionStatus) -> None:
         pass  # Available for future use (e.g. disabling buttons based on status)
+
+    def _on_peripheral_error(self, message: str = "") -> None:
+        """A peripheral subprocess died during the session."""
+        self.running_mode.log_message(f"ERROR: {message}")
+        logger.error(f"[Rig Window] {message}")
+        from tkinter import messagebox
+        messagebox.showerror(
+            "Peripheral Failure",
+            f"{message}\n\n"
+            "The session has been stopped.\n"
+            "Data recorded before the failure has been saved.",
+        )
 
     # =========================================================================
     # Window Management

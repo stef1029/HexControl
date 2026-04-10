@@ -322,14 +322,26 @@ class PeripheralManager:
         self._log("Peripherals stopped")
     
     def is_running(self) -> bool:
-        """Check if peripheral processes are running."""
+        """Check if all started peripheral processes are still alive."""
+        healthy, _ = self.check_health()
+        return healthy
+
+    def check_health(self) -> tuple[bool, str]:
+        """Check if all started peripheral processes are still alive.
+
+        Returns ``(True, "")`` if all healthy, or ``(False, description)``
+        naming the first peripheral found dead.
+        """
         if not self.is_started:
-            return False
-        
+            return True, ""
+
         if self._daq_manager is not None and not self._daq_manager.is_running:
-            return False
-        
+            return False, "DAQ subprocess died"
+
         if self._camera_manager is not None and not self._camera_manager.is_running:
-            return False
-        
-        return True
+            return False, "Camera subprocess died"
+
+        if self._scales_manager is not None and not self._scales_manager.is_running:
+            return False, "Scales server died"
+
+        return True, ""

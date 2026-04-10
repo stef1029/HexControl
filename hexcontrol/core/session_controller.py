@@ -205,7 +205,13 @@ class SessionController:
     # =========================================================================
 
     def _startup_sequence(self, config: dict) -> None:
-        """Run the full startup sequence in a background thread."""
+        """Run the full startup sequence in a background thread.
+
+        Uses try/finally to guarantee that any peripherals started during
+        a failed or cancelled startup are cleaned up. Without this,
+        zombie DAQ/camera/scales subprocesses block serial ports.
+        """
+        startup_succeeded = False
         try:
             self._emit("startup_status", message="Creating peripheral config...")
 
@@ -434,6 +440,7 @@ class SessionController:
                 clock=clock,
                 tracker_definitions=tracker_defs,
             )
+            startup_succeeded = True
 
         except Exception as e:
             import traceback
@@ -441,11 +448,55 @@ class SessionController:
             self._emit("startup_status", message=traceback.format_exc())
             self._emit("startup_error", message=str(e))
 
+        finally:
+            if not startup_succeeded and not self._startup_cancelled:
+                # Startup failed (exception or early return from a peripheral
+                # error). Clean up whatever peripherals got started.
+                # Cancellation has its own cleanup via _on_startup_cancelled().
+                logger.info(f"{self._rig_label} Startup failed — cleaning up peripherals")
+                self._cleanup_hardware_async()
+
     def _on_startup_cancelled(self) -> None:
         """Handle startup cancellation — clean up and notify."""
         self._cleanup_hardware_async()
         self._set_status(SessionStatus.IDLE)
         self._emit("startup_cancelled")
+
+    # =========================================================================
+    # Peripheral health monitoring
+    # =========================================================================
+
+    def _start_health_monitor(self) -> None:
+        """Start a daemon thread that checks peripheral health every 5 seconds."""
+        self._health_monitor_stop = threading.Event()
+        self._health_monitor_thread = threading.Thread(
+            target=self._health_monitor_loop,
+            daemon=True,
+        )
+        self._health_monitor_thread.start()
+
+    def _stop_health_monitor(self) -> None:
+        """Signal the health monitor thread to stop."""
+        if hasattr(self, "_health_monitor_stop"):
+            self._health_monitor_stop.set()
+
+    def _health_monitor_loop(self) -> None:
+        """Periodically check that peripheral subprocesses are still alive.
+
+        If any peripheral has crashed, emits ``"peripheral_error"`` and
+        auto-stops the session so the protocol exits cleanly via
+        ``check_stop()``.
+        """
+        while not self._health_monitor_stop.wait(timeout=5.0):
+            if self._peripheral_manager is None:
+                return
+            healthy, description = self._peripheral_manager.check_health()
+            if not healthy:
+                logger.error(f"{self._rig_label} {description}")
+                self._emit("peripheral_error", message=description)
+                # Auto-stop: data is compromised, end the session cleanly
+                self.stop_session()
+                return
 
     # =========================================================================
     # Protocol execution
@@ -458,6 +509,7 @@ class SessionController:
             target=self._protocol_worker, daemon=True
         )
         self._protocol_thread.start()
+        self._start_health_monitor()
 
     def _protocol_worker(self) -> None:
         """Run the protocol, emit protocol_complete, exit."""
@@ -467,6 +519,8 @@ class SessionController:
         except Exception as e:
             logger.error(f"{self._rig_label} Protocol exception: {e}")
             self._emit("protocol_log", message=f"ERROR: {e}")
+        finally:
+            self._stop_health_monitor()
 
         final_status = ProtocolStatus.COMPLETED
         if self._current_protocol is not None:
@@ -560,6 +614,7 @@ class SessionController:
 
     def cleanup_session(self) -> None:
         """Public entry: spawn cleanup worker, return immediately."""
+        self._stop_health_monitor()
         self._current_protocol = None
         self._protocol_thread = None
         self._virtual_rig_state = None
