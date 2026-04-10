@@ -38,11 +38,11 @@ class VisualAutoTrainingProtocol(BaseProtocol):
         )
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        return [
-            TrackerDefinition(name=stage.name, display_name=stage.display_name)
+    def get_tracker_definitions(cls) -> dict:
+        return {
+            stage.name: TrackerDefinition(name=stage.name, display_name=stage.display_name)
             for stage in STAGES.values()
-        ]
+        }
 
     @classmethod
     def get_parameters(cls) -> list:
@@ -119,10 +119,11 @@ class VisualAutoTrainingProtocol(BaseProtocol):
             saved_trials_in_stage=saved_trials,
         )
 
+        # trackers is stage-keyed: trackers[stage_name] -> Tracker
         engine.initialise_session(
-            trackers=trackers,
             log=self.log,
             skip_warmup=params.get("skip_warmup", False),
+            tracker_lookup=lambda stage_name: trackers.get(stage_name),
         )
 
         session_start = self.now()

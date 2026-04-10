@@ -35,6 +35,7 @@ Streaming events (fire repeatedly during a phase):
 """
 
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -49,6 +50,8 @@ from .tracker import Tracker, TrackerDefinition, save_merged_trials
 from .peripheral_manager import PeripheralManager, load_peripheral_config
 from .protocol_base import BaseProtocol, ProtocolStatus
 from .session_state import SessionStatus, SessionConfig, SessionResult
+
+logger = logging.getLogger(__name__)
 
 
 class SessionController:
@@ -109,7 +112,7 @@ class SessionController:
             try:
                 cb(**kwargs)
             except Exception as e:
-                print(f"Warning: listener error in '{event_name}': {e}")
+                logger.warning(f"listener error in '{event_name}': {e}")
 
     # =========================================================================
     # Phase management
@@ -188,7 +191,7 @@ class SessionController:
                 return
 
             # Check for shared multi-session folder from linked rig launch
-            shared_multi_session = self._rig_config.get("shared_multi_session")
+            shared_multi_session = self._rig_config.shared_multi_session if self._rig_config else ""
 
             peripheral_config = load_peripheral_config(
                 self._rig_config,
@@ -282,7 +285,7 @@ class SessionController:
                 reset_arduino_via_dtr(self._serial)
 
             self._emit("startup_status", message="Creating BehaviourRigLink...")
-            board_type = self._rig_config.get("board_type", "giga")
+            board_type = self._rig_config.board_type if self._rig_config else "giga"
             if self._simulate:
                 self._link = SimulatedRig(self._serial, self._virtual_rig_state, clock=clock)
             else:
@@ -304,11 +307,7 @@ class SessionController:
             self._write_session_metadata(config, peripheral_config)
 
             # Extract rig number
-            rig_name = self._rig_config.get("name", "Rig 1")
-            try:
-                rig_number = int(rig_name.split()[-1])
-            except (ValueError, IndexError):
-                rig_number = 1
+            rig_number = self._rig_config.rig_number if self._rig_config else 1
 
             # Create protocol
             self._emit("startup_status", message="Creating protocol...")
@@ -317,17 +316,29 @@ class SessionController:
                 link=self._link,
             )
 
-            # Create trackers from protocol definitions
+            # Build trackers via the protocol so the protocol owns construction.
+            # self._trackers is stage-keyed (protocol looks up by stage name).
+            # self._trackers_by_name is tracker-name-keyed (GUI looks up by name).
             tracker_defs = config["protocol_class"].get_tracker_definitions()
-            self._trackers: dict[str, Tracker] = {}
             self._tracker_definitions = tracker_defs
-            for tdef in tracker_defs:
-                tracker = Tracker(tdef, clock=clock)
-                self._trackers[tdef.name] = tracker
+            self._trackers = self._current_protocol.build_trackers(clock=clock)
+
+            # Build a name-keyed dict of unique trackers for the GUI.
+            self._trackers_by_name: dict[str, Tracker] = {}
+            wired: set[int] = set()
+            for tracker in self._trackers.values():
+                tid = id(tracker)
+                if tid in wired:
+                    continue
+                wired.add(tid)
+                self._trackers_by_name[tracker.name] = tracker
+                _name = tracker.name
                 tracker.on(
                     "update",
-                    lambda tracker=None, sub=None, _name=tdef.name: self._emit(
-                        "performance_update", trackers=self._trackers, updated=_name
+                    lambda tracker=None, sub=None, _n=_name: self._emit(
+                        "performance_update",
+                        trackers=self._trackers_by_name,
+                        updated=_n,
                     ),
                 )
                 tracker.on(
@@ -341,7 +352,7 @@ class SessionController:
                 scales_client = self._peripheral_manager.scales_client
 
             # Read per-port reward durations from rig config
-            reward_durations = self._rig_config.get("reward_durations", [500] * 6)
+            reward_durations = list(self._rig_config.reward_durations) if self._rig_config else [500] * 6
 
             self._current_protocol.set_runtime_context(
                 scales=scales_client,
@@ -372,7 +383,7 @@ class SessionController:
                     weight_offset = float(params.get("weight_offset", 3.0))
                     scales_threshold = float(params["mouse_weight"]) - weight_offset
                 except (TypeError, ValueError) as e:
-                    print(f"Warning: could not compute scales threshold: {e}")
+                    logger.warning(f"could not compute scales threshold: {e}")
 
             # Build session info for the GUI
             session_info = {
@@ -452,11 +463,14 @@ class SessionController:
         }
         status_str = status_map.get(final_status, "Unknown")
 
-        # Get performance reports (raw trial data) and save merged trial data
+        # Get performance reports (raw trial data) and save merged trial data.
+        # Use _trackers_by_name (unique trackers keyed by tracker.name) to
+        # avoid duplicating reports when multiple stages share a tracker.
+        trackers_by_name = getattr(self, "_trackers_by_name", {})
         performance_reports: dict[str, dict] | None = None
-        if self._trackers:
+        if trackers_by_name:
             performance_reports = {}
-            for name, tracker in self._trackers.items():
+            for name, tracker in trackers_by_name.items():
                 all_trials = tracker.get_all_trials()
                 start_ts, last_ts = tracker.get_time_span()
 
@@ -485,7 +499,7 @@ class SessionController:
                 try:
                     session_id = Path(self._session_save_path).name
                     saved_path = save_merged_trials(
-                        self._trackers,
+                        trackers_by_name,
                         self._session_save_path,
                         session_id=session_id,
                     )
@@ -564,23 +578,23 @@ class SessionController:
                 self._emit("cleanup_log", message="Shutting down rig link...")
                 link.shutdown()
             except Exception as e:
-                print(f"Warning: error shutting down rig link: {e}")
+                logger.warning(f"error shutting down rig link: {e}")
             try:
                 link.stop()
             except Exception as e:
-                print(f"Warning: error stopping rig link: {e}")
+                logger.warning(f"error stopping rig link: {e}")
 
         if ser is not None:
             try:
                 ser.close()
             except Exception as e:
-                print(f"Warning: error closing serial port: {e}")
+                logger.warning(f"error closing serial port: {e}")
 
         if pm is not None:
             try:
                 pm.stop()
             except Exception as e:
-                print(f"Warning: error stopping peripherals: {e}")
+                logger.warning(f"error stopping peripherals: {e}")
 
     # =========================================================================
     # Metadata

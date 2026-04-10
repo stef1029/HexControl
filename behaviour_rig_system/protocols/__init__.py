@@ -14,10 +14,13 @@ Protocols are auto-loaded from .py files in this folder.
 
 import importlib.util
 import inspect
+import logging
 import sys
 from pathlib import Path
 
 from core.protocol_base import BaseProtocol
+
+logger = logging.getLogger(__name__)
 
 
 def get_available_protocols() -> list[type]:
@@ -25,7 +28,9 @@ def get_available_protocols() -> list[type]:
     protocols = []
     protocols_dir = Path(__file__).parent
     
-    # Ensure parent is in path for imports
+    # main.py already adds the project root to sys.path; this is a safety
+    # net for cases where protocols/__init__.py is loaded before main.py
+    # runs (e.g., direct test imports).
     parent = protocols_dir.parent
     if str(parent) not in sys.path:
         sys.path.insert(0, str(parent))
@@ -49,6 +54,6 @@ def get_available_protocols() -> list[type]:
                     protocols.append(obj)
         
         except Exception as e:
-            print(f"Warning: Failed to load {py_file.name}: {e}")
+            logger.warning(f"Failed to load {py_file.name}: {e}")
     
     return protocols

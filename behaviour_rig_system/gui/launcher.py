@@ -18,7 +18,7 @@ from tkinter import ttk, messagebox
 from typing import TYPE_CHECKING
 
 import serial
-import yaml
+
 from pathlib import Path
 
 from BehavLink import BehaviourRigLink, reset_arduino_via_dtr
@@ -107,34 +107,21 @@ class RigLauncher:
     """
     
     def __init__(self, config_path: Path, board_registry_path: Path):
-        # Store config path for passing to child windows
-        self.config_path = config_path
-
-        # Load configuration first (needed for theme)
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Rig configuration file not found: {config_path}"
-            )
-
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        if "rigs" not in config:
-            raise KeyError("'rigs' section missing from config file")
-        if "global" not in config or "baud_rate" not in config["global"]:
-            raise KeyError("'global.baud_rate' missing from config file")
-        if "processes" not in config:
-            raise KeyError("'processes' section missing from config file")
+        # Load config via the typed system — single entry point for all YAML data
+        from core.rig_config import RigsFile
+        self._rigs_file = RigsFile.load(config_path)
 
         # Apply palette from config before creating any widgets
         from .theme import PALETTES, BORING_PALETTE
-        palette_name = config.get("global", {}).get("palette", "boring")
+        palette_name = self._rigs_file.global_config.palette
         if palette_name in PALETTES:
             Theme.set_palette(PALETTES[palette_name])
         else:
             available = ", ".join(sorted(PALETTES.keys()))
-            print(f"WARNING: Unknown palette '{palette_name}'. Available palettes: {available}")
-            print("  Falling back to 'boring' palette.")
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Unknown palette '{palette_name}'. Available: {available}. Falling back to 'boring'."
+            )
             Theme.set_palette(BORING_PALETTE)
 
         self.root = tk.Tk()
@@ -145,9 +132,8 @@ class RigLauncher:
         # Apply theme
         apply_theme(self.root)
 
-        self.rigs = config["rigs"]
-        self.baud_rate = config["global"]["baud_rate"]
-        self.processes = config["processes"]
+        self.rigs = list(self._rigs_file.rigs)  # list[RigConfig]
+        self.baud_rate = self._rigs_file.global_config.baud_rate
         
         # Load board registry for resolving board names to COM ports
         self.board_registry = BoardRegistry(board_registry_path)
@@ -168,7 +154,8 @@ class RigLauncher:
         self._shared_multi_session_folder: str | None = None
 
         # Track which mice are claimed by which rigs: {mouse_id: rig_name}
-        self._claimed_mice: dict[str, str] = {}
+        from core.mouse_claims import MouseClaims
+        self._mouse_claims = MouseClaims()
 
         self._create_widgets()
         self._update_clock()
@@ -253,8 +240,8 @@ class RigLauncher:
             row = i // 2
             col = i % 2
             
-            rig_name = rig.get("name", f"Rig {i+1}")
-            enabled = rig.get("enabled", True)
+            rig_name = rig.name
+            enabled = rig.enabled
             
             # Selection state
             self.rig_selected[rig_name] = False
@@ -388,7 +375,7 @@ class RigLauncher:
 
     def _on_rig_toggle(self, rig: dict) -> None:
         """Handle rig button toggle for selection."""
-        rig_name = rig.get("name", "Unknown")
+        rig_name = rig.name
         
         # Don't allow selection if rig is already open
         if rig_name in self.open_windows:
@@ -417,10 +404,10 @@ class RigLauncher:
             messagebox.showwarning("No Rigs", "No rigs configured in rigs.yaml")
             return
 
-        rig = dict(self.rigs[0])  # shallow copy
-        rig["name"] = mock_name
+        from dataclasses import replace
+        mock_config = replace(self.rigs[0], name=mock_name)
 
-        self._open_rig_window(rig, simulate=True)
+        self._open_rig_window(mock_config, simulate=True)
         self.status_var.set("Mock Rig opened (simulated hardware)")
 
     def _on_docs_click(self) -> None:
@@ -495,7 +482,7 @@ class RigLauncher:
         # Get selected rigs
         selected_rigs = []
         for rig in self.rigs:
-            rig_name = rig.get("name", "Unknown")
+            rig_name = rig.name
             if self.rig_selected.get(rig_name, False):
                 # Check if already open
                 if rig_name in self.open_windows:
@@ -518,9 +505,9 @@ class RigLauncher:
             failed_rigs = []
             
             for rig in selected_rigs:
-                rig_name = rig.get("name", "Unknown")
-                board_name = rig.get("board_name", "")
-                board_type = rig.get("board_type", "giga")
+                rig_name = rig.name
+                board_name = rig.board_name
+                board_type = rig.board_type
                 
                 self.root.after(0, lambda n=rig_name: self.status_var.set(f"Testing {n}..."))
                 
@@ -554,7 +541,7 @@ class RigLauncher:
         # Report failures
         if failed_rigs:
             failure_msgs = "\n".join([
-                f"  • {rig.get('name', 'Unknown')}: {msg}"
+                f"  • {rig.name}: {msg}"
                 for rig, msg in failed_rigs
             ])
             messagebox.showwarning(
@@ -567,7 +554,7 @@ class RigLauncher:
             for rig in successful_rigs:
                 self._open_rig_window(rig, shared_multi_session=self._shared_multi_session_folder)
             
-            rig_names = ", ".join([r.get("name", "Unknown") for r in successful_rigs])
+            rig_names = ", ".join([r.name for r in successful_rigs])
             self.status_var.set(f"Opened: {rig_names}")
         else:
             self.status_var.set("No rigs connected")
@@ -620,8 +607,8 @@ class RigLauncher:
         """Re-enable launcher controls after post-processing closes."""
         # Re-enable rig buttons (if they were originally enabled)
         for rig in self.rigs:
-            rig_name = rig.get("name", f"Rig {self.rigs.index(rig)+1}")
-            enabled = rig.get("enabled", True)
+            rig_name = rig.name
+            enabled = rig.enabled
             if enabled:
                 # Update button appearance based on current state
                 self._style_rig_button_state(rig_name)
@@ -633,7 +620,7 @@ class RigLauncher:
         # Update launch button state
         self._update_launch_button()
     
-    def _open_rig_window(self, rig: dict, shared_multi_session: str | None = None, simulate: bool = False) -> None:
+    def _open_rig_window(self, rig, shared_multi_session: str | None = None, simulate: bool = False) -> None:
         """
         Open a control window for the specified rig.
         
@@ -646,24 +633,40 @@ class RigLauncher:
         """
         from .rig_window import RigWindow
         
-        rig_name = rig.get("name", "Unknown")
-        board_name = rig.get("board_name", "")
-        
+        from core.rig_config import RigConfig
+
+        # Accept either a typed RigConfig or a raw dict (legacy / mock rig)
+        if isinstance(rig, RigConfig):
+            base_config = rig
+        else:
+            # Build from dict (mock rig path or legacy callers)
+            base_config = RigConfig.from_dict(
+                rig, processes=self._rigs_file.processes,
+            )
+
+        # Inject runtime fields (frozen dataclass, so we replace via __init__)
+        rig_config = RigConfig(
+            name=base_config.name,
+            board_name=base_config.board_name,
+            board_type=base_config.board_type,
+            enabled=base_config.enabled,
+            description=base_config.description,
+            camera_serial=base_config.camera_serial,
+            daq_board_name=base_config.daq_board_name,
+            scales=base_config.scales,
+            reward_durations=base_config.reward_durations,
+            processes=base_config.processes,
+            board_registry_path=str(self.board_registry._path),
+            simulate=simulate,
+            shared_multi_session=shared_multi_session or "",
+        )
+
+        rig_name = rig_config.name
+        board_name = rig_config.board_name
+
         # Create new window
         window = tk.Toplevel(self.root)
-        
-        # Combine rig config with processes config and config path for RigWindow
-        rig_config = {
-            **rig,
-            "processes": self.processes,
-            "config_path": self.config_path,
-            "board_registry_path": self.board_registry._path,
-            "shared_multi_session": shared_multi_session,
-            "claim_mouse_fn": self.claim_mouse,
-            "release_mouse_fn": self.release_mouse,
-            "get_claimed_mice_fn": self.get_claimed_mice,
-        }
-        
+
         # Resolve board name (or raw COM port) via registry
         try:
             serial_port = self.board_registry.resolve_port(board_name) if board_name else ""
@@ -671,14 +674,18 @@ class RigLauncher:
         except (KeyError, RuntimeError):
             serial_port = ""
             baud_rate = self.baud_rate
-        
+
         # Create RigWindow content in the toplevel
         rig_window = RigWindow(
             serial_port=serial_port,
             baud_rate=baud_rate,
             parent=window,
             rig_config=rig_config,
-            simulate=simulate,
+            claim_mouse_fn=self.claim_mouse,
+            release_mouse_fn=self.release_mouse,
+            get_claimed_mice_fn=self.get_claimed_mice,
+            cohort_folders=self._rigs_file.cohort_folders,
+            mice=self._rigs_file.mice,
         )
         
         # Track this window (including rig_window for session checking)
@@ -709,18 +716,15 @@ class RigLauncher:
     
     def claim_mouse(self, mouse_id: str, rig_name: str) -> bool:
         """Claim a mouse for a rig. Returns False if already claimed by another rig."""
-        if mouse_id in self._claimed_mice and self._claimed_mice[mouse_id] != rig_name:
-            return False
-        self._claimed_mice[mouse_id] = rig_name
-        return True
+        return self._mouse_claims.try_claim(mouse_id, rig_name)
 
     def release_mouse(self, rig_name: str) -> None:
         """Release all mice claimed by a rig."""
-        self._claimed_mice = {m: r for m, r in self._claimed_mice.items() if r != rig_name}
+        self._mouse_claims.release_all(rig_name)
 
     def get_claimed_mice(self) -> dict[str, str]:
         """Return a copy of claimed mice: {mouse_id: rig_name}."""
-        return dict(self._claimed_mice)
+        return self._mouse_claims.get_all()
 
     def _on_rig_window_close(self, rig_name: str) -> None:
         """Handle a rig window being closed."""

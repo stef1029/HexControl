@@ -19,11 +19,14 @@ Key things to know:
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum, auto
+import logging
 import threading
 import time as _time
 from typing import Any, Callable
 
 from .parameter_types import Parameter
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -101,13 +104,38 @@ class BaseProtocol(ABC):
         pass
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        """Optional: declare named performance trackers for this protocol.
+    def get_tracker_definitions(cls) -> dict:
+        """Optional: declare trackers for this protocol.
 
-        Returns a list of TrackerDefinition. If empty, no trackers are created
-        and the GUI shows a placeholder message.
+        Returns a dict mapping stage name (or any key the protocol will
+        look up by) to a TrackerDefinition. Multiple stages can share
+        the same TrackerDefinition instance — just map them to the same
+        object.
+
+        The session controller builds a ``Tracker`` for each unique
+        ``TrackerDefinition`` and hands the protocol a dict with the
+        same keys: ``self.trackers[stage_name]`` gives the right tracker.
+
+        Example — one tracker per stage::
+
+            return {
+                "train_led": TrackerDefinition(name="train_led", display_name="Train LED"),
+                "train_2_led": TrackerDefinition(name="train_2_led", display_name="Train 2 LED"),
+            }
+
+        Example — multiple stages sharing one multi-sub tracker::
+
+            audio = TrackerDefinition(name="audio_phase", display_name="Audio Phase",
+                                     sub_trackers=["visual", "audio"])
+            return {
+                "audio_only": audio,
+                "interleaved_2_6": audio,
+                "interleaved_3_6": audio,
+            }
+
+        Returns empty dict if no trackers are needed.
         """
-        return []
+        return {}
 
     @abstractmethod
     def _run_protocol(self) -> None:
@@ -197,7 +225,7 @@ class BaseProtocol(ABC):
             try:
                 self._cleanup()
             except Exception as e:
-                print(f"Warning: cleanup error: {e}")
+                logger.warning(f"cleanup error: {e}")
 
         if error is not None:
             raise error
@@ -228,6 +256,29 @@ class BaseProtocol(ABC):
         if reward_durations is not None:
             self.reward_durations = reward_durations
 
+    def build_trackers(self, clock=None) -> dict:
+        """
+        Build runtime Tracker instances from this protocol's tracker definitions.
+
+        Returns a dict with the same keys as ``get_tracker_definitions()``.
+        When multiple keys share the same ``TrackerDefinition`` instance,
+        they share the same ``Tracker`` instance — so
+        ``self.trackers["audio_only"]`` and ``self.trackers["interleaved_2_6"]``
+        return the same object if the protocol mapped both to the same def.
+        """
+        from .tracker import Tracker
+        defs = self.get_tracker_definitions()
+
+        # Build one Tracker per unique TrackerDefinition (by identity).
+        built: dict[int, Tracker] = {}  # id(tdef) -> Tracker
+        result: dict[str, Tracker] = {}
+        for key, tdef in defs.items():
+            tid = id(tdef)
+            if tid not in built:
+                built[tid] = Tracker(tdef, clock=clock)
+            result[key] = built[tid]
+        return result
+
     # =========================================================================
     # Protected Methods - Use these in your protocol
     # =========================================================================
@@ -251,7 +302,7 @@ class BaseProtocol(ABC):
             for pin in range(self.link.NUM_GPIO_PINS):
                 self.link.gpio_configure(pin, GPIOMode.OUTPUT)
         except Exception as e:
-            print(f"Warning: GPIO init failed: {e}")
+            logger.warning(f"GPIO init failed: {e}")
 
     def _emit(self, event_name: str, **kwargs) -> None:
         """Fire an event to registered listeners."""
@@ -259,7 +310,7 @@ class BaseProtocol(ABC):
             try:
                 cb(**kwargs)
             except Exception as e:
-                print(f"Warning: listener error in '{event_name}': {e}")
+                logger.warning(f"listener error in '{event_name}': {e}")
 
     def check_stop(self) -> bool:
         """

@@ -76,9 +76,13 @@ class ProtocolTemplate(BaseProtocol):
         ]
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        """OPTIONAL: declare named trackers. Each appears as a tab in the GUI."""
-        return [TrackerDefinition(name="trials", display_name="Trials")]
+    def get_tracker_definitions(cls) -> dict:
+        """OPTIONAL: declare trackers keyed by the name you'll look them up by.
+
+        For autotraining protocols, key by stage name. For simple protocols,
+        key by whatever name you use in self.trackers["key"].
+        """
+        return {"trials": TrackerDefinition(name="trials", display_name="Trials")}
 
     def _run_protocol(self) -> None:
         """REQUIRED: main protocol body."""

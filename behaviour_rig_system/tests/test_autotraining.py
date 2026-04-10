@@ -12,7 +12,7 @@ from autotraining.definitions.visual.stages import STAGES
 from autotraining.definitions.visual.graph import TRANSITIONS
 from core.tracker import Tracker, TrackerDefinition, Trial
 
-# Build one tracker per stage so the engine can map every stage to a tracker
+# Build one tracker per stage (stage-keyed dict, same as protocols do)
 trackers = {
     name: Tracker(TrackerDefinition(name=name, display_name=name))
     for name in STAGES
@@ -20,16 +20,20 @@ trackers = {
 for tracker in trackers.values():
     tracker.reset()
 
+
 engine = AutotrainingEngine(STAGES, TRANSITIONS)
 logs = []
-engine.initialise_session(trackers, lambda msg: logs.append(msg))
+engine.initialise_session(
+    log=lambda msg: logs.append(msg),
+    tracker_lookup=lambda stage_name: trackers.get(stage_name),
+)
 
 print(f"Started in: {engine.current_stage_name} (warmup={engine.in_warmup})")
 
 
 def record_trial(outcome: str, correct_port: int, chosen_port: int | None) -> None:
-    """Run a fake trial through the active tracker via the Trial context manager."""
-    tracker = engine.active_tracker
+    """Run a fake trial through the current stage's tracker via the Trial context manager."""
+    tracker = trackers.get(engine.current_stage_name)
     with Trial(tracker, correct_port=correct_port) as t:
         if outcome == "success":
             t.success()

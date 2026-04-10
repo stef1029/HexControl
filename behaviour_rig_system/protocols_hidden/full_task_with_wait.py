@@ -34,8 +34,8 @@ class FullTaskWithWaitProtocol(BaseProtocol):
         return "Complete task: mouse waits on platform, then responds to visual/audio cue for reward."
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        return [TrackerDefinition(name="trials", display_name="Trials")]
+    def get_tracker_definitions(cls) -> dict:
+        return {"trials": TrackerDefinition(name="trials", display_name="Trials")}
 
     @classmethod
     def get_parameters(cls) -> list:

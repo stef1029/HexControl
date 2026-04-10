@@ -33,8 +33,8 @@ class AudioSpatialProtocol(BaseProtocol):
         )
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        return [TrackerDefinition(name="trials", display_name="Trials")]
+    def get_tracker_definitions(cls) -> dict:
+        return {"trials": TrackerDefinition(name="trials", display_name="Trials")}
 
     @classmethod
     def get_parameters(cls) -> list:

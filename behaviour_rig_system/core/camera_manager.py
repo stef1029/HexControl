@@ -22,11 +22,14 @@ Usage:
     manager.stop()
 """
 
+import logging
 import os
 import subprocess
 import sys
 import time
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class CameraManager:
@@ -98,7 +101,7 @@ class CameraManager:
             try:
                 cb(**kwargs)
             except Exception as e:
-                print(f"Warning: listener error in '{event_name}': {e}")
+                logger.warning(f"listener error in '{event_name}': {e}")
     
     @property
     def is_running(self) -> bool:
@@ -150,7 +153,7 @@ class CameraManager:
                 try:
                     stderr = self._process.stderr.read().decode(errors="replace").strip()
                 except Exception as e:
-                    print(f"Warning: could not read camera stderr: {e}")
+                    logger.warning(f"could not read camera stderr: {e}")
                 self.last_error = (
                     f"Camera process exited immediately (code {self._process.returncode})"
                     + (f": {stderr}" if stderr else "")
@@ -226,4 +229,4 @@ class CameraManager:
             try:
                 os.remove(signal_file)
             except Exception as e:
-                print(f"Warning: could not remove signal file: {e}")
+                logger.warning(f"could not remove signal file: {e}")

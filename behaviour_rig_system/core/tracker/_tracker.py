@@ -12,12 +12,15 @@ without a trial in progress raises ``TrackerLifecycleError``; the
 documented happy path is via the :class:`Trial` context manager.
 """
 
+import logging
 from datetime import datetime
 from typing import Callable, Optional
 
 from ._definition import TrackerDefinition
 from ._outcomes import TrialOutcome, TrialRecord, TrialState
 from ._sub_tracker import _SubTracker
+
+logger = logging.getLogger(__name__)
 
 
 class TrackerLifecycleError(RuntimeError):
@@ -81,10 +84,6 @@ class Tracker:
     @property
     def display_name(self) -> str:
         return self._definition.display_name
-
-    @property
-    def stages(self) -> set[str]:
-        return self._definition.effective_stages
 
     @property
     def sub_tracker_names(self) -> list[str]:
@@ -495,7 +494,7 @@ class Tracker:
             try:
                 cb(**kwargs)
             except Exception as e:
-                print(f"Warning: Tracker listener error in '{event_name}': {e}")
+                logger.warning(f"Tracker listener error in '{event_name}': {e}")
 
     def _notify_update(self, sub: Optional[str]) -> None:
         """Emit the ``update`` event after a trial is recorded or the tracker is reset."""

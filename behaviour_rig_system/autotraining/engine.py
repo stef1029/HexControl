@@ -8,31 +8,48 @@ The core state machine that:
 4. Handles the warm-up -> saved-stage handoff at session start
 5. Tracks autotraining-specific counters (trials in stage, streaks, etc.)
 
-The engine is protocol-agnostic -- it doesn't run trials itself. Instead,
-the protocol calls engine.get_active_params() before each trial and
-engine.on_trial_complete() after each trial.
+The engine is protocol-agnostic and **tracker-agnostic**: it doesn't run
+trials itself and it doesn't own a Tracker reference. The protocol calls
+``engine.get_active_params()`` before each trial and
+``engine.on_trial_complete()`` after each trial. To evaluate transition
+rules that need rolling-accuracy stats, the engine accepts a
+``tracker_lookup`` callback at session init time that maps a stage name
+to the protocol's currently-active Tracker.
 """
 
 import time
 from typing import Any, Callable, Optional
 
-from core.tracker import Tracker, TrackerDefinition
 from .stage import Stage
 from .transitions import Transition, TransitionContext
+
+
+# Type alias: a function that returns the Tracker covering a given stage,
+# or None if no tracker is registered for it.
+TrackerLookup = Callable[[str], Any]
 
 
 class AutotrainingEngine:
     """
     Manages training stage progression.
 
-    Usage in a protocol's run() function:
+    Usage in a protocol's run() function::
+
+        # Define the stage -> tracker mapping in your protocol
+        def tracker_for_stage(stage_name):
+            return self.trackers.get(stage_name)
 
         engine = AutotrainingEngine(stages, transitions, persistence_state)
-        engine.initialise_session(trackers, log)
+        engine.initialise_session(
+            log=self.log,
+            skip_warmup=False,
+            tracker_lookup=tracker_for_stage,
+        )
 
         while running:
             params = engine.get_active_params()
-            # ... run trial with params ...
+            tracker = tracker_for_stage(engine.current_stage_name)
+            # ... run trial with params, recording on tracker ...
             engine.on_trial_complete(outcome, correct_port, chosen_port, trial_duration)
     """
 
@@ -45,10 +62,10 @@ class AutotrainingEngine:
     ):
         """
         Args:
-            stages:              Dict of stage_name -> Stage
-            transitions:         List of Transition rules (will be sorted by priority)
-            saved_stage_name:    The stage the mouse was on at end of last session
-                                 (None = first non-warmup stage)
+            stages:                Dict of stage_name -> Stage
+            transitions:           List of Transition rules (sorted by priority)
+            saved_stage_name:      Stage the mouse was on at end of last session
+                                   (None = first non-warmup stage)
             saved_trials_in_stage: Cumulative trial count in the saved stage
         """
         self._stages = stages
@@ -82,16 +99,25 @@ class AutotrainingEngine:
         self._in_warmup: bool = False
         self._session_start_time: float = 0.0
 
-        # Tracker state
-        self._trackers: dict[str, Tracker] = {}
-        self._stage_to_tracker: dict[str, str] = {}  # stage_name -> tracker name
-        self._active_tracker: Optional[Tracker] = None
-        self._stage_start_indices: dict[str, int] = {}  # sub_tracker_name -> trial index
+        # Stage isolation: trial indices captured at the moment we entered
+        # the current stage. Used by TransitionContext to compute
+        # rolling-accuracy stats restricted to the current stage. Lazily
+        # populated by the tracker_lookup callback when stages change.
+        self._stage_start_indices: dict[str, int] = {}
+
+        # Tracker lookup callback (set in initialise_session). The engine
+        # never stores a Tracker reference itself — only the function.
+        self._tracker_lookup: Optional[TrackerLookup] = None
 
         self._log: Callable[[str], None] = lambda msg: None
 
         # Transition history for this session
         self._transition_log: list[dict[str, Any]] = []
+
+    @property
+    def stage_names(self) -> set[str]:
+        """The set of all stage names declared by this engine."""
+        return set(self._stages.keys())
 
     # =========================================================================
     # Session lifecycle
@@ -99,9 +125,9 @@ class AutotrainingEngine:
 
     def initialise_session(
         self,
-        trackers: dict[str, Tracker],
         log: Callable[[str], None],
         skip_warmup: bool = False,
+        tracker_lookup: Optional[TrackerLookup] = None,
     ) -> None:
         """
         Set up the engine for a new session.
@@ -110,22 +136,17 @@ class AutotrainingEngine:
         to the saved/first stage.
 
         Args:
-            trackers:    Dict of tracker_name -> Tracker.
-            log:         Logging function (prints to GUI)
-            skip_warmup: If True, skip warm-up and go directly to the
-                         saved/first stage.
+            log:            Logging function (prints to GUI)
+            skip_warmup:    If True, skip warm-up and go directly to the
+                            saved/first stage.
+            tracker_lookup: Optional callback ``stage_name -> Tracker``.
+                            Used by transition evaluation to compute
+                            rolling-accuracy stats. If omitted, transition
+                            rules that depend on tracker stats will not fire.
         """
         self._log = log
         self._session_start_time = time.time()
-
-        self._trackers = trackers
-        # Build stage -> tracker name mapping
-        self._stage_to_tracker = {}
-        for tracker_name, tracker in self._trackers.items():
-            for stage_name in tracker.stages:
-                self._stage_to_tracker[stage_name] = tracker_name
-
-        self._active_tracker = next(iter(self._trackers.values()), None)
+        self._tracker_lookup = tracker_lookup
 
         if not skip_warmup and self._warmup_stage is not None and self._should_warmup():
             self._set_stage(self._warmup_stage, is_warmup_entry=True)
@@ -175,7 +196,8 @@ class AutotrainingEngine:
 
         Resets session-level counters. If entering a non-warmup stage that
         matches the saved stage, restores the cumulative trial count.
-        Switches to the tracker that covers this stage.
+        Captures per-sub-tracker trial indices for stage isolation if a
+        tracker_lookup is available.
         """
         self._current_stage = stage
         self._active_params = stage.get_params()
@@ -184,26 +206,26 @@ class AutotrainingEngine:
         self._consecutive_timeout = 0
         self._in_warmup = is_warmup_entry
 
-        # Switch to the tracker that covers this stage
-        tracker_name = self._stage_to_tracker.get(stage.name)
-        if tracker_name and tracker_name in self._trackers:
-            self._active_tracker = self._trackers[tracker_name]
-        # else keep current active_tracker (fallback for stages not in any tracker)
-
-        # Record per-sub-tracker trial indices for stage isolation
-        if self._active_tracker is not None:
-            self._stage_start_indices = {
-                sub_name: self._active_tracker.get_sub_tracker(sub_name).total_trials
-                for sub_name in self._active_tracker.sub_tracker_names
-            }
-        else:
-            self._stage_start_indices = {}
+        # Capture stage_start_indices via the tracker lookup callback (if any).
+        self._stage_start_indices = self._capture_stage_start_indices(stage.name)
 
         # Restore cumulative trial count if resuming saved stage
         if not is_warmup_entry and stage.name == self._saved_stage_name:
             self._total_trials_in_stage = self._saved_trials_in_stage
         else:
             self._total_trials_in_stage = 0
+
+    def _capture_stage_start_indices(self, stage_name: str) -> dict[str, int]:
+        """Capture per-sub-tracker trial counts for stage isolation."""
+        if self._tracker_lookup is None:
+            return {}
+        tracker = self._tracker_lookup(stage_name)
+        if tracker is None:
+            return {}
+        return {
+            sub_name: tracker.get_sub_tracker(sub_name).total_trials
+            for sub_name in tracker.sub_tracker_names
+        }
 
     # =========================================================================
     # Trial interface -- called by the protocol
@@ -227,16 +249,6 @@ class AutotrainingEngine:
     def current_stage_display(self) -> str:
         """Display name of the currently active stage."""
         return self._current_stage.display_name if self._current_stage else "Unknown"
-
-    @property
-    def active_tracker(self) -> Optional[Tracker]:
-        """The tracker covering the current stage."""
-        return self._active_tracker
-
-    @property
-    def active_tracker_name(self) -> str:
-        """Name of the tracker covering the current stage."""
-        return self._active_tracker.name if self._active_tracker else ""
 
     @property
     def in_warmup(self) -> bool:
@@ -266,9 +278,9 @@ class AutotrainingEngine:
         Updates internal counters and evaluates transition rules.
 
         Args:
-            outcome:       "success", "failure", or "timeout"
-            correct_port:  The correct port for this trial
-            chosen_port:   The port the mouse chose (None for timeout)
+            outcome:        "success", "failure", or "timeout"
+            correct_port:   The correct port for this trial
+            chosen_port:    The port the mouse chose (None for timeout)
             trial_duration: Trial duration in seconds
 
         Returns:
@@ -288,9 +300,7 @@ class AutotrainingEngine:
             self._consecutive_timeout += 1
             # Don't reset consecutive_correct on timeout (matches rolling_accuracy logic)
 
-        # Evaluate transitions
-        new_stage_name = self._evaluate_transitions()
-        return new_stage_name
+        return self._evaluate_transitions()
 
     # =========================================================================
     # Transition evaluation
@@ -308,34 +318,45 @@ class AutotrainingEngine:
         """
         if self._current_stage is None:
             return None
-        if not self._trackers:
-            return None
+
+        # Look up the active tracker via the protocol-supplied callback.
+        # If no tracker is available, transition rules that depend on
+        # tracker stats simply won't match (TransitionContext returns None
+        # from those metrics) — this is fine for protocols that don't use
+        # trackers.
+        active_tracker = None
+        if self._tracker_lookup is not None:
+            active_tracker = self._tracker_lookup(self._current_stage.name)
 
         session_minutes = (time.time() - self._session_start_time) / 60.0
 
         context = TransitionContext(
-            trackers=self._trackers,
             current_stage_name=self._current_stage.name,
             trials_in_stage=self._trials_in_stage,
             total_trials_in_stage=self._total_trials_in_stage,
             consecutive_correct=self._consecutive_correct,
             consecutive_timeout=self._consecutive_timeout,
             session_time_minutes=session_minutes,
-            active_tracker=self._active_tracker,
+            active_tracker=active_tracker,
             stage_start_indices=self._stage_start_indices,
         )
 
         for transition in self._transitions:
             if transition.can_fire(self._current_stage.name, context):
-                return self._fire_transition(transition)
+                return self._fire_transition(transition, active_tracker)
 
         return None
 
-    def _fire_transition(self, transition: Transition) -> str:
+    def _fire_transition(self, transition: Transition, active_tracker: Any) -> str:
         """
         Execute a transition: switch to the target stage.
 
         Handles the special "$saved" target for warm-up exit.
+
+        Args:
+            transition:     The transition that fired.
+            active_tracker: The tracker active during this trial (used to
+                            record the trial number in the transition log).
 
         Returns:
             Name of the new stage.
@@ -359,9 +380,7 @@ class AutotrainingEngine:
         self._log(f"    Trials in previous stage: {self._trials_in_stage}")
 
         # Record in transition log
-        trial_num = 0
-        if self._active_tracker is not None:
-            trial_num = self._active_tracker.total_trials
+        trial_num = active_tracker.total_trials if active_tracker is not None else 0
         self._transition_log.append({
             "timestamp": time.time(),
             "from_stage": old_stage.name,
@@ -370,7 +389,7 @@ class AutotrainingEngine:
             "trial_number": trial_num,
         })
 
-        # Apply the transition
+        # Apply the transition (also captures stage_start_indices for the new stage)
         self._set_stage(new_stage)
 
         return new_stage.name

@@ -43,11 +43,11 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
         )
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        return [
-            TrackerDefinition(name=stage.name, display_name=stage.display_name)
+    def get_tracker_definitions(cls) -> dict:
+        return {
+            stage.name: TrackerDefinition(name=stage.name, display_name=stage.display_name)
             for stage in STAGES.values()
-        ]
+        }
 
     @classmethod
     def get_parameters(cls) -> list:
@@ -124,10 +124,11 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
             saved_trials_in_stage=saved_trials,
         )
 
+        # trackers is stage-keyed: trackers[stage_name] -> Tracker
         engine.initialise_session(
-            trackers=trackers,
             log=self.log,
             skip_warmup=params.get("skip_warmup", False),
+            tracker_lookup=lambda stage_name: trackers.get(stage_name),
         )
 
         session_start = self.now()
@@ -187,7 +188,7 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
 
                     trial_num += 1
                     target_port = scales_reward_port
-                    tracker = engine.active_tracker
+                    tracker = trackers.get(stage_name)
                     if tracker is None:
                         self.log(f"ERROR: no tracker for stage {stage_name}")
                         break
@@ -280,7 +281,7 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                         continue
 
                     # --- Record to tracker ---
-                    tracker = engine.active_tracker
+                    tracker = trackers.get(stage_name)
                     if tracker is None:
                         self.log(f"ERROR: no tracker for stage {stage_name}")
                         break
@@ -372,8 +373,9 @@ class AudioSpatialAutoTrainingProtocol(BaseProtocol):
                 )
 
                 if new_stage is not None:
-                    if engine.active_tracker is not None:
-                        self.log(f"    Rolling accuracy: {engine.active_tracker.rolling_accuracy(10):.0f}% (last 10)")
+                    new_tracker = trackers.get(engine.current_stage_name)
+                    if new_tracker is not None:
+                        self.log(f"    Rolling accuracy: {new_tracker.rolling_accuracy(10):.0f}% (last 10)")
                     self.log(f"    Now entering: {engine.current_stage_display}")
 
                 if not self.check_stop() and iti > 0:

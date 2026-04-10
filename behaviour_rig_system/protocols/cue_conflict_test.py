@@ -37,15 +37,14 @@ class CueConflictTestProtocol(BaseProtocol):
         )
 
     @classmethod
-    def get_tracker_definitions(cls) -> list:
-        return [
-            TrackerDefinition(
+    def get_tracker_definitions(cls) -> dict:
+        return {
+            "conflict": TrackerDefinition(
                 name="conflict",
                 display_name="Cue Conflict",
                 sub_trackers=["visual", "audio"],
-                stages={"conflict"},
             ),
-        ]
+        }
 
     @classmethod
     def get_parameters(cls) -> list:

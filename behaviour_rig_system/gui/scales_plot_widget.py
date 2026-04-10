@@ -73,7 +73,7 @@ class ScalesPlotWidget(ttk.Frame):
         # Threshold line
         self._threshold_value: Optional[float] = None
 
-        # Battery detection state
+        # Battery detection state (disable in simulation mode)
         self._battery_detection_enabled: bool = True
         self._static_threshold_seconds: float = 30.0
         self._static_jitter_tolerance: float = 0.01
@@ -82,7 +82,15 @@ class ScalesPlotWidget(ttk.Frame):
         self._last_weight: Optional[float] = None
 
         self._create_widgets()
-    
+
+    def set_battery_detection(self, enabled: bool) -> None:
+        """Enable or disable the stuck-battery detection warning.
+
+        Simulation mode disables this because the virtual scales produce
+        a perfectly steady signal that would always trip the warning.
+        """
+        self._battery_detection_enabled = enabled
+
     def _create_widgets(self) -> None:
         """Create the canvas and current-weight label."""
         palette = Theme.palette

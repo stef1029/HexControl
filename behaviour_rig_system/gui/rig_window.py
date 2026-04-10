@@ -48,18 +48,23 @@ class RigWindow:
         serial_port: str = "",
         baud_rate: int = 115200,
         parent: tk.Toplevel = None,
-        rig_config: dict | None = None,
-        simulate: bool = False,
+        rig_config=None,
+        claim_mouse_fn=None,
+        release_mouse_fn=None,
+        get_claimed_mice_fn=None,
+        cohort_folders: tuple = (),
+        mice: tuple = (),
     ):
         if parent is None:
             raise ValueError("RigWindow requires a parent window")
 
         self.parent = parent
         self.rig_config = rig_config
-
-        # Make simulate flag visible to SetupMode via rig_config
-        if simulate:
-            self.rig_config["simulate"] = True
+        self.claim_mouse_fn = claim_mouse_fn
+        self.release_mouse_fn = release_mouse_fn
+        self.get_claimed_mice_fn = get_claimed_mice_fn
+        self.cohort_folders = cohort_folders
+        self.mice = mice
 
         # Virtual rig window (GUI-only, managed here not in controller)
         self._virtual_rig_window: VirtualRigWindow | None = None
@@ -77,7 +82,7 @@ class RigWindow:
             rig_config=rig_config,
             serial_port=serial_port,
             baud_rate=baud_rate,
-            simulate=simulate,
+            simulate=rig_config.simulate if rig_config else False,
         )
 
         self._setup_window()
@@ -95,7 +100,7 @@ class RigWindow:
         self.root = self.parent
         apply_theme(self.root)
 
-        self.rig_name = self.rig_config.get("name", "Unknown")
+        self.rig_name = self.rig_config.name if self.rig_config else "Unknown"
         title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
         self.root.title(title)
         self.root.geometry("680x1200")
@@ -108,6 +113,10 @@ class RigWindow:
             self.root,
             rig_config=self.rig_config,
             on_start=self._start_session,
+            claim_mouse_fn=self.claim_mouse_fn,
+            get_claimed_mice_fn=self.get_claimed_mice_fn,
+            cohort_folders=self.cohort_folders,
+            mice=self.mice,
         )
         self.running_mode = RunningMode(
             self.root,
@@ -236,8 +245,8 @@ class RigWindow:
 
         if scales_client is not None:
             self.running_mode.set_scales_client(scales_client)
-            if self.rig_config.get("simulate"):
-                self.running_mode._scales_plot._battery_detection_enabled = False
+            if self.rig_config and self.rig_config.simulate:
+                self.running_mode.set_battery_detection(False)
 
         # Extract rig number from name (e.g. "Rig 1" -> 1)
         try:

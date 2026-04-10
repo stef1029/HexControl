@@ -177,7 +177,6 @@ class TransitionContext:
 
     def __init__(
         self,
-        trackers: dict[str, Any],
         current_stage_name: str,
         trials_in_stage: int = 0,
         total_trials_in_stage: int = 0,
@@ -187,7 +186,6 @@ class TransitionContext:
         active_tracker: Any = None,
         stage_start_indices: dict[str, int] | None = None,
     ):
-        self._trackers = trackers
         self._current_stage_name = current_stage_name
         self._trials_in_stage = trials_in_stage
         self._total_trials_in_stage = total_trials_in_stage

@@ -163,6 +163,10 @@ class RunningMode(ttk.Frame):
     def set_scales_threshold(self, value) -> None:
         """Set the activation threshold line on the scales plot."""
         self._scales_plot.set_threshold(value)
+
+    def set_battery_detection(self, enabled: bool) -> None:
+        """Enable or disable the stuck-battery detection warning on the scales plot."""
+        self._scales_plot.set_battery_detection(enabled)
     
     def activate(self, session_config: dict, tracker_definitions: list | None = None,
                  rig_number: int = 0) -> None:
@@ -234,7 +238,18 @@ class RunningMode(ttk.Frame):
         self._perf_notebook = ttk.Notebook(self._perf_frame)
         self._perf_notebook.pack(fill="x", expand=True)
 
-        for idx, tdef in enumerate(self._tracker_definitions):
+        # Extract unique tracker definitions (multiple stage keys may share one).
+        if isinstance(self._tracker_definitions, dict):
+            seen_ids: set[int] = set()
+            unique_defs: list = []
+            for tdef in self._tracker_definitions.values():
+                if id(tdef) not in seen_ids:
+                    seen_ids.add(id(tdef))
+                    unique_defs.append(tdef)
+        else:
+            unique_defs = list(self._tracker_definitions)
+
+        for idx, tdef in enumerate(unique_defs):
             sub_trackers = getattr(tdef, "sub_trackers", None)
             has_subs = sub_trackers is not None and len(sub_trackers) > 0
 

@@ -50,16 +50,19 @@ def main() -> None:
 
     Launches the rig launcher window.
     """
+    import logging
+    from core.logging_config import configure_logging
     from gui.launcher import launch
 
-    print("=" * 60)
-    print("  Behaviour Rig System")
-    print("=" * 60)
-    print()
-    print(f"  Config:         {CONFIG_PATH}")
-    print(f"  Board Registry: {BOARD_REGISTRY_PATH}")
-    print("  Launching rig selector...")
-    print()
+    configure_logging(level="INFO")
+    logger = logging.getLogger(__name__)
+
+    logger.info("=" * 60)
+    logger.info("  Behaviour Rig System")
+    logger.info("=" * 60)
+    logger.info(f"  Config:         {CONFIG_PATH}")
+    logger.info(f"  Board Registry: {BOARD_REGISTRY_PATH}")
+    logger.info("  Launching rig selector...")
 
     launch(config_path=CONFIG_PATH, board_registry_path=BOARD_REGISTRY_PATH)
 

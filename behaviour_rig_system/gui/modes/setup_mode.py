@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import ttk
 from typing import Callable
 
-import yaml
+
 
 from core.protocol_base import BaseProtocol
 from protocols import get_available_protocols
@@ -109,17 +109,34 @@ class SetupMode(ttk.Frame):
     Setup mode - configure session parameters and start.
     """
     
-    def __init__(self, parent: tk.Widget, rig_config: dict, on_start: Callable[[dict], None]):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        rig_config,
+        on_start: Callable[[dict], None],
+        claim_mouse_fn=None,
+        get_claimed_mice_fn=None,
+        cohort_folders: tuple = (),
+        mice: tuple = (),
+    ):
         """
         Args:
             parent: Parent widget
-            rig_config: Rig configuration dict
+            rig_config: RigConfig instance
             on_start: Callback when start is clicked, receives session config dict
+            claim_mouse_fn: Optional callback to claim a mouse for this rig
+            get_claimed_mice_fn: Optional callback returning {mouse_id: rig_name}
+            cohort_folders: Tuple of CohortFolder from the config file
+            mice: Tuple of MouseEntry from the config file
         """
         super().__init__(parent)
         self._rig_config = rig_config
         self._on_start = on_start
-        self._simulate = rig_config.get("simulate", False)
+        self._claim_mouse_fn = claim_mouse_fn
+        self._get_claimed_mice_fn = get_claimed_mice_fn
+        self._simulate = rig_config.simulate if rig_config else False
+        self._cohort_folders_typed = cohort_folders
+        self._mice_typed = mice
         self._cohort_folders = []
         self._mice = []
         self._mouse_form: ParameterFormBuilder | None = None
@@ -134,31 +151,29 @@ class SetupMode(ttk.Frame):
         self.bind("<FocusIn>", lambda e: self._refresh_mouse_availability())
     
     def _load_session_options(self) -> None:
-        """Load cohort folder and mouse options from config file."""
-        config_path = self._rig_config.get("config_path")
-        if not config_path:
-            config_path = Path(__file__).parent.parent.parent / "config" / "rigs.yaml"
-        
-        try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-        except Exception as e:
-            print(f"Error loading config: {e}")
-            config = {}
-        
-        self._cohort_folders = config.get("cohort_folders", [])
-        if not self._cohort_folders:
+        """Load cohort folder and mouse options from typed config data."""
+        # Convert typed tuples to dicts for the existing widget code
+        if self._cohort_folders_typed:
+            self._cohort_folders = [
+                {"name": c.name, "directory": c.directory, "description": c.description}
+                for c in self._cohort_folders_typed
+            ]
+        else:
             self._cohort_folders = [{"name": "default", "directory": "D:\\behaviour_data\\default"}]
-        
-        self._mice = config.get("mice", [])
-        if not self._mice:
+
+        if self._mice_typed:
+            self._mice = [
+                {"id": m.id, "description": m.description, "default_cohort": m.default_cohort}
+                for m in self._mice_typed
+            ]
+        else:
             self._mice = [{"id": "test", "description": "Test mouse"}]
 
         # Build mouse → default cohort lookup
         self._mouse_default_cohorts = {
             m["id"]: m["default_cohort"]
             for m in self._mice
-            if "default_cohort" in m
+            if m.get("default_cohort")
         }
     
     def _create_widgets(self) -> None:
@@ -430,10 +445,10 @@ class SetupMode(ttk.Frame):
     def _refresh_mouse_availability(self) -> None:
         """Grey out mice that are claimed by other rigs."""
         palette = Theme.palette
-        get_claimed = self._rig_config.get("get_claimed_mice_fn")
+        get_claimed = self._get_claimed_mice_fn
         if not get_claimed:
             return
-        rig_name = self._rig_config.get("name", "")
+        rig_name = self._rig_config.name if self._rig_config else ""
         claimed = get_claimed()
         for mouse_id, btn in self._mouse_buttons.items():
             if mouse_id in claimed and claimed[mouse_id] != rig_name:
@@ -481,13 +496,12 @@ class SetupMode(ttk.Frame):
         
         # Check mouse is not claimed by another rig
         mouse_id = self.mouse_id_var.get()
-        claim_fn = self._rig_config.get("claim_mouse_fn")
-        if claim_fn:
-            rig_name = self._rig_config.get("name", "Unknown")
-            if not claim_fn(mouse_id, rig_name):
+        if self._claim_mouse_fn:
+            rig_name = self._rig_config.name if self._rig_config else "Unknown"
+            if not self._claim_mouse_fn(mouse_id, rig_name):
                 from tkinter import messagebox
-                claimed_by = self._rig_config.get("get_claimed_mice_fn", lambda: {})()
-                other_rig = claimed_by.get(mouse_id, "another rig")
+                claimed = self._get_claimed_mice_fn() if self._get_claimed_mice_fn else {}
+                other_rig = claimed.get(mouse_id, "another rig")
                 messagebox.showerror(
                     "Mouse Already Selected",
                     f"Mouse '{mouse_id}' is already in use by {other_rig}."

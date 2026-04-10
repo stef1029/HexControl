@@ -12,6 +12,7 @@ PeripheralManager orchestrates these managers and provides a unified interface
 for the GUI layer.
 """
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -19,13 +20,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-import yaml
+
 
 from core.board_registry import BoardRegistry
 from DAQLink.manager import DAQManager
 from ScalesLink.manager import ScalesManager
 
 from .camera_manager import CameraManager
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -74,110 +77,82 @@ class PeripheralConfig:
     scales: ScalesProcessConfig = None
 
 
-def _load_scales_config(rig_config: dict, rig_number: int) -> ScalesProcessConfig:
+def _load_scales_config(rig_config, rig_number: int) -> ScalesProcessConfig:
     """
-    Load scales configuration from rig config.
-    
-    Args:
-        rig_config: Dict with rig-specific settings (including scales sub-dict)
-        rig_number: Rig number for TCP port assignment
-        
-    Returns:
-        ScalesProcessConfig with all settings populated.
-        
+    Build a ScalesProcessConfig from the typed RigConfig.
+
     Raises:
-        ValueError: If scales section or board_name is missing from rig config.
+        ValueError: If scales section or board_name is missing.
     """
-    scales_yaml = rig_config.get("scales")
-    if not scales_yaml:
+    scales = rig_config.scales
+    if scales is None:
         raise ValueError("Scales configuration missing from rig config")
-    
-    board_name = scales_yaml.get("board_name", "")
-    if not board_name:
+    if not scales.board_name:
         raise ValueError("Scales board_name missing from rig config")
-    
-    # Get baud rate from rigs config
-    baud_rate = scales_yaml.get("baud_rate", 115200)
-    
-    # Assign unique TCP port per rig (5100 + rig_number)
     tcp_port = 5100 + rig_number
-    
     return ScalesProcessConfig(
-        board_name=board_name,
-        baud_rate=baud_rate,
-        is_wired=scales_yaml.get("is_wired", False),
-        calibration_scale=scales_yaml.get("calibration_scale", 1.0),
-        calibration_intercept=scales_yaml.get("calibration_intercept", 0.0),
+        board_name=scales.board_name,
+        baud_rate=scales.baud_rate,
+        is_wired=scales.is_wired,
+        calibration_scale=scales.calibration_scale,
+        calibration_intercept=scales.calibration_intercept,
         tcp_port=tcp_port,
     )
 
 
 def load_peripheral_config(
-    rig_config: dict, 
-    mouse_id: str = "test", 
+    rig_config,
+    mouse_id: str = "test",
     save_directory: str = "",
-    shared_multi_session: str | None = None
+    shared_multi_session: str | None = None,
 ) -> PeripheralConfig:
     """
     Load peripheral configuration from rig config and global settings.
-    
+
+    Accepts either a typed ``RigConfig`` instance or a legacy dict.
+
     Args:
-        rig_config: Dict with rig-specific settings (including config_path)
+        rig_config: RigConfig instance (or dict for legacy callers)
         mouse_id: Mouse identifier for this session
-        save_directory: Full path to the save directory (e.g., D:\\behaviour_data\\cohort_name)
-        shared_multi_session: Optional shared multi-session folder timestamp.
-                              If provided, uses this for the multi-session folder
-                              instead of generating a new one. This allows multiple
-                              rigs to share the same parent folder.
-        
+        save_directory: Full path to the save directory
+        shared_multi_session: Optional shared timestamp for multi-rig launches
+
     Returns:
         PeripheralConfig with all settings populated
     """
-    config_path = rig_config.get("config_path")
-    if not config_path:
-        config_path = Path(__file__).parent.parent / "config" / "rigs.yaml"
-    
-    with open(config_path) as f:
-        full_config = yaml.safe_load(f)
-    
-    process_settings = full_config.get("processes", {})
-    board_registry_path = Path(rig_config.get("board_registry_path", ""))
-    
-    rig_name = rig_config.get("name", "Rig 1")
-    try:
-        rig_number = int(rig_name.split()[-1])
-    except (ValueError, IndexError):
-        rig_number = 1
-    
-    # Use shared multi-session folder if provided, otherwise generate new timestamp
+    procs = rig_config.processes
+
+    rig_name = rig_config.name
+    rig_number = rig_config.rig_number
+    board_registry_path = Path(rig_config.board_registry_path)
+
     if shared_multi_session:
         date_time = shared_multi_session
     else:
         date_time = datetime.now().strftime("%y%m%d_%H%M%S")
-    
+
     multi_session_folder = os.path.join(save_directory, date_time)
     session_folder = os.path.join(multi_session_folder, f"{date_time}_{mouse_id}")
-    
-    # Load scales config
+
     scales_config = _load_scales_config(rig_config, rig_number)
-    
+
     return PeripheralConfig(
         rig_name=rig_name,
         rig_number=rig_number,
-        camera_serial=rig_config.get("camera_serial", ""),
-        behaviour_board_tag=rig_config.get("board_name", ""),
-        daq_board_tag=rig_config.get("daq_board_name", ""),
+        camera_serial=rig_config.camera_serial,
+        behaviour_board_tag=rig_config.board_name,
+        daq_board_tag=rig_config.daq_board_name,
         board_registry_path=board_registry_path,
         mouse_id=mouse_id,
         session_folder=session_folder,
         multi_session_folder=multi_session_folder,
         date_time=date_time,
-        camera_executable=process_settings.get("camera_executable", ""),
-        daq_board_name=rig_config.get("daq_board_name", ""),
-        connection_timeout=process_settings.get("connection_timeout", 30),
-        camera_fps=process_settings.get("camera_fps", 30),
-        camera_window_width=process_settings.get("camera_window_width", 640),
-        camera_window_height=process_settings.get("camera_window_height", 512),
+        camera_executable=procs.camera_executable,
+        daq_board_name=rig_config.daq_board_name,
+        connection_timeout=procs.connection_timeout,
+        camera_fps=procs.camera_fps,
+        camera_window_width=procs.camera_window_width,
+        camera_window_height=procs.camera_window_height,
         scales=scales_config,
     )
 
@@ -227,7 +202,7 @@ class PeripheralManager:
             try:
                 cb(**kwargs)
             except Exception as e:
-                print(f"Warning: listener error in '{event_name}': {e}")
+                logger.warning(f"listener error in '{event_name}': {e}")
 
     def _log(self, message: str) -> None:
         """Internal log helper — emits a 'log' event."""
