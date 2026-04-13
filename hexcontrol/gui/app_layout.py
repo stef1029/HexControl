@@ -153,12 +153,13 @@ class AppLayout:
         info_bar_height = 28
 
         with dpg.window(tag="primary", no_title_bar=True, no_move=True,
-                        no_resize=True, no_scrollbar=True):
+                        no_resize=True, no_scrollbar=True,
+                        no_scroll_with_mouse=True):
 
             # Main area: fills all space except info bar height
             # Use child_window with negative height to reserve space for info bar
             with dpg.child_window(height=-info_bar_height, border=False,
-                                  no_scrollbar=True):
+                                  no_scrollbar=True, no_scroll_with_mouse=True):
                 with dpg.group(horizontal=True):
                     self._build_activity_bar()
                     self._build_sidebar()
@@ -171,6 +172,7 @@ class AppLayout:
 
     def _build_activity_bar(self) -> None:
         with dpg.child_window(width=42, height=-1, no_scrollbar=True,
+                              no_scroll_with_mouse=True,
                               tag="activity_bar", border=False) as ab:
             dpg.add_spacer(height=4)
             for icon_name, panel_name in [
@@ -190,7 +192,8 @@ class AppLayout:
 
     def _build_sidebar(self) -> None:
         with dpg.child_window(width=240, height=-1, tag="sidebar",
-                              border=False, show=True) as sb:
+                              border=False, no_scrollbar=True,
+                              no_scroll_with_mouse=True, show=True) as sb:
             self._sidebar = sb
             self._build_rigs_panel()
             self._build_tools_panel()
@@ -202,25 +205,61 @@ class AppLayout:
         self._show_panel("rigs")
 
     def _build_main_content(self) -> None:
-        with dpg.child_window(width=-1, height=-1, border=False, tag="main_content"):
+        palette = Theme.palette
+
+        with dpg.child_window(width=-1, height=-1, border=False,
+                              no_scrollbar=True, no_scroll_with_mouse=True,
+                              tag="main_content"):
             self._tab_bar = dpg.add_tab_bar(tag="rig_tab_bar", reorderable=True)
 
-            # Welcome view — full-area generative art with centered text overlay
-            self._welcome_drawlist = dpg.add_drawlist(
-                width=100, height=100, tag="welcome_view",
-            )
-            self._welcome_group = self._welcome_drawlist
+            # Welcome view — drawlist for art + overlaid text widgets
+            with dpg.group(tag="welcome_view") as wg:
+                self._welcome_group = wg
+
+                # Background art drawlist
+                self._welcome_drawlist = dpg.add_drawlist(
+                    width=100, height=100, tag="welcome_dl",
+                )
+
             self._welcome_drawn = False
             self._welcome_last_size = (0, 0)
 
             import random as _rnd
             self._welcome_rng_seed = _rnd.randint(0, 999999)
 
-            # Poll for resize every frame (cheap — only redraws when size changes)
-            frame_poller.register(50, self._check_welcome_resize)
+        # Floating text card overlay (DPG window positioned over the drawlist)
+        # Uses real DPG text widgets so custom fonts render correctly
+        self._welcome_card = dpg.add_window(
+            label="##welcome_card", no_title_bar=True, no_resize=True,
+            no_move=True, no_scrollbar=True, no_scroll_with_mouse=True,
+            no_collapse=True, no_close=True, no_background=False,
+            width=500, height=160, show=True, tag="welcome_card",
+        )
+        with dpg.group(parent=self._welcome_card):
+            dpg.add_spacer(height=10)
+            self._welcome_title = dpg.add_text(
+                "Hex Behaviour System",
+                color=hex_to_rgba(palette.text_primary),
+            )
+            if Theme.font_title():
+                dpg.bind_item_font(self._welcome_title, Theme.font_title())
+            dpg.add_spacer(height=10)
+            dpg.add_text(
+                "Select a rig from the sidebar to begin",
+                color=hex_to_rgba(palette.text_secondary),
+            )
+            dpg.add_spacer(height=4)
+            dpg.add_text(
+                "Use the activity bar on the left to navigate",
+                color=hex_to_rgba(palette.text_secondary),
+            )
+
+        # Poll for resize
+        frame_poller.register(50, self._check_welcome_resize)
 
     def _build_info_bar(self) -> None:
-        with dpg.child_window(height=28, no_scrollbar=True, border=False,
+        with dpg.child_window(height=28, no_scrollbar=True,
+                              no_scroll_with_mouse=True, border=False,
                               tag="info_bar") as ib:
             with dpg.group(horizontal=True):
                 self._clock_text = dpg.add_text("--:--",
@@ -244,16 +283,20 @@ class AppLayout:
         dl = self._welcome_drawlist
         if not dpg.does_item_exist(dl):
             return
-        if not dpg.get_item_configuration(dl).get("show", True):
+        if not dpg.does_item_exist(self._welcome_group):
+            return
+        if not dpg.get_item_configuration(self._welcome_group).get("show", True):
+            # Hide the card too when welcome view is hidden
+            if dpg.does_item_exist("welcome_card"):
+                dpg.configure_item("welcome_card", show=False)
             return
 
         # Get actual rendered size of main_content; fall back to viewport
         w = dpg.get_item_width("main_content")
         h = dpg.get_item_height("main_content")
         if w < 50 or h < 50:
-            # main_content may not be laid out yet — use viewport as estimate
-            w = dpg.get_viewport_client_width() - 300  # minus sidebar + activity bar
-            h = dpg.get_viewport_client_height() - 60   # minus info bar + padding
+            w = dpg.get_viewport_client_width() - 300
+            h = dpg.get_viewport_client_height() - 60
         if w < 50 or h < 50:
             return
 
@@ -266,72 +309,24 @@ class AppLayout:
         # Resize drawlist to fill
         dpg.configure_item(dl, width=w, height=h)
 
-        # Clear and redraw with consistent seed
+        # Clear and redraw art with consistent seed
         import random as _rnd
         dpg.delete_item(dl, children_only=True)
 
         gen = _rnd.Random(self._welcome_rng_seed).choice(_GENERATORS)
         gen(dl, w, h, _rnd.Random(self._welcome_rng_seed))
 
-        self._draw_welcome_overlay(dl, w, h)
+        # Position the floating text card centered over the drawlist
+        if dpg.does_item_exist("welcome_card"):
+            # Get the absolute position of main_content to offset the card
+            mc_pos = dpg.get_item_pos("main_content")
+            card_w = 500
+            card_h = 160
+            card_x = mc_pos[0] + (w - card_w) // 2
+            card_y = mc_pos[1] + (h - card_h) // 2 - 20
+            dpg.configure_item("welcome_card", pos=[card_x, card_y], show=True)
+
         self._welcome_drawn = True
-
-    @staticmethod
-    def _draw_centered_text(dl, text: str, cx: float, y: float,
-                            font_size: float, color: list[int]) -> None:
-        """Draw text horizontally centered around *cx* at vertical position *y*."""
-        text_w = len(text) * font_size * 0.55
-        dpg.draw_text(
-            pos=[cx - text_w / 2, y], text=text, size=font_size,
-            color=color, parent=dl,
-        )
-
-    def _draw_welcome_overlay(self, dl: int, w: int, h: int) -> None:
-        """Draw centered title text with a backdrop card on the drawlist."""
-        palette = Theme.palette
-
-        card_w = min(520, w - 60)
-        card_h = 150
-        card_x = (w - card_w) / 2
-        card_y = (h - card_h) / 2 - 30
-        card_cx = card_x + card_w / 2
-
-        # Semi-transparent backdrop
-        dpg.draw_rectangle(
-            pmin=[card_x, card_y],
-            pmax=[card_x + card_w, card_y + card_h],
-            fill=hex_to_rgba(palette.bg_primary, alpha=200),
-            color=[0, 0, 0, 0], rounding=10, parent=dl,
-        )
-
-        # Subtle border
-        dpg.draw_rectangle(
-            pmin=[card_x, card_y],
-            pmax=[card_x + card_w, card_y + card_h],
-            fill=[0, 0, 0, 0],
-            color=hex_to_rgba(palette.border_medium, alpha=120),
-            rounding=10, thickness=1, parent=dl,
-        )
-
-        # Title
-        self._draw_centered_text(
-            dl, "Hex Behaviour System", card_cx, card_y + 28,
-            28, hex_to_rgba(palette.text_primary),
-        )
-
-        # Subtitle
-        self._draw_centered_text(
-            dl, "Select a rig from the sidebar to begin",
-            card_cx, card_y + 75,
-            15, hex_to_rgba(palette.text_secondary),
-        )
-
-        # Hint
-        self._draw_centered_text(
-            dl, "Use the activity bar on the left to navigate",
-            card_cx, card_y + 110,
-            12, hex_to_rgba(palette.text_disabled),
-        )
 
     # =====================================================================
     # Sidebar panels
@@ -542,9 +537,11 @@ class AppLayout:
 
         self.open_rigs[rig_name] = (tab_id, rig_window)
 
-        # Hide welcome view
+        # Hide welcome view + card
         if self._welcome_group and dpg.does_item_exist(self._welcome_group):
             dpg.configure_item(self._welcome_group, show=False)
+        if dpg.does_item_exist("welcome_card"):
+            dpg.configure_item("welcome_card", show=False)
 
         # Update sidebar status
         self._update_rig_status(rig_name, "IDLE")

@@ -154,9 +154,12 @@ class SetupMode:
 
         self._window_id = dpg.add_group(parent=self._parent, show=False)
 
+        # Scrollable content area (leaves room for action bar at bottom)
+        scroll = dpg.add_child_window(height=-44, parent=self._window_id)
+
         # --- Session Info section ---
         with dpg.collapsing_header(label="Session Info", default_open=True,
-                                   parent=self._window_id):
+                                   parent=scroll):
 
             # Save Location
             with dpg.collapsing_header(label="Save Location", default_open=True):
@@ -228,8 +231,8 @@ class SetupMode:
                     self._mouse_form.build()
 
         # --- Protocol Tabs ---
-        dpg.add_separator(parent=self._window_id)
-        self._tab_bar_id = dpg.add_tab_bar(parent=self._window_id)
+        dpg.add_separator(parent=scroll)
+        self._tab_bar_id = dpg.add_tab_bar(parent=scroll)
 
         for protocol_class in get_available_protocols():
             protocol_name = protocol_class.get_name()
@@ -237,15 +240,16 @@ class SetupMode:
             protocol_tab = ProtocolTab(tab, protocol_class)
             self.protocol_tabs[protocol_name] = protocol_tab
 
-        # --- Start button ---
-        dpg.add_spacer(height=8, parent=self._window_id)
-        start_btn = dpg.add_button(
-            label="Start Session", parent=self._window_id,
-            callback=lambda: self._on_start_clicked(),
-            width=140,
-        )
-        if Theme.success_button_theme:
-            dpg.bind_item_theme(start_btn, Theme.success_button_theme)
+        # --- Action bar (pinned at bottom) ---
+        with dpg.group(horizontal=True, parent=self._window_id):
+            dpg.add_spacer(width=8)
+            start_btn = dpg.add_button(
+                label="Start Session",
+                callback=lambda: self._on_start_clicked(),
+                width=160, height=32,
+            )
+            if Theme.success_button_theme:
+                dpg.bind_item_theme(start_btn, Theme.success_button_theme)
 
     # ----- Selection handlers -----
 

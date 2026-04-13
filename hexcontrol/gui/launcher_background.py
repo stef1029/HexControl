@@ -335,17 +335,17 @@ def _draw_orbital_trails(dl, w, h, rng):
 # ===================================================================
 
 _GENERATORS = [
-    _draw_topo_rings,
-    _draw_flow_field,
-    _draw_network,
-    _draw_spirograph,
-    _draw_moire,
-    _draw_mondrian,
-    _draw_circle_packing,
-    _draw_crosshatch,
-    _draw_fractal_trees,
-    _draw_delaunay,
-    _draw_orbital_trails,
+    # _draw_topo_rings,#
+    # _draw_flow_field,#
+    # _draw_network,#
+    # _draw_spirograph,
+    # _draw_moire,
+    # _draw_mondrian,
+    # _draw_circle_packing,#
+    # _draw_crosshatch,
+    _draw_fractal_trees,#
+    # _draw_delaunay,
+    # _draw_orbital_trails,
 ]
 
 

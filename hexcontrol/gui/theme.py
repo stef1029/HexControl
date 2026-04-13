@@ -458,7 +458,7 @@ def _load_fonts() -> None:
         Theme._font_default = dpg.add_font(body_path, 14)
         Theme._font_small = dpg.add_font(body_path, 12)
         Theme._font_heading = dpg.add_font(bold_path, 16)
-        Theme._font_title = dpg.add_font(special_path or bold_path, 22)
+        Theme._font_title = dpg.add_font(special_path or bold_path, 32)
         Theme._font_mono = dpg.add_font(mono_path, 14)
 
     if Theme._font_default is not None:

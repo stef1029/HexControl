@@ -67,31 +67,34 @@ class RunningMode:
         self._window_id = dpg.add_group(parent=self._parent, show=False)
         root = self._window_id
 
+        # Scrollable content area (leaves room for action bar)
+        scroll = dpg.add_child_window(height=-44, parent=root)
+
         # --- Session Summary ---
-        with dpg.collapsing_header(label="Session", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Session", default_open=True, parent=scroll):
             for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
                 with dpg.group(horizontal=True):
                     dpg.add_text(label_text, color=hex_to_rgba(palette.text_secondary))
                     self._summary_labels[key] = dpg.add_text("")
 
         # --- Performance ---
-        with dpg.collapsing_header(label="Performance", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Performance", default_open=True, parent=scroll):
             self._perf_container = dpg.add_group()
 
         # --- Trial Log ---
-        with dpg.collapsing_header(label="Trial Log", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Trial Log", default_open=True, parent=scroll):
             self._trial_log = dpg.add_child_window(height=200)
 
         # --- Scales Plot ---
-        with dpg.collapsing_header(label="Scales", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Scales", default_open=True, parent=scroll):
             scales_container = dpg.add_child_window(height=180)
             self._scales_plot = ScalesPlotWidget(scales_container)
 
         # --- Session Log ---
-        with dpg.collapsing_header(label="Session Log", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Session Log", default_open=True, parent=scroll):
             self._session_log = dpg.add_child_window(height=120)
 
-        # --- Timer + Status ---
+        # --- Action bar (pinned at bottom) ---
         dpg.add_separator(parent=root)
         with dpg.group(horizontal=True, parent=root):
             dpg.add_text("Elapsed:", color=hex_to_rgba(palette.text_secondary))
@@ -100,14 +103,13 @@ class RunningMode:
             dpg.add_spacer(width=40)
             self._status_text = dpg.add_text("RUNNING",
                                              color=hex_to_rgba(palette.success))
-
-        # --- Buttons ---
-        with dpg.group(horizontal=True, parent=root):
+            dpg.add_spacer(width=40)
             self._daq_btn = dpg.add_button(
                 label="DAQ View", callback=lambda: self._toggle_daq_view(),
             )
             self._stop_btn = dpg.add_button(
                 label="Stop Session", callback=lambda: self._on_stop_clicked(),
+                height=28,
             )
             if Theme.danger_button_theme:
                 dpg.bind_item_theme(self._stop_btn, Theme.danger_button_theme)

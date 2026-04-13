@@ -45,18 +45,21 @@ class PostSessionMode:
         self._window_id = dpg.add_group(parent=self._parent, show=False)
         root = self._window_id
 
+        # Scrollable content area (leaves room for action bar)
+        scroll = dpg.add_child_window(height=-44, parent=root)
+
         # Header
         self._header_text = dpg.add_text(
-            "Session Complete", parent=root,
+            "Session Complete", parent=scroll,
             color=hex_to_rgba(palette.text_primary),
         )
         if Theme.font_title():
             dpg.bind_item_font(self._header_text, Theme.font_title())
 
-        dpg.add_spacer(height=8, parent=root)
+        dpg.add_spacer(height=8, parent=scroll)
 
         # Summary
-        with dpg.collapsing_header(label="Session Summary", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Session Summary", default_open=True, parent=scroll):
             for key, label_text in [
                 ("status", "Status:"),
                 ("protocol", "Protocol:"),
@@ -69,15 +72,17 @@ class PostSessionMode:
                     self._summary_labels[key] = dpg.add_text("")
 
         # Performance Report
-        with dpg.collapsing_header(label="Performance Report", default_open=True, parent=root):
+        with dpg.collapsing_header(label="Performance Report", default_open=True, parent=scroll):
             self._perf_container = dpg.add_group()
 
-        # Buttons
-        dpg.add_spacer(height=8, parent=root)
+        # --- Action bar (pinned at bottom) ---
+        dpg.add_separator(parent=root)
         with dpg.group(horizontal=True, parent=root):
+            dpg.add_spacer(width=8)
             close_btn = dpg.add_button(
                 label="Close Window",
                 callback=lambda: self._on_close_click(),
+                height=28,
             )
             if Theme.primary_button_theme:
                 dpg.bind_item_theme(close_btn, Theme.primary_button_theme)
@@ -85,6 +90,7 @@ class PostSessionMode:
             new_btn = dpg.add_button(
                 label="New Session",
                 callback=lambda: self._on_new_session_click(),
+                height=28,
             )
             if Theme.secondary_button_theme:
                 dpg.bind_item_theme(new_btn, Theme.secondary_button_theme)
