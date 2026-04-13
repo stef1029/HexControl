@@ -9,7 +9,7 @@ Simulation mode lets you run protocols without physical hardware. This is useful
 
 ## Enabling simulation
 
-In the sidebar **Tools** panel, click the **Mock Rig** button. Each click opens a new simulated rig panel (Mock Rig 1, Mock Rig 2, etc.) using virtual hardware instead of connecting to real Arduinos.
+In the **Launcher** window, check the **Simulate** checkbox next to the rig before clicking Open. The rig window will use virtual hardware instead of connecting to real Arduinos.
 
 ## What gets simulated
 
@@ -41,37 +41,24 @@ This allows you to run through a full session of hundreds of trials in minutes r
 
 ### Virtual rig window
 
-When a mock session is started, a **Virtual Rig Window** opens as a floating DPG panel within the viewport. It displays:
-
-- Interactive hex rig schematic with clickable nose-poke ports
-- Platform weight slider and quick-toggle mouse button
-- GPIO pin toggles for simulating external inputs
-- DAQ link pin status indicators
-- Real-time visual feedback for LEDs, spotlights, valves, speaker, and IR state
-
-The virtual rig window is automatically closed when the session ends.
+When simulation is active, a **Virtual Rig Window** can display the current state of all hardware outputs (LED brightnesses, valve activations, spotlight states). This provides visual feedback during simulated sessions.
 
 ## Simulated peripherals
 
-- **DAQ** — No DAQ subprocess is started. Data acquisition is skipped
-- **Camera** — No camera executable is launched
-- **Scales** — Weight readings return simulated values. If a simulated mouse is active, weight changes reflect virtual platform occupation
-
-## Multiple mock rigs
-
-You can open multiple mock rigs simultaneously. Each opens as a separate panel in the main content area, side by side with any other open rigs. This is useful for testing multi-rig workflows and verifying that mouse claims work correctly across rigs.
+- **DAQ** -- No DAQ subprocess is started. Data acquisition is skipped
+- **Camera** -- No camera executable is launched
+- **Scales** -- Weight readings return simulated values. If a simulated mouse is active, weight changes reflect virtual platform occupation
 
 ## Using simulation for protocol development
 
 A typical workflow for developing a new protocol:
 
 1. Write your protocol class (see [Writing Protocols](../user-guide/protocols/index.md))
-2. Click **Mock Rig** in the Tools sidebar panel
-3. Select your protocol from the dropdown and configure parameters
-4. Optionally enable the simulated mouse and accelerated time (BehaviourClock)
-5. Start the session and check the trial log and performance statistics
-6. Iterate on parameters and logic
-7. Deploy to a real rig once the protocol behaves correctly
+2. Enable simulation in the launcher
+3. Run the protocol with accelerated time (BehaviourClock)
+4. Check the trial log and performance statistics
+5. Iterate on parameters and logic
+6. Deploy to a real rig once the protocol behaves correctly
 
 !!! tip
     Simulation mode is also useful for testing autotraining stage definitions. You can run through the full training sequence in minutes to verify that transitions fire correctly and the stage progression makes sense.
