@@ -127,36 +127,61 @@ class TrackerReportWidget:
         self._build_ui()
 
     def _build_ui(self) -> None:
+        palette = Theme.palette
         if not self._reports:
             dpg.add_text("No performance data recorded.",
                          parent=self._parent,
-                         color=hex_to_rgba(Theme.palette.text_secondary))
+                         color=hex_to_rgba(palette.text_secondary))
             return
 
-        with dpg.tab_bar(parent=self._parent):
-            for name, report in self._reports.items():
-                sub_trackers = report.get("sub_trackers")
-                is_simple = report.get("is_simple", True)
+        report_names = list(self._reports.keys())
+        self._report_groups: dict[str, int] = {}
 
-                if not is_simple and sub_trackers and len(sub_trackers) > 1:
-                    with dpg.tab(label=name):
-                        with dpg.tab_bar():
-                            with dpg.tab(label="Overall"):
-                                self._build_tracker_tab(name="Overall", report=report)
-                            all_trials = report.get("trials", [])
-                            session_duration = report.get("session_duration", 0.0)
-                            for sub_name in sub_trackers:
-                                sub_trials = [t for t in all_trials if t.get("trial_type") == sub_name]
-                                sub_report = {"trials": sub_trials, "session_duration": session_duration}
-                                with dpg.tab(label=sub_name.capitalize()):
-                                    self._build_tracker_tab(name=sub_name.capitalize(), report=sub_report)
-                else:
-                    with dpg.tab(label=name):
-                        self._build_tracker_tab(name=name, report=report)
+        # Tracker selector combo
+        with dpg.group(horizontal=True, parent=self._parent):
+            dpg.add_text("Tracker:", color=hex_to_rgba(palette.text_secondary))
+            dpg.add_combo(
+                items=report_names, label="",
+                default_value=report_names[0] if report_names else "",
+                width=250,
+                callback=lambda s, a: self._on_report_selected(a),
+            )
 
-    def _build_tracker_tab(self, name: str, report: dict) -> None:
+        # One group per tracker, show/hide based on combo
+        for idx, (name, report) in enumerate(self._reports.items()):
+            sub_trackers = report.get("sub_trackers")
+            is_simple = report.get("is_simple", True)
+
+            group = dpg.add_group(parent=self._parent, show=(idx == 0))
+            self._report_groups[name] = group
+
+            if not is_simple and sub_trackers and len(sub_trackers) > 1:
+                # Sub-trackers use tabs (few enough)
+                with dpg.tab_bar(parent=group):
+                    with dpg.tab(label="Overall"):
+                        self._build_tracker_tab(name="Overall", report=report)
+                    all_trials = report.get("trials", [])
+                    session_duration = report.get("session_duration", 0.0)
+                    for sub_name in sub_trackers:
+                        sub_trials = [t for t in all_trials if t.get("trial_type") == sub_name]
+                        sub_report = {"trials": sub_trials, "session_duration": session_duration}
+                        with dpg.tab(label=sub_name.capitalize()):
+                            self._build_tracker_tab(name=sub_name.capitalize(), report=sub_report)
+            else:
+                self._build_tracker_tab(name=name, report=report, parent_override=group)
+
+    def _on_report_selected(self, name: str) -> None:
+        for rname, group_id in self._report_groups.items():
+            if dpg.does_item_exist(group_id):
+                dpg.configure_item(group_id, show=(rname == name))
+
+    def _build_tracker_tab(self, name: str, report: dict,
+                           parent_override: int | str | None = None) -> None:
         trials = report.get("trials", [])
         session_duration = report.get("session_duration", 0.0)
+
+        if parent_override is not None:
+            dpg.push_container_stack(parent_override)
 
         stats = self._compute_stats(trials, session_duration)
         self._build_stats_section(name, stats)
@@ -167,6 +192,9 @@ class TrackerReportWidget:
                 for plotter in PLOTTERS:
                     with dpg.tab(label=plotter.name) as tab:
                         plotter.plot(tab, trials, palette)
+
+        if parent_override is not None:
+            dpg.pop_container_stack()
 
     @staticmethod
     def _compute_stats(trials: list[dict], session_duration: float) -> dict:

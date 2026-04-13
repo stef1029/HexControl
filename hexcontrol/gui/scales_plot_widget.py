@@ -96,6 +96,45 @@ class ScalesPlotWidget:
                     horizontal=True,
                 )
 
+            # Theme the line series — accent color, thicker line
+            with dpg.theme() as line_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_color(
+                        dpg.mvPlotCol_Line, hex_to_rgba(palette.accent_primary),
+                        category=dpg.mvThemeCat_Plots,
+                    )
+                    dpg.add_theme_style(
+                        dpg.mvPlotStyleVar_LineWeight, 2.5,
+                        category=dpg.mvThemeCat_Plots,
+                    )
+            dpg.bind_item_theme(self._line_series, line_theme)
+
+            # Theme the threshold line — warning color
+            with dpg.theme() as threshold_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_color(
+                        dpg.mvPlotCol_Line, hex_to_rgba(palette.warning),
+                        category=dpg.mvThemeCat_Plots,
+                    )
+            dpg.bind_item_theme(self._threshold_series, threshold_theme)
+
+            # Theme the plot itself — fix axis highlight color
+            with dpg.theme() as plot_theme:
+                with dpg.theme_component(0):
+                    # Use accent color with transparency for axis highlight
+                    # instead of default green
+                    dpg.add_theme_color(
+                        dpg.mvPlotCol_AxisBgHovered,
+                        hex_to_rgba(palette.accent_primary, alpha=40),
+                        category=dpg.mvThemeCat_Plots,
+                    )
+                    dpg.add_theme_color(
+                        dpg.mvPlotCol_AxisBgActive,
+                        hex_to_rgba(palette.accent_primary, alpha=60),
+                        category=dpg.mvThemeCat_Plots,
+                    )
+            dpg.bind_item_theme(self._plot_id, plot_theme)
+
     def set_scales_client(self, client: Optional[ScalesClientProtocol]) -> None:
         self._scales_client = client
 

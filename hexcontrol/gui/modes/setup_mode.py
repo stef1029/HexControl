@@ -40,7 +40,7 @@ class ProtocolTab:
         palette = Theme.palette
 
         description = self.protocol_class.get_description()
-        dpg.add_text(description, wrap=520, parent=parent,
+        dpg.add_text(description, wrap=0, parent=parent,
                      color=hex_to_rgba(palette.text_secondary))
         dpg.add_separator(parent=parent)
 
@@ -101,9 +101,11 @@ class SetupMode:
         self._cohort_folders: list[dict] = []
         self._mice: list[dict] = []
         self._mouse_form: ParameterFormBuilder | None = None
-        self._mouse_buttons: dict[str, int] = {}
-        self._cohort_buttons: dict[str, int] = {}
         self._mouse_default_cohorts: dict[str, str] = {}
+        self._cohort_combo: int | None = None
+        self._mouse_combo: int | None = None
+        self._cohort_label_to_name: dict[str, str] = {}
+        self._mouse_label_to_id: dict[str, str] = {}
 
         # State
         self._selected_cohort: str = ""
@@ -115,7 +117,9 @@ class SetupMode:
         self._mouse_weight_input: int | None = None
         self._num_trials_input: int | None = None
         self._max_duration_input: int | None = None
-        self._tab_bar_id: int | None = None
+        self._protocol_combo: int | None = None
+        self._selected_protocol: str = ""
+        self._protocol_groups: dict[str, int] = {}
         self.protocol_tabs: dict[str, ProtocolTab] = {}
 
         self._load_session_options()
@@ -162,43 +166,60 @@ class SetupMode:
                                    parent=scroll):
 
             # Save Location
-            with dpg.collapsing_header(label="Save Location", default_open=True):
-                for cohort in self._cohort_folders:
-                    name = cohort.get("name", "Unknown")
-                    directory = cohort.get("directory", "")
-                    label = f"{name}  --  {directory}" if directory else name
-                    btn = dpg.add_button(
-                        label=label, width=-1,
-                        callback=lambda s, a, u: self._select_cohort(u),
-                        user_data=name,
-                    )
-                    self._cohort_buttons[name] = btn
-                self._style_cohort_buttons()
+            cohort_names = [c.get("name", "Unknown") for c in self._cohort_folders]
+            cohort_labels = []
+            for c in self._cohort_folders:
+                name = c.get("name", "Unknown")
+                directory = c.get("directory", "")
+                cohort_labels.append(f"{name}  --  {directory}" if directory else name)
+
+            dpg.add_text("Save Location:",
+                         color=hex_to_rgba(palette.text_secondary))
+            self._cohort_combo = dpg.add_combo(
+                items=cohort_labels, label="",
+                default_value=cohort_labels[0] if cohort_labels else "",
+                width=-1,
+                callback=lambda s, a: self._on_cohort_combo_changed(a),
+            )
+            # Map display labels back to cohort names
+            self._cohort_label_to_name = dict(zip(cohort_labels, cohort_names))
+            if cohort_names:
+                self._selected_cohort = cohort_names[0]
+
+            dpg.add_spacer(height=4)
 
             # Mouse ID
-            with dpg.collapsing_header(label="Mouse ID", default_open=True):
-                # 3-column grid
-                with dpg.table(header_row=False):
-                    dpg.add_table_column()
-                    dpg.add_table_column()
-                    dpg.add_table_column()
+            mouse_ids = [m.get("id", "Unknown") for m in self._mice]
+            mouse_labels = []
+            for m in self._mice:
+                mid = m.get("id", "Unknown")
+                desc = m.get("description", "")
+                mouse_labels.append(f"{mid} ({desc})" if desc else mid)
 
-                    for i in range(0, len(self._mice), 3):
-                        with dpg.table_row():
-                            for j in range(3):
-                                idx = i + j
-                                if idx < len(self._mice):
-                                    mouse = self._mice[idx]
-                                    mouse_id = mouse.get("id", "Unknown")
-                                    desc = mouse.get("description", "")
-                                    label = f"{mouse_id}\n({desc})" if desc else mouse_id
-                                    btn = dpg.add_button(
-                                        label=label, width=-1,
-                                        callback=lambda s, a, u: self._select_mouse(u),
-                                        user_data=mouse_id,
-                                    )
-                                    self._mouse_buttons[mouse_id] = btn
-                self._style_mouse_buttons()
+            dpg.add_text("Mouse ID:",
+                         color=hex_to_rgba(palette.text_secondary))
+            self._mouse_combo = dpg.add_combo(
+                items=mouse_labels, label="",
+                default_value=mouse_labels[0] if mouse_labels else "",
+                width=-1,
+                callback=lambda s, a: self._on_mouse_combo_changed(a),
+            )
+            self._mouse_label_to_id = dict(zip(mouse_labels, mouse_ids))
+            if mouse_ids:
+                self._selected_mouse = mouse_ids[0]
+
+            # Divider
+            dpg.add_spacer(height=6)
+            div = dpg.add_child_window(
+                height=3, no_scrollbar=True,
+                no_scroll_with_mouse=True, border=False,
+            )
+            with dpg.theme() as div_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
+                                        hex_to_rgba(palette.border_dark))
+            dpg.bind_item_theme(div, div_theme)
+            dpg.add_spacer(height=6)
 
             # Session Parameters
             with dpg.collapsing_header(label="Session Parameters", default_open=True):
@@ -230,15 +251,55 @@ class SetupMode:
                     self._mouse_form = ParameterFormBuilder(mouse_scroll, MOUSE_PARAMETERS)
                     self._mouse_form.build()
 
-        # --- Protocol Tabs ---
-        dpg.add_separator(parent=scroll)
-        self._tab_bar_id = dpg.add_tab_bar(parent=scroll)
+        # --- Protocol Selection ---
+        dpg.add_spacer(height=6, parent=scroll)
+        # Bold divider line
+        divider = dpg.add_child_window(
+            height=3, parent=scroll, no_scrollbar=True,
+            no_scroll_with_mouse=True, border=False,
+        )
+        with dpg.theme() as divider_theme:
+            with dpg.theme_component(0):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
+                                    hex_to_rgba(palette.border_dark))
+        dpg.bind_item_theme(divider, divider_theme)
+        dpg.add_spacer(height=6, parent=scroll)
+
+        # Protocol selector card
+        proto_header = dpg.add_child_window(
+            height=50, parent=scroll, no_scrollbar=True,
+            no_scroll_with_mouse=True, border=True,
+        )
+        with dpg.group(horizontal=True, parent=proto_header):
+            dpg.add_text("Protocol:", color=hex_to_rgba(palette.text_secondary))
+            dpg.add_spacer(width=8)
+            protocol_names = [pc.get_name() for pc in get_available_protocols()]
+            self._protocol_combo = dpg.add_combo(
+                items=protocol_names,
+                default_value=protocol_names[0] if protocol_names else "",
+                width=350,
+                callback=lambda s, a: self._on_protocol_selected(a),
+            )
+
+        dpg.add_spacer(height=4, parent=scroll)
+
+        # Protocol content container — one group per protocol, show/hide
+        self._protocol_container = dpg.add_group(parent=scroll)
+        self._protocol_groups: dict[str, int] = {}
 
         for protocol_class in get_available_protocols():
             protocol_name = protocol_class.get_name()
-            tab = dpg.add_tab(label=protocol_name, parent=self._tab_bar_id)
-            protocol_tab = ProtocolTab(tab, protocol_class)
+            group = dpg.add_group(parent=self._protocol_container, show=False)
+            protocol_tab = ProtocolTab(group, protocol_class)
             self.protocol_tabs[protocol_name] = protocol_tab
+            self._protocol_groups[protocol_name] = group
+
+        # Show the first protocol by default
+        if protocol_names:
+            self._selected_protocol = protocol_names[0]
+            dpg.configure_item(self._protocol_groups[protocol_names[0]], show=True)
+        else:
+            self._selected_protocol = ""
 
         # --- Action bar (pinned at bottom) ---
         with dpg.group(horizontal=True, parent=self._window_id):
@@ -253,38 +314,25 @@ class SetupMode:
 
     # ----- Selection handlers -----
 
-    def _select_cohort(self, name: str) -> None:
+    def _on_cohort_combo_changed(self, selected_label: str) -> None:
+        name = self._cohort_label_to_name.get(selected_label, selected_label)
         self._selected_cohort = name
-        self._style_cohort_buttons()
         self._update_save_path_preview()
 
-    def _select_mouse(self, mouse_id: str) -> None:
+    def _on_mouse_combo_changed(self, selected_label: str) -> None:
+        mouse_id = self._mouse_label_to_id.get(selected_label, selected_label)
         self._selected_mouse = mouse_id
+        # Auto-switch cohort if this mouse has a default
         default_cohort = self._mouse_default_cohorts.get(mouse_id)
-        if default_cohort and default_cohort in self._cohort_buttons:
-            self._select_cohort(default_cohort)
-        self._style_mouse_buttons()
+        if default_cohort:
+            self._selected_cohort = default_cohort
+            # Update the cohort combo to reflect the auto-switch
+            for label, name in self._cohort_label_to_name.items():
+                if name == default_cohort:
+                    if self._cohort_combo and dpg.does_item_exist(self._cohort_combo):
+                        dpg.set_value(self._cohort_combo, label)
+                    break
         self._update_save_path_preview()
-
-    def _style_cohort_buttons(self) -> None:
-        palette = Theme.palette
-        for name, btn_id in self._cohort_buttons.items():
-            if not dpg.does_item_exist(btn_id):
-                continue
-            if name == self._selected_cohort:
-                _apply_button_colors(btn_id, palette.accent_primary, palette.text_inverse)
-            else:
-                _apply_button_colors(btn_id, palette.bg_tertiary, palette.text_primary)
-
-    def _style_mouse_buttons(self) -> None:
-        palette = Theme.palette
-        for mouse_id, btn_id in self._mouse_buttons.items():
-            if not dpg.does_item_exist(btn_id):
-                continue
-            if mouse_id == self._selected_mouse:
-                _apply_button_colors(btn_id, palette.accent_primary, palette.text_inverse)
-            else:
-                _apply_button_colors(btn_id, palette.bg_tertiary, palette.text_primary)
 
     def _update_save_path_preview(self) -> None:
         directory = self._get_selected_cohort_directory()
@@ -370,15 +418,17 @@ class SetupMode:
         }
         self._on_start(session_config)
 
+    def _on_protocol_selected(self, protocol_name: str) -> None:
+        """Handle protocol combo selection — show the selected protocol's content."""
+        self._selected_protocol = protocol_name
+        for name, group_id in self._protocol_groups.items():
+            if dpg.does_item_exist(group_id):
+                dpg.configure_item(group_id, show=(name == protocol_name))
+
     def get_current_tab(self) -> ProtocolTab:
         """Get the currently selected protocol tab."""
-        if self._tab_bar_id and dpg.does_item_exist(self._tab_bar_id):
-            active_tab = dpg.get_value(self._tab_bar_id)
-            if active_tab is not None:
-                tab_label = dpg.get_item_label(active_tab)
-                if tab_label in self.protocol_tabs:
-                    return self.protocol_tabs[tab_label]
-        # Fallback to first tab
+        if self._selected_protocol and self._selected_protocol in self.protocol_tabs:
+            return self.protocol_tabs[self._selected_protocol]
         return next(iter(self.protocol_tabs.values()))
 
     # ----- Show / hide -----
@@ -390,22 +440,3 @@ class SetupMode:
     def hide(self) -> None:
         if self._window_id and dpg.does_item_exist(self._window_id):
             dpg.configure_item(self._window_id, show=False)
-
-
-# =========================================================================
-# Helper: per-widget button color themes
-# =========================================================================
-
-_button_theme_cache: dict[tuple, int] = {}
-
-
-def _apply_button_colors(button_id: int, bg_hex: str, fg_hex: str) -> None:
-    """Apply custom button colors via a cached per-color theme."""
-    key = (bg_hex, fg_hex)
-    if key not in _button_theme_cache:
-        with dpg.theme() as t:
-            with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(bg_hex))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(fg_hex))
-        _button_theme_cache[key] = t
-    dpg.bind_item_theme(button_id, _button_theme_cache[key])

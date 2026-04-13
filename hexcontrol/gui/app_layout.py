@@ -154,10 +154,12 @@ class AppLayout:
 
         with dpg.window(tag="primary", no_title_bar=True, no_move=True,
                         no_resize=True, no_scrollbar=True,
-                        no_scroll_with_mouse=True):
+                        no_scroll_with_mouse=True, menubar=True):
+
+            # Menu bar
+            self._build_menu_bar()
 
             # Main area: fills all space except info bar height
-            # Use child_window with negative height to reserve space for info bar
             with dpg.child_window(height=-info_bar_height, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 with dpg.group(horizontal=True):
@@ -169,6 +171,29 @@ class AppLayout:
             self._build_info_bar()
 
         dpg.set_primary_window("primary", True)
+
+    def _build_menu_bar(self) -> None:
+        with dpg.menu_bar():
+            with dpg.menu(label="Preferences"):
+                with dpg.menu(label="UI Scale"):
+                    for pct in [75, 85, 90, 100, 110, 125, 150]:
+                        label = f"{pct}%"
+                        if pct == 100:
+                            label += "  (default)"
+                        dpg.add_menu_item(
+                            label=label,
+                            callback=lambda s, a, u: self._set_scale(u),
+                            user_data=pct,
+                        )
+
+    def _set_scale(self, percent: int) -> None:
+        # Fonts are loaded at 2x, baseline scale is 0.5.
+        # User percent is relative to that: 100% = 0.5, 150% = 0.75, etc.
+        scale = 0.5 * (percent / 100.0)
+        dpg.set_global_font_scale(scale)
+        self._welcome_drawn = False  # force card reposition
+        self._last_panel_layout = None  # force panel resize
+        self._set_status(f"UI scale: {percent}%")
 
     def _build_activity_bar(self) -> None:
         with dpg.child_window(width=42, height=-1, no_scrollbar=True,
@@ -210,7 +235,16 @@ class AppLayout:
         with dpg.child_window(width=-1, height=-1, border=False,
                               no_scrollbar=True, no_scroll_with_mouse=True,
                               tag="main_content"):
-            self._tab_bar = dpg.add_tab_bar(tag="rig_tab_bar", reorderable=True)
+
+            # Horizontal group for rig panels (hidden when no rigs open)
+            self._rig_panel_row = dpg.add_group(
+                horizontal=True, tag="rig_panel_row", show=False,
+            )
+            # Remove horizontal spacing between panels
+            with dpg.theme() as row_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 0, 3)
+            dpg.bind_item_theme(self._rig_panel_row, row_theme)
 
             # Welcome view — drawlist for art + overlaid text widgets
             with dpg.group(tag="welcome_view") as wg:
@@ -227,32 +261,43 @@ class AppLayout:
             import random as _rnd
             self._welcome_rng_seed = _rnd.randint(0, 999999)
 
+        # Poll for viewport resize to recalculate panel widths
+        frame_poller.register(100, self._recalc_rig_panel_widths)
+
         # Floating text card overlay (DPG window positioned over the drawlist)
         # Uses real DPG text widgets so custom fonts render correctly
+        self._welcome_card_base_w = 480
+        self._welcome_card_base_h = 150
         self._welcome_card = dpg.add_window(
             label="##welcome_card", no_title_bar=True, no_resize=True,
             no_move=True, no_scrollbar=True, no_scroll_with_mouse=True,
             no_collapse=True, no_close=True, no_background=False,
-            width=500, height=160, show=True, tag="welcome_card",
+            width=self._welcome_card_base_w, height=self._welcome_card_base_h,
+            show=True, tag="welcome_card",
         )
-        with dpg.group(parent=self._welcome_card):
-            dpg.add_spacer(height=10)
-            self._welcome_title = dpg.add_text(
-                "Hex Behaviour System",
-                color=hex_to_rgba(palette.text_primary),
-            )
-            if Theme.font_title():
-                dpg.bind_item_font(self._welcome_title, Theme.font_title())
-            dpg.add_spacer(height=10)
-            dpg.add_text(
-                "Select a rig from the sidebar to begin",
-                color=hex_to_rgba(palette.text_secondary),
-            )
-            dpg.add_spacer(height=4)
-            dpg.add_text(
-                "Use the activity bar on the left to navigate",
-                color=hex_to_rgba(palette.text_secondary),
-            )
+        # Use a table to centre-align all text
+        with dpg.table(parent=self._welcome_card, header_row=False,
+                       borders_innerH=False, borders_outerH=False,
+                       borders_innerV=False, borders_outerV=False):
+            dpg.add_table_column(width_stretch=True)
+            with dpg.table_row():
+                with dpg.group():
+                    dpg.add_spacer(height=8)
+                    self._welcome_title = dpg.add_text("Hex Behaviour System")
+                    dpg.configure_item(self._welcome_title,
+                                       color=hex_to_rgba(palette.text_primary))
+                    if Theme.font_title():
+                        dpg.bind_item_font(self._welcome_title, Theme.font_title())
+                    dpg.add_spacer(height=8)
+                    dpg.add_text(
+                        "Select a rig from the sidebar to begin",
+                        color=hex_to_rgba(palette.text_secondary),
+                    )
+                    dpg.add_spacer(height=3)
+                    dpg.add_text(
+                        "Use the activity bar on the left to navigate",
+                        color=hex_to_rgba(palette.text_secondary),
+                    )
 
         # Poll for resize
         frame_poller.register(50, self._check_welcome_resize)
@@ -318,10 +363,14 @@ class AppLayout:
 
         # Position the floating text card centered over the drawlist
         if dpg.does_item_exist("welcome_card"):
-            # Get the absolute position of main_content to offset the card
+            scale = dpg.get_global_font_scale()
+            # Scale relative to 0.5 baseline (fonts loaded at 2x)
+            relative_scale = scale / 0.5
+            card_w = int(self._welcome_card_base_w * relative_scale)
+            card_h = int(self._welcome_card_base_h * relative_scale)
+            dpg.configure_item("welcome_card", width=card_w, height=card_h)
+
             mc_pos = dpg.get_item_pos("main_content")
-            card_w = 500
-            card_h = 160
             card_x = mc_pos[0] + (w - card_w) // 2
             card_y = mc_pos[1] + (h - card_h) // 2 - 20
             dpg.configure_item("welcome_card", pos=[card_x, card_y], show=True)
@@ -346,22 +395,17 @@ class AppLayout:
                 rig_name = rig.name
                 enabled = rig.enabled
 
-                with dpg.group(horizontal=True):
-                    status_text = dpg.add_text("  o  ",
-                        color=hex_to_rgba(palette.text_disabled))
-                    self.rig_status_texts[rig_name] = status_text
+                btn = dpg.add_button(
+                    label=rig_name, width=-1, height=32,
+                    callback=lambda s, a, u: self._on_rig_click(u),
+                    user_data=rig,
+                )
+                _ensure_rig_button_themes()
+                dpg.bind_item_theme(btn, _rig_button_themes["normal"])
+                self.rig_buttons[rig_name] = btn
 
-                    btn = dpg.add_button(
-                        label=rig_name, width=-1, height=32,
-                        callback=lambda s, a, u: self._on_rig_click(u),
-                        user_data=rig,
-                    )
-                    _ensure_rig_button_themes()
-                    dpg.bind_item_theme(btn, _rig_button_themes["normal"])
-                    self.rig_buttons[rig_name] = btn
-
-                    if not enabled:
-                        style_rig_button(btn, is_open=True)
+                if not enabled:
+                    style_rig_button(btn, is_open=True)
 
             dpg.add_spacer(height=8)
 
@@ -515,15 +559,35 @@ class AppLayout:
             serial_port = ""
             baud_rate = self.baud_rate
 
-        # Create tab
-        tab_id = dpg.add_tab(
-            label=rig_name, parent="rig_tab_bar", closable=True,
-            order_mode=dpg.mvTabOrder_Reorderable,
+        # Add a vertical divider before this panel (if not the first)
+        if self.open_rigs:
+            divider = dpg.add_child_window(
+                width=3, height=-1, parent="rig_panel_row",
+                no_scrollbar=True, no_scroll_with_mouse=True, border=False,
+            )
+            with dpg.theme() as div_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
+                                        hex_to_rgba(Theme.palette.border_dark))
+            dpg.bind_item_theme(divider, div_theme)
+
+        # Create a panel (child_window) inside the horizontal rig row
+        panel_id = dpg.add_child_window(
+            width=400, height=-1, parent="rig_panel_row",
+            border=False,
         )
 
-        # Build rig window content inside the tab
+        # Panel header with rig name
+        palette = Theme.palette
+        header = dpg.add_text(rig_name, parent=panel_id,
+                              color=hex_to_rgba(palette.accent_primary))
+        if Theme.font_heading():
+            dpg.bind_item_font(header, Theme.font_heading())
+        dpg.add_separator(parent=panel_id)
+
+        # Build rig window content inside the panel
         rig_window = RigWindow(
-            parent_tab=tab_id,
+            parent_tab=panel_id,
             serial_port=serial_port,
             baud_rate=baud_rate,
             rig_config=rig_config,
@@ -535,24 +599,28 @@ class AppLayout:
             on_tab_close=lambda name=rig_name: self._on_rig_tab_closed(name),
         )
 
-        self.open_rigs[rig_name] = (tab_id, rig_window)
+        self.open_rigs[rig_name] = (panel_id, rig_window)
 
-        # Hide welcome view + card
+        # Show rig panels, hide welcome
+        dpg.configure_item("rig_panel_row", show=True)
         if self._welcome_group and dpg.does_item_exist(self._welcome_group):
             dpg.configure_item(self._welcome_group, show=False)
         if dpg.does_item_exist("welcome_card"):
             dpg.configure_item("welcome_card", show=False)
+
+        # Recalculate panel widths
+        self._recalc_rig_panel_widths()
 
         # Update sidebar status
         self._update_rig_status(rig_name, "IDLE")
         self._set_status(f"{rig_name} opened")
 
     def _on_rig_tab_closed(self, rig_name: str) -> None:
-        """Called when a rig tab's X is clicked."""
+        """Called by the Close Window button in post-session mode."""
         if rig_name not in self.open_rigs:
             return
 
-        tab_id, rig_window = self.open_rigs[rig_name]
+        panel_id, rig_window = self.open_rigs[rig_name]
 
         # Block close if running
         from .rig_window import WindowMode
@@ -567,39 +635,70 @@ class AppLayout:
         rig_window.controller.close()
         del self.open_rigs[rig_name]
 
-        # Delete tab
-        if dpg.does_item_exist(tab_id):
-            dpg.delete_item(tab_id)
+        # Delete panel
+        if dpg.does_item_exist(panel_id):
+            dpg.delete_item(panel_id)
 
         # Update sidebar
         self._update_rig_status(rig_name, "OFFLINE")
 
-        # Show welcome if no tabs left
-        if not self.open_rigs and self._welcome_group and dpg.does_item_exist(self._welcome_group):
-            dpg.configure_item(self._welcome_group, show=True)
-            import random as _rnd
-            self._welcome_rng_seed = _rnd.randint(0, 999999)  # fresh art
-            self._welcome_drawn = False  # force redraw at current size
+        # Recalculate remaining panel widths
+        self._recalc_rig_panel_widths()
+
+        # Show welcome if no rigs left
+        if not self.open_rigs:
+            dpg.configure_item("rig_panel_row", show=False)
+            if self._welcome_group and dpg.does_item_exist(self._welcome_group):
+                dpg.configure_item(self._welcome_group, show=True)
+                import random as _rnd
+                self._welcome_rng_seed = _rnd.randint(0, 999999)
+                self._welcome_drawn = False
 
         self._set_status(f"{rig_name} closed")
 
-    def _update_rig_status(self, rig_name: str, status: str) -> None:
-        """Update the status indicator next to a rig button in the sidebar."""
-        palette = Theme.palette
-        text_id = self.rig_status_texts.get(rig_name)
-        if not text_id or not dpg.does_item_exist(text_id):
+    def _recalc_rig_panel_widths(self) -> None:
+        """Recalculate each rig panel's width to split evenly."""
+        if not self.open_rigs:
+            return
+        if not dpg.does_item_exist("main_content"):
             return
 
-        status_map = {
-            "OFFLINE": ("  o  ", palette.text_disabled),
-            "IDLE": ("  o  ", palette.accent_primary),
-            "RUNNING": ("  *  ", palette.success),
-            "COMPLETE": ("  *  ", palette.info),
-            "ERROR": ("  !  ", palette.error),
-        }
-        text, color = status_map.get(status, ("  ?  ", palette.text_disabled))
-        dpg.set_value(text_id, text)
-        dpg.configure_item(text_id, color=hex_to_rgba(color))
+        # Calculate available width from viewport minus sidebar and activity bar
+        vw = dpg.get_viewport_client_width()
+        activity_w = 42
+        sidebar_visible = dpg.get_item_configuration("sidebar").get("show", True)
+        sidebar_w = 240 if sidebar_visible else 0
+        total_w = vw - activity_w - sidebar_w - 20  # 20 for padding/borders
+
+        if total_w < 100:
+            return
+
+        n = len(self.open_rigs)
+        spacing = 8 * n
+        panel_w = max(250, (total_w - spacing) // n)
+
+        # Only update if something changed
+        key = (total_w, n)
+        if getattr(self, '_last_panel_layout', None) == key:
+            return
+        self._last_panel_layout = key
+
+        for panel_id, _rw in self.open_rigs.values():
+            if dpg.does_item_exist(panel_id):
+                dpg.configure_item(panel_id, width=panel_w)
+
+    def _update_rig_status(self, rig_name: str, status: str) -> None:
+        """Update the rig button appearance to reflect its status."""
+        btn_id = self.rig_buttons.get(rig_name)
+        if not btn_id or not dpg.does_item_exist(btn_id):
+            return
+
+        if status == "OFFLINE":
+            style_rig_button(btn_id, is_selected=False, is_open=False)
+        elif status in ("IDLE", "RUNNING", "COMPLETE"):
+            style_rig_button(btn_id, is_selected=True, is_open=False)
+        elif status == "ERROR":
+            style_rig_button(btn_id, is_selected=False, is_open=True)
 
     # =====================================================================
     # Utility actions
@@ -627,17 +726,18 @@ class AppLayout:
         show_info("Scales Zeroing Results", summary)
 
     def _on_mock_rig_click(self) -> None:
-        mock_name = "Mock Rig"
-        if mock_name in self.open_rigs:
-            self._set_status("Mock Rig already open")
-            return
         if not self.rigs:
             show_warning("No Rigs", "No rigs configured.")
             return
+        # Find next available mock rig number
         from dataclasses import replace
+        n = 1
+        while f"Mock Rig {n}" in self.open_rigs:
+            n += 1
+        mock_name = f"Mock Rig {n}"
         mock_config = replace(self.rigs[0], name=mock_name)
         self._open_rig_tab(mock_config, simulate=True)
-        self._set_status("Mock Rig opened (simulated hardware)")
+        self._set_status(f"{mock_name} opened (simulated hardware)")
 
     def _on_docs_click(self) -> None:
         import subprocess as _sp

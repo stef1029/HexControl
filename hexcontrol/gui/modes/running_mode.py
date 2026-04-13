@@ -40,7 +40,10 @@ class RunningMode:
         self._tracker_definitions: list = []
         self._tracker_tab_indices: dict[str, int] = {}
         self._last_logged_trials: dict[str, int] = {}
-        self._perf_tab_bar: int | None = None
+        self._tracker_groups: dict[str, int] = {}
+        self._tracker_display_to_name: dict[str, str] = {}
+        self._selected_tracker: str = ""
+        self._perf_combo: int | None = None
         self._lock_tracker_view: bool = False
         self._daq_view_proc: subprocess.Popen | None = None
         self._rig_number: int = 0
@@ -67,32 +70,53 @@ class RunningMode:
         self._window_id = dpg.add_group(parent=self._parent, show=False)
         root = self._window_id
 
-        # Scrollable content area (leaves room for action bar)
-        scroll = dpg.add_child_window(height=-44, parent=root)
+        # Non-scrollable container that fills the tab minus the action bar
+        content = dpg.add_child_window(
+            height=-44, parent=root, border=False,
+            no_scrollbar=True, no_scroll_with_mouse=True,
+        )
 
-        # --- Session Summary ---
-        with dpg.collapsing_header(label="Session", default_open=True, parent=scroll):
-            for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
-                with dpg.group(horizontal=True):
-                    dpg.add_text(label_text, color=hex_to_rgba(palette.text_secondary))
-                    self._summary_labels[key] = dpg.add_text("")
+        # --- Session Summary (fixed height, not resizable) ---
+        summary = dpg.add_child_window(
+            height=60, parent=content, border=True,
+            no_scrollbar=True, no_scroll_with_mouse=True,
+        )
+        dpg.add_text("Session", parent=summary,
+                     color=hex_to_rgba(palette.text_secondary))
+        for key, label_text in [("protocol", "Protocol:"), ("mouse", "Mouse:"), ("save_path", "Saving to:")]:
+            with dpg.group(horizontal=True, parent=summary):
+                dpg.add_text(label_text, color=hex_to_rgba(palette.text_secondary))
+                self._summary_labels[key] = dpg.add_text("")
 
-        # --- Performance ---
-        with dpg.collapsing_header(label="Performance", default_open=True, parent=scroll):
-            self._perf_container = dpg.add_group()
+        # --- Trial Log (resizable) ---
+        dpg.add_text("Trial Log", parent=content,
+                     color=hex_to_rgba(palette.text_secondary))
+        self._trial_log = dpg.add_child_window(
+            height=250, parent=content, border=True, resizable_y=True,
+        )
 
-        # --- Trial Log ---
-        with dpg.collapsing_header(label="Trial Log", default_open=True, parent=scroll):
-            self._trial_log = dpg.add_child_window(height=200)
+        # --- Scales Plot (resizable) ---
+        dpg.add_text("Scales", parent=content,
+                     color=hex_to_rgba(palette.text_secondary))
+        scales_container = dpg.add_child_window(
+            height=300, parent=content, border=True, resizable_y=True,
+        )
+        self._scales_plot = ScalesPlotWidget(scales_container)
 
-        # --- Scales Plot ---
-        with dpg.collapsing_header(label="Scales", default_open=True, parent=scroll):
-            scales_container = dpg.add_child_window(height=180)
-            self._scales_plot = ScalesPlotWidget(scales_container)
+        # --- Performance (resizable) ---
+        dpg.add_text("Performance", parent=content,
+                     color=hex_to_rgba(palette.text_secondary))
+        perf_cw = dpg.add_child_window(
+            height=180, parent=content, border=True, resizable_y=True,
+        )
+        self._perf_container = dpg.add_group(parent=perf_cw)
 
-        # --- Session Log ---
-        with dpg.collapsing_header(label="Session Log", default_open=True, parent=scroll):
-            self._session_log = dpg.add_child_window(height=120)
+        # --- Session Log (fills remaining space, absorbs resize changes) ---
+        dpg.add_text("Session Log", parent=content,
+                     color=hex_to_rgba(palette.text_secondary))
+        self._session_log = dpg.add_child_window(
+            height=-1, parent=content, border=True,
+        )
 
         # --- Action bar (pinned at bottom) ---
         dpg.add_separator(parent=root)
@@ -113,6 +137,20 @@ class RunningMode:
             )
             if Theme.danger_button_theme:
                 dpg.bind_item_theme(self._stop_btn, Theme.danger_button_theme)
+
+    @staticmethod
+    def _add_divider(parent, palette) -> None:
+        dpg.add_spacer(height=4, parent=parent)
+        div = dpg.add_child_window(
+            height=3, parent=parent, no_scrollbar=True,
+            no_scroll_with_mouse=True, border=False,
+        )
+        with dpg.theme() as t:
+            with dpg.theme_component(0):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
+                                    hex_to_rgba(palette.border_dark))
+        dpg.bind_item_theme(div, t)
+        dpg.add_spacer(height=4, parent=parent)
 
     # ----- Scales -----
 
@@ -168,8 +206,10 @@ class RunningMode:
         self._tracker_widgets.clear()
         self._tracker_tab_indices.clear()
         self._last_logged_trials.clear()
-        self._perf_tab_bar = None
         self._lock_tracker_view = False
+        self._tracker_groups: dict[str, int] = {}
+        self._selected_tracker: str = ""
+        self._perf_combo: int | None = None
 
         # Clear trial log
         if self._trial_log and dpg.does_item_exist(self._trial_log):
@@ -183,15 +223,7 @@ class RunningMode:
                          color=hex_to_rgba(palette.text_secondary))
             return
 
-        # Lock checkbox
-        self._lock_checkbox = dpg.add_checkbox(
-            label="Lock view", default_value=False,
-            parent=self._perf_container,
-            callback=lambda s, a: setattr(self, '_lock_tracker_view', a),
-        )
-
-        self._perf_tab_bar = dpg.add_tab_bar(parent=self._perf_container)
-
+        # Deduplicate tracker definitions
         if isinstance(self._tracker_definitions, dict):
             seen_ids: set[int] = set()
             unique_defs: list = []
@@ -202,15 +234,40 @@ class RunningMode:
         else:
             unique_defs = list(self._tracker_definitions)
 
+        # Tracker selector row: combo + lock checkbox
+        with dpg.group(horizontal=True, parent=self._perf_container):
+            dpg.add_text("Tracker:", color=hex_to_rgba(palette.text_secondary))
+            tracker_names = [tdef.display_name for tdef in unique_defs]
+            self._perf_combo = dpg.add_combo(
+                items=tracker_names, label="",
+                default_value=tracker_names[0] if tracker_names else "",
+                width=250,
+                callback=lambda s, a: self._on_tracker_selected(a),
+            )
+            dpg.add_spacer(width=10)
+            dpg.add_checkbox(
+                label="Lock view", default_value=False,
+                callback=lambda s, a: setattr(self, '_lock_tracker_view', a),
+            )
+
+        # Map display names to internal names for combo lookup
+        self._tracker_display_to_name: dict[str, str] = {}
+
+        # Content area: one group per tracker, show/hide based on combo
         for idx, tdef in enumerate(unique_defs):
             sub_trackers = getattr(tdef, "sub_trackers", None)
             has_subs = sub_trackers is not None and len(sub_trackers) > 0
+            self._tracker_display_to_name[tdef.display_name] = tdef.name
+
+            tracker_group = dpg.add_group(
+                parent=self._perf_container, show=(idx == 0),
+            )
+            self._tracker_groups[tdef.name] = tracker_group
+            self._tracker_tab_indices[tdef.name] = idx
 
             if has_subs:
-                outer_tab = dpg.add_tab(label=tdef.display_name, parent=self._perf_tab_bar)
-                self._tracker_tab_indices[tdef.name] = idx
-
-                inner_nb = dpg.add_tab_bar(parent=outer_tab)
+                # Sub-trackers use tabs (few enough to work well)
+                inner_nb = dpg.add_tab_bar(parent=tracker_group)
                 overall_tab = dpg.add_tab(label="Overall", parent=inner_nb)
                 overall_widgets = self._create_tracker_tab(overall_tab, "Overall")
 
@@ -224,13 +281,22 @@ class RunningMode:
                     "_sub": sub_widgets,
                     "_inner_nb": inner_nb,
                 }
-                self._last_logged_trials[tdef.name] = 0
             else:
-                tab = dpg.add_tab(label=tdef.display_name, parent=self._perf_tab_bar)
-                widgets = self._create_tracker_tab(tab, tdef.display_name)
+                widgets = self._create_tracker_tab(tracker_group, tdef.display_name)
                 self._tracker_widgets[tdef.name] = widgets
-                self._tracker_tab_indices[tdef.name] = idx
-                self._last_logged_trials[tdef.name] = 0
+
+            self._last_logged_trials[tdef.name] = 0
+
+        if unique_defs:
+            self._selected_tracker = unique_defs[0].name
+
+    def _on_tracker_selected(self, display_name: str) -> None:
+        """Handle tracker combo selection — show the selected tracker's content."""
+        name = self._tracker_display_to_name.get(display_name, display_name)
+        self._selected_tracker = name
+        for tname, group_id in self._tracker_groups.items():
+            if dpg.does_item_exist(group_id):
+                dpg.configure_item(group_id, show=(tname == name))
 
     def _create_tracker_tab(self, parent: int | str, display_name: str = "") -> dict:
         palette = Theme.palette
@@ -308,18 +374,19 @@ class RunningMode:
             self._last_logged_trials[updated] = last + 1
             last += 1
 
-        # Auto-switch tab
+        # Auto-switch to the updated tracker (unless locked)
         if (
             not self._lock_tracker_view
-            and self._perf_tab_bar is not None
-            and dpg.does_item_exist(self._perf_tab_bar)
-            and updated in self._tracker_tab_indices
+            and self._perf_combo is not None
+            and dpg.does_item_exist(self._perf_combo)
+            and updated in self._tracker_groups
         ):
-            tabs = dpg.get_item_children(self._perf_tab_bar, 1)
-            if tabs:
-                idx = self._tracker_tab_indices[updated]
-                if idx < len(tabs):
-                    dpg.set_value(self._perf_tab_bar, tabs[idx])
+            # Find display name for this tracker
+            for dname, tname in self._tracker_display_to_name.items():
+                if tname == updated:
+                    dpg.set_value(self._perf_combo, dname)
+                    self._on_tracker_selected(dname)
+                    break
 
     def _update_tracker_widgets(self, w: dict, tracker, palette) -> None:
         _set_text(w["trials"], str(tracker.total_trials))

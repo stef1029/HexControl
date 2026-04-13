@@ -68,18 +68,19 @@ class IntParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         param: IntParameter = self.parameter
         with dpg.group(parent=self.parent) as self._group_id:
+            dpg.add_text(param.display_name,
+                         color=hex_to_rgba(Theme.palette.text_secondary))
             from_val = param.min_value if param.min_value is not None else -999999
             to_val = param.max_value if param.max_value is not None else 999999
             self.item_id = dpg.add_input_int(
-                label=param.display_name,
-                default_value=param.default,
+                label="", default_value=param.default,
                 min_value=from_val, max_value=to_val,
                 min_clamped=True, max_clamped=True,
-                step=param.step, width=160,
+                step=param.step, width=-1,
             )
             if param.description:
-                dpg.add_text(f"({param.description})",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
+                dpg.add_text(f"({param.description})", wrap=0,
+                             color=hex_to_rgba(Theme.palette.text_disabled))
             self.error_id = dpg.add_text("", color=hex_to_rgba(Theme.palette.error))
 
     def get_value(self) -> int:
@@ -94,19 +95,20 @@ class FloatParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         param: FloatParameter = self.parameter
         with dpg.group(parent=self.parent) as self._group_id:
+            dpg.add_text(param.display_name,
+                         color=hex_to_rgba(Theme.palette.text_secondary))
             from_val = param.min_value if param.min_value is not None else -999999.0
             to_val = param.max_value if param.max_value is not None else 999999.0
             fmt = f"%.{param.precision}f"
             self.item_id = dpg.add_input_float(
-                label=param.display_name,
-                default_value=param.default,
+                label="", default_value=param.default,
                 min_value=from_val, max_value=to_val,
                 min_clamped=True, max_clamped=True,
-                step=param.step, format=fmt, width=160,
+                step=param.step, format=fmt, width=-1,
             )
             if param.description:
-                dpg.add_text(f"({param.description})",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
+                dpg.add_text(f"({param.description})", wrap=0,
+                             color=hex_to_rgba(Theme.palette.text_disabled))
             self.error_id = dpg.add_text("", color=hex_to_rgba(Theme.palette.error))
 
     def get_value(self) -> float:
@@ -126,8 +128,8 @@ class BoolParameterWidget(ParameterWidget):
                 default_value=param.default,
             )
             if param.description:
-                dpg.add_text(f"({param.description})",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
+                dpg.add_text(f"({param.description})", wrap=0,
+                             color=hex_to_rgba(Theme.palette.text_disabled))
             self.error_id = dpg.add_text("", color=hex_to_rgba(Theme.palette.error))
 
     def get_value(self) -> bool:
@@ -142,15 +144,17 @@ class ChoiceParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         param: ChoiceParameter = self.parameter
         with dpg.group(parent=self.parent) as self._group_id:
+            dpg.add_text(param.display_name,
+                         color=hex_to_rgba(Theme.palette.text_secondary))
             self.item_id = dpg.add_combo(
-                label=param.display_name,
+                label="",
                 items=list(param.choices),
                 default_value=param.default,
-                width=200,
+                width=-1,
             )
             if param.description:
-                dpg.add_text(f"({param.description})",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
+                dpg.add_text(f"({param.description})", wrap=0,
+                             color=hex_to_rgba(Theme.palette.text_disabled))
             self.error_id = dpg.add_text("", color=hex_to_rgba(Theme.palette.error))
 
     def get_value(self) -> str:
@@ -165,14 +169,16 @@ class StringParameterWidget(ParameterWidget):
     def _create_widgets(self) -> None:
         param: StringParameter = self.parameter
         with dpg.group(parent=self.parent) as self._group_id:
+            dpg.add_text(param.display_name,
+                         color=hex_to_rgba(Theme.palette.text_secondary))
             self.item_id = dpg.add_input_text(
-                label=param.display_name,
+                label="",
                 default_value=param.default,
-                width=300,
+                width=-1,
             )
             if param.description:
-                dpg.add_text(f"({param.description})",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
+                dpg.add_text(f"({param.description})", wrap=0,
+                             color=hex_to_rgba(Theme.palette.text_disabled))
             self.error_id = dpg.add_text("", color=hex_to_rgba(Theme.palette.error))
 
     def get_value(self) -> str:

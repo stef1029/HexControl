@@ -455,14 +455,18 @@ def _load_fonts() -> None:
     _log.info(f"Loading fonts from {_FONTS_DIR}")
 
     with dpg.font_registry():
-        Theme._font_default = dpg.add_font(body_path, 14)
-        Theme._font_small = dpg.add_font(body_path, 12)
-        Theme._font_heading = dpg.add_font(bold_path, 16)
-        Theme._font_title = dpg.add_font(special_path or bold_path, 32)
-        Theme._font_mono = dpg.add_font(mono_path, 14)
+        # Load fonts at 2x target size for sharp rendering on high-DPI.
+        # Use set_global_font_scale(0.5) as baseline to compensate.
+        Theme._font_default = dpg.add_font(body_path, 26)
+        Theme._font_small = dpg.add_font(body_path, 22)
+        Theme._font_heading = dpg.add_font(bold_path, 28)
+        Theme._font_title = dpg.add_font(special_path or bold_path, 52)
+        Theme._font_mono = dpg.add_font(mono_path, 26)
 
     if Theme._font_default is not None:
         dpg.bind_font(Theme._font_default)
+        # Scale down from 2x rasterized size to target display size
+        dpg.set_global_font_scale(0.5)
 
 
 # =========================================================================
@@ -573,8 +577,8 @@ def apply_theme() -> None:
             dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 3)
             dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 3)
             dpg.add_theme_style(dpg.mvStyleVar_TabRounding, 3)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 6, 4)
-            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 6, 3)
 
         # Plot colors need their own theme component with mvThemeCat_Plots category
         with dpg.theme_component(0):
@@ -638,9 +642,11 @@ def apply_theme() -> None:
             dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
     Theme.icon_button_theme = icon_btn_theme
 
+    # Sidebar: slightly lighter than main bg for subtle differentiation
+    sidebar_bg = [(bg2[i] + bg3[i]) // 2 for i in range(4)]
     with dpg.theme() as sidebar_theme:
         with dpg.theme_component(0):
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, bg2)
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, sidebar_bg)
             dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 0)
             dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 8, 6)
     Theme.sidebar_theme = sidebar_theme

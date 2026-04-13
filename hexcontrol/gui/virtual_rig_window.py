@@ -54,11 +54,18 @@ def _lerp_colour(c_off: list[int], c_on: list[int], fraction: float) -> list[int
 
 
 class VirtualRigWindow:
-    """DPG window showing an interactive top-down rig schematic."""
+    """DPG interactive top-down rig schematic.
 
-    def __init__(self, parent: int | str, state: "VirtualRigState") -> None:
+    Args:
+        parent: If given, builds content inside this container (embedded mode).
+                If None, creates a floating DPG window.
+        state:  The VirtualRigState to visualise and interact with.
+    """
+
+    def __init__(self, parent: int | str | None, state: "VirtualRigState") -> None:
         self._state = state
         self._closed = False
+        self._embedded = parent is not None
 
         self._port_items: list[dict] = []
         self._platform_item: int | None = None
@@ -69,28 +76,40 @@ class VirtualRigWindow:
         self._ir_text: int | None = None
 
         self._weight_text: int | None = None
+        self._weight_slider: int | None = None
+        self._mouse_checkbox: int | None = None
         self._gpio_indicators: list[int] = []
         self._gpio_buttons: list[int] = []
         self._daq_indicators: list[int] = []
+        self._window_id: int | None = None
 
         self._last_snap: Optional["RigStateSnapshot"] = None
 
-        self._build_window()
+        self._build(parent)
         self._draw_rig()
 
         # Start polling
         frame_poller.register(33, self._poll_tick)
 
-    def _build_window(self) -> None:
+    def _build(self, parent: int | str | None) -> None:
         palette = Theme.palette
-        self._window_id = dpg.add_window(
-            label="Virtual Rig", width=500, height=720,
-            on_close=self._on_close_request,
-        )
+
+        if parent is not None:
+            # Embedded mode: build directly into parent container
+            self._root = parent
+        else:
+            # Floating window mode
+            self._window_id = dpg.add_window(
+                label="Virtual Rig", width=500, height=720,
+                on_close=self._on_close_request,
+            )
+            self._root = self._window_id
+
+        root = self._root
 
         # Rig schematic drawlist
         with dpg.collapsing_header(label="Rig Schematic", default_open=True,
-                                   parent=self._window_id):
+                                   parent=root):
             self._drawlist = dpg.add_drawlist(
                 width=_CANVAS_SIZE, height=_CANVAS_SIZE,
                 parent=dpg.last_item(),
@@ -98,25 +117,25 @@ class VirtualRigWindow:
 
         # Platform Weight controls
         with dpg.collapsing_header(label="Platform Weight", default_open=True,
-                                   parent=self._window_id):
+                                   parent=root):
             with dpg.group(horizontal=True):
                 dpg.add_text("0 g", color=hex_to_rgba(palette.text_secondary))
-                dpg.add_slider_float(
+                self._weight_slider = dpg.add_slider_float(
                     min_value=0, max_value=50, default_value=0,
                     width=300, format="%.1f g",
-                    callback=self._on_weight_change, tag="vr_weight_slider",
+                    callback=self._on_weight_change,
                 )
                 dpg.add_text("50 g", color=hex_to_rgba(palette.text_secondary))
             with dpg.group(horizontal=True):
                 self._weight_text = dpg.add_text("Weight: 0.0 g")
-                dpg.add_checkbox(
+                self._mouse_checkbox = dpg.add_checkbox(
                     label="Quick: Mouse on (25g)",
-                    callback=self._on_mouse_toggle, tag="vr_mouse_toggle",
+                    callback=self._on_mouse_toggle,
                 )
 
         # GPIO pins
         with dpg.collapsing_header(label="GPIO Pins", default_open=True,
-                                   parent=self._window_id):
+                                   parent=root):
             with dpg.group(horizontal=True):
                 for pin in range(4):
                     with dpg.group():
@@ -131,7 +150,7 @@ class VirtualRigWindow:
 
         # DAQ link pins
         with dpg.collapsing_header(label="DAQ Link Pins", default_open=True,
-                                   parent=self._window_id):
+                                   parent=root):
             with dpg.group(horizontal=True):
                 for idx in range(2):
                     with dpg.group():
@@ -337,14 +356,16 @@ class VirtualRigWindow:
 
     def _on_mouse_toggle(self, sender, app_data) -> None:
         if app_data:
-            dpg.set_value("vr_weight_slider", 25.0)
+            if self._weight_slider and dpg.does_item_exist(self._weight_slider):
+                dpg.set_value(self._weight_slider, 25.0)
             self._state.set_weight(25.0)
-            if self._weight_text:
+            if self._weight_text and dpg.does_item_exist(self._weight_text):
                 dpg.set_value(self._weight_text, "Weight: 25.0 g")
         else:
-            dpg.set_value("vr_weight_slider", 0.0)
+            if self._weight_slider and dpg.does_item_exist(self._weight_slider):
+                dpg.set_value(self._weight_slider, 0.0)
             self._state.set_weight(0.0)
-            if self._weight_text:
+            if self._weight_text and dpg.does_item_exist(self._weight_text):
                 dpg.set_value(self._weight_text, "Weight: 0.0 g")
 
     def _on_gpio_click(self, pin: int) -> None:
@@ -353,18 +374,21 @@ class VirtualRigWindow:
     # ── Lifecycle ───────────────────────────────────────────────────────
 
     def _on_close_request(self) -> None:
-        # Don't destroy, just hide
+        """User tried to close the floating window — just hide it."""
         if self._window_id and dpg.does_item_exist(self._window_id):
             dpg.configure_item(self._window_id, show=False)
 
     def close(self) -> None:
+        """Programmatic close (called by rig_window cleanup)."""
         if self._closed:
             return
         self._closed = True
         frame_poller.unregister(self._poll_tick)
-        if hasattr(self, '_window_id') and dpg.does_item_exist(self._window_id):
+        # Only delete the floating window; embedded content is owned by its parent
+        if self._window_id is not None and dpg.does_item_exist(self._window_id):
             dpg.delete_item(self._window_id)
 
     def show(self) -> None:
-        if not self._closed and hasattr(self, '_window_id') and dpg.does_item_exist(self._window_id):
+        """Show the floating window if it was hidden."""
+        if not self._closed and self._window_id is not None and dpg.does_item_exist(self._window_id):
             dpg.configure_item(self._window_id, show=True)
