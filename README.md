@@ -57,7 +57,7 @@ That's it. `uv sync` will:
 ### 3. Run the system
 
 ```bash
-uv run python behaviour_rig_system/main.py
+uv run python hexcontrol/main.py
 ```
 
 `uv run` activates the venv automatically for the duration of the command.
@@ -70,15 +70,28 @@ If you'd rather activate the venv yourself:
 # macOS / Linux
 source .venv/bin/activate
 
-python behaviour_rig_system/main.py
+python hexcontrol/main.py
 ```
 
 ## Hardware configuration
 
 The rig system needs to know about your hardware. Edit:
 
-- `behaviour_rig_system/config/rigs_template.yaml` — describes each rig and its peripherals
-- `behaviour_rig_system/config/board_registry.json` — maps device serial numbers to roles
+- `hexcontrol/config/rigs_template.yaml` — describes each rig and its peripherals
+- `hexcontrol/config/board_registry.json` — maps device serial numbers to roles
+
+## GUI Overview
+
+The GUI is built with [DearPyGui](https://github.com/hoffstadt/DearPyGui) and uses a VSCode-inspired layout:
+
+- **Activity bar** (left edge) — icon buttons to toggle sidebar panels
+- **Sidebar** (left) — Rigs, Tools, Post-Processing, and Docs panels
+- **Main content** (center) — rig panels arranged horizontally, auto-scaling to fit
+- **Info bar** (bottom) — clock and status text
+
+Multiple rigs can be open simultaneously as side-by-side panels. Each rig panel contains the full session workflow: Setup → Running → Post-Session.
+
+A **Preferences** menu in the menu bar provides UI scaling options (75%–150%).
 
 ## Development
 
@@ -137,7 +150,18 @@ hex_behav_control/
 ├── pyproject.toml          # workspace root
 ├── uv.lock                 # locked deps (commit this)
 ├── .python-version         # pinned Python version (commit this)
-├── behaviour_rig_system/   # main application
+├── hexcontrol/             # main application
+│   ├── main.py             # entry point
+│   ├── core/               # business logic (no GUI dependency)
+│   ├── gui/                # DearPyGui interface
+│   │   ├── app_layout.py   # root layout (activity bar, sidebar, panels)
+│   │   ├── rig_window.py   # per-rig view (setup/running/post-session)
+│   │   ├── theme.py        # palette system and DPG themes
+│   │   ├── fonts/          # bundled TTF fonts
+│   │   └── ...
+│   ├── protocols/          # behaviour protocol implementations
+│   ├── autotraining/       # adaptive training engine
+│   └── simulation/         # virtual rig for testing
 ├── BehavLink/              # workspace member
 ├── DAQLink/                # workspace member
 ├── ScalesLink/             # workspace member

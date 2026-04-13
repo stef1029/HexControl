@@ -6,8 +6,8 @@ The system uses multiple threads to keep the GUI responsive while running blocki
 
 ```mermaid
 graph TB
-    subgraph Main["Main Thread (tkinter)"]
-        GUI[GUI Event Loop]
+    subgraph Main["Main Thread (DearPyGui render loop)"]
+        GUI[Render Loop + Callback Queue]
     end
 
     subgraph Background["Background Threads"]
@@ -25,10 +25,10 @@ graph TB
         SS[Scales Server]
     end
 
-    GUI -.->|root.after| ST
-    GUI -.->|root.after| PT
-    GUI -.->|root.after| FT
-    GUI -.->|root.after| CT
+    GUI -.->|call_on_main_thread| ST
+    GUI -.->|call_on_main_thread| PT
+    GUI -.->|call_on_main_thread| FT
+    GUI -.->|call_on_main_thread| CT
     RT -->|event buffer| PT
 ```
 
@@ -36,15 +36,41 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 
 ### Main thread
 
-**Owner:** tkinter event loop
+**Owner:** DearPyGui manual render loop (`dpg_app.py`)
 
 **Responsibilities:**
 
 - All GUI rendering and widget updates
+- Draining the thread-safe callback queue each frame
+- Running `FramePoller` tick for time-based polling (scales, clock, panel resize)
 - User input handling
-- Event dispatch from `root.after()` callbacks
 
 **Rule:** No blocking operations. No serial I/O. No subprocess management. Everything that blocks goes on a background thread.
+
+### Thread-safe callback queue
+
+The `call_on_main_thread(fn, **kwargs)` function appends to a `collections.deque` that is drained at the top of each render frame:
+
+```python
+# Any thread can call:
+call_on_main_thread(self._on_protocol_log, message="Trial 1 complete")
+
+# Render loop drains it:
+while _callback_queue:
+    fn, kwargs = _callback_queue.popleft()
+    fn(**kwargs)
+```
+
+This replaces tkinter's `root.after(0, fn)` and is the **single marshalling point** for all cross-thread GUI updates.
+
+### Frame-based polling
+
+The `FramePoller` provides two mechanisms:
+
+- `register(interval_ms, callback)` — recurring calls (e.g., scales at 100ms, clock at 1000ms)
+- `call_later(delay_ms, callback)` — one-shot delayed execution (replaces `threading.Timer`)
+
+The poller is ticked once per render frame. Callbacks fire when their interval has elapsed.
 
 ### Startup worker
 
@@ -74,11 +100,11 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 - All trial logic, hardware commands, and performance recording
 - Captures the final `ProtocolStatus`
 
-**Exits after emitting:** `_emit("protocol_complete", final_status=...)`. Streams `protocol._emit("log")`, `tracker._emit("update")`, `tracker._emit("stimulus")` while running. Does **not** chain into the next phase itself.
+**Exits after emitting:** `_emit("protocol_complete", final_status=...)`. Streams `protocol._emit("log")`, `tracker._emit("update")`, `tracker._emit("stimulus")` while running.
 
 ### Finalize worker
 
-**Created by:** `SessionController.finalize_protocol()` (called from the GUI's `_on_protocol_complete` listener)
+**Created by:** `SessionController.finalize_protocol()`
 
 **Lifetime:** Brief -- result building only
 
@@ -92,7 +118,7 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 
 ### Cleanup worker
 
-**Created by:** `SessionController.cleanup_session()` (called from the GUI's `_on_finalize_complete` listener, or by `controller.close()` on window close)
+**Created by:** `SessionController.cleanup_session()`
 
 **Lifetime:** Brief -- hardware shutdown only
 
@@ -102,7 +128,7 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 - Closes serial port
 - Stops PeripheralManager (DAQ, camera, scales)
 
-**Exits after emitting:** `_emit("cleanup_complete")`. Streams `_emit("cleanup_log")` (forwarded from PeripheralManager) while running.
+**Exits after emitting:** `_emit("cleanup_complete")`. Streams `_emit("cleanup_log")` while running.
 
 ### BehavLink receiver thread
 
@@ -116,7 +142,6 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 - Parses incoming messages (ACKs, sensor events, GPIO events)
 - Places ACKs in a threading queue for command retry logic
 - Places events in deque buffers for `wait_for_event()` to consume
-- Uses `threading.Condition` to wake `wait_for_event()` when events arrive
 
 **Named:** `"BehaviourRigReceiver"` (daemon thread)
 
@@ -134,15 +159,16 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 
 ## Thread safety mechanisms
 
-### `root.after(0, fn)` -- GUI marshalling
+### `call_on_main_thread()` — GUI marshalling
 
-All controller events fire on background threads. The RigWindow wraps callbacks to schedule them on the main thread:
+All controller events fire on background threads. The RigWindow wraps callbacks:
 
 ```python
-self.root.after(0, lambda: self._on_protocol_log(message=msg))
+def on_main_thread(fn):
+    def wrapper(**kwargs):
+        call_on_main_thread(fn, **kwargs)
+    return wrapper
 ```
-
-This is the **single marshalling point** for all cross-thread GUI updates.
 
 ### Threading locks
 
@@ -162,14 +188,6 @@ This is the **single marshalling point** for all cross-thread GUI updates.
 | Sensor inject condition | VirtualRigState | Wakes SimulatedRig when GUI injects events |
 | Cue event | VirtualRigState | Wakes SimulatedMouse when LED/buzzer activates |
 
-### Event deques
-
-Sensor and GPIO events are stored in `collections.deque` with `maxlen=1024`. This provides:
-
-- Thread-safe append/pop (CPython GIL)
-- Bounded memory usage
-- Automatic eviction of oldest events when full
-
 ## Subprocess isolation
 
 Three components run as separate **processes** (not threads):
@@ -179,12 +197,6 @@ Three components run as separate **processes** (not threads):
 | DAQ acquisition | `DAQManager` | Signal files (filesystem) |
 | Camera recording | `CameraManager` | Signal files + subprocess args |
 | Scales server | `ScalesManager` | TCP sockets |
-
-Subprocess isolation prevents:
-
-- Serial port blocking from affecting the GUI
-- Crashes in one component from bringing down the whole system
-- GIL contention with CPU-intensive tasks
 
 ## Typical thread timeline
 
@@ -198,5 +210,3 @@ Finalize worker: ............................................[fin]
 Cleanup worker:  ...............................................[cleanup]
 Receiver thread: ...........[serial read loop............................]
 ```
-
-The four lifecycle workers run sequentially (never overlapping) — each one finishes and exits before the next is spawned, because the next is only kicked off when its predecessor's `*_complete` event reaches the GUI listener. The receiver thread runs in parallel with all of them.
