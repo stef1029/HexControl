@@ -30,7 +30,7 @@ from hexcontrol.core.board_registry import BoardRegistry
 from .dpg_app import call_on_main_thread, frame_poller, call_later
 from .dpg_dialogs import show_info, show_warning, show_error, ask_yes_no
 from .icon_registry import IconRegistry
-from .launcher_background import draw_background
+from .launcher_background import draw_background, _GENERATORS
 from .theme import (
     Theme, apply_theme, hex_to_rgba, style_rig_button,
     _ensure_rig_button_themes, _rig_button_themes,
@@ -205,20 +205,19 @@ class AppLayout:
         with dpg.child_window(width=-1, height=-1, border=False, tag="main_content"):
             self._tab_bar = dpg.add_tab_bar(tag="rig_tab_bar", reorderable=True)
 
-            # Welcome view (shown when no rig tabs are open)
-            with dpg.group(tag="welcome_view") as wg:
-                self._welcome_group = wg
-                dpg.add_spacer(height=40)
-                t = dpg.add_text("Hex Behaviour System",
-                                 color=hex_to_rgba(Theme.palette.text_primary))
-                if Theme.font_title():
-                    dpg.bind_item_font(t, Theme.font_title())
-                dpg.add_text("Select a rig from the sidebar to begin.",
-                             color=hex_to_rgba(Theme.palette.text_secondary))
-                dpg.add_spacer(height=20)
-                # Background art
-                dl = dpg.add_drawlist(width=500, height=350)
-                draw_background(dl, 500, 350)
+            # Welcome view — full-area generative art with centered text overlay
+            self._welcome_drawlist = dpg.add_drawlist(
+                width=100, height=100, tag="welcome_view",
+            )
+            self._welcome_group = self._welcome_drawlist
+            self._welcome_drawn = False
+            self._welcome_last_size = (0, 0)
+
+            import random as _rnd
+            self._welcome_rng_seed = _rnd.randint(0, 999999)
+
+            # Poll for resize every frame (cheap — only redraws when size changes)
+            frame_poller.register(50, self._check_welcome_resize)
 
     def _build_info_bar(self) -> None:
         with dpg.child_window(height=28, no_scrollbar=True, border=False,
@@ -235,6 +234,104 @@ class AppLayout:
                     dpg.bind_item_font(self._status_text, Theme.font_small())
         if Theme.info_bar_theme:
             dpg.bind_item_theme(ib, Theme.info_bar_theme)
+
+    # =====================================================================
+    # Welcome view
+    # =====================================================================
+
+    def _check_welcome_resize(self) -> None:
+        """Periodic check — redraw welcome art if main_content size changed."""
+        dl = self._welcome_drawlist
+        if not dpg.does_item_exist(dl):
+            return
+        if not dpg.get_item_configuration(dl).get("show", True):
+            return
+
+        # Get actual rendered size of main_content; fall back to viewport
+        w = dpg.get_item_width("main_content")
+        h = dpg.get_item_height("main_content")
+        if w < 50 or h < 50:
+            # main_content may not be laid out yet — use viewport as estimate
+            w = dpg.get_viewport_client_width() - 300  # minus sidebar + activity bar
+            h = dpg.get_viewport_client_height() - 60   # minus info bar + padding
+        if w < 50 or h < 50:
+            return
+
+        size = (w, h)
+        if size == self._welcome_last_size and self._welcome_drawn:
+            return
+
+        self._welcome_last_size = size
+
+        # Resize drawlist to fill
+        dpg.configure_item(dl, width=w, height=h)
+
+        # Clear and redraw with consistent seed
+        import random as _rnd
+        dpg.delete_item(dl, children_only=True)
+
+        gen = _rnd.Random(self._welcome_rng_seed).choice(_GENERATORS)
+        gen(dl, w, h, _rnd.Random(self._welcome_rng_seed))
+
+        self._draw_welcome_overlay(dl, w, h)
+        self._welcome_drawn = True
+
+    @staticmethod
+    def _draw_centered_text(dl, text: str, cx: float, y: float,
+                            font_size: float, color: list[int]) -> None:
+        """Draw text horizontally centered around *cx* at vertical position *y*."""
+        text_w = len(text) * font_size * 0.55
+        dpg.draw_text(
+            pos=[cx - text_w / 2, y], text=text, size=font_size,
+            color=color, parent=dl,
+        )
+
+    def _draw_welcome_overlay(self, dl: int, w: int, h: int) -> None:
+        """Draw centered title text with a backdrop card on the drawlist."""
+        palette = Theme.palette
+
+        card_w = min(520, w - 60)
+        card_h = 150
+        card_x = (w - card_w) / 2
+        card_y = (h - card_h) / 2 - 30
+        card_cx = card_x + card_w / 2
+
+        # Semi-transparent backdrop
+        dpg.draw_rectangle(
+            pmin=[card_x, card_y],
+            pmax=[card_x + card_w, card_y + card_h],
+            fill=hex_to_rgba(palette.bg_primary, alpha=200),
+            color=[0, 0, 0, 0], rounding=10, parent=dl,
+        )
+
+        # Subtle border
+        dpg.draw_rectangle(
+            pmin=[card_x, card_y],
+            pmax=[card_x + card_w, card_y + card_h],
+            fill=[0, 0, 0, 0],
+            color=hex_to_rgba(palette.border_medium, alpha=120),
+            rounding=10, thickness=1, parent=dl,
+        )
+
+        # Title
+        self._draw_centered_text(
+            dl, "Hex Behaviour System", card_cx, card_y + 28,
+            28, hex_to_rgba(palette.text_primary),
+        )
+
+        # Subtitle
+        self._draw_centered_text(
+            dl, "Select a rig from the sidebar to begin",
+            card_cx, card_y + 75,
+            15, hex_to_rgba(palette.text_secondary),
+        )
+
+        # Hint
+        self._draw_centered_text(
+            dl, "Use the activity bar on the left to navigate",
+            card_cx, card_y + 110,
+            12, hex_to_rgba(palette.text_disabled),
+        )
 
     # =====================================================================
     # Sidebar panels
@@ -483,6 +580,9 @@ class AppLayout:
         # Show welcome if no tabs left
         if not self.open_rigs and self._welcome_group and dpg.does_item_exist(self._welcome_group):
             dpg.configure_item(self._welcome_group, show=True)
+            import random as _rnd
+            self._welcome_rng_seed = _rnd.randint(0, 999999)  # fresh art
+            self._welcome_drawn = False  # force redraw at current size
 
         self._set_status(f"{rig_name} closed")
 
