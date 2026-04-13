@@ -7,22 +7,20 @@ This walkthrough covers running a complete experiment session from launch to res
 From the `hex_behav_control` directory:
 
 ```bash
-uv run python behaviour_rig_system/main.py
+uv run python hexcontrol/main.py
 ```
 
-(Or activate `.venv` and run `python behaviour_rig_system/main.py` directly — see [Installation](installation.md#4-run-the-system).)
+(Or activate `.venv` and run `python hexcontrol/main.py` directly — see [Installation](installation.md#4-run-the-system).)
 
-The **Launcher** window appears showing all configured rigs. Each rig displays its name, connection status, and controls.
+The application window appears showing the activity bar, sidebar, and rig panels.
 
 ## 2. Select a rig
 
-In the Launcher:
+In the sidebar:
 
-- **Test Connection** -- Click to verify the behaviour Arduino is connected and responding. The system resolves the board name to a COM port, opens the serial connection, resets the Arduino via DTR, and performs a handshake (HELLO/HELLO_ACK)
-- **Simulate** -- Check this box to run without physical hardware (useful for testing protocols)
+- Select a rig from the sidebar rig list to open its panel
+- **Mock Rig** -- Click in the sidebar Tools panel to run without physical hardware (useful for testing protocols)
 - **Link Sessions** -- When opening multiple rigs, check this to group their session data in a shared parent folder
-
-Click **Open** on the rig you want to use. This opens the **Rig Window**.
 
 ## 3. Configure the session (Setup Mode)
 
@@ -89,7 +87,7 @@ If the protocol declares multiple trackers (e.g. one per autotraining stage), ea
 A scrolling log of trial outcomes, stage transitions, and protocol messages.
 
 ### Scales plot
-Live weight reading from the platform scales (matplotlib plot embedded in the GUI).
+Live weight reading from the platform scales (DearPyGui plot embedded in the GUI).
 
 ### Stopping
 Click **Stop** to end the session. The protocol's `check_stop()` method returns `True`, allowing it to exit gracefully. The protocol's `_cleanup()` method always runs, even on stop.

@@ -6,7 +6,7 @@ The system uses multiple threads to keep the GUI responsive while running blocki
 
 ```mermaid
 graph TB
-    subgraph Main["Main Thread (tkinter)"]
+    subgraph Main["Main Thread (DearPyGui render loop)"]
         GUI[GUI Event Loop]
     end
 
@@ -25,10 +25,10 @@ graph TB
         SS[Scales Server]
     end
 
-    GUI -.->|root.after| ST
-    GUI -.->|root.after| PT
-    GUI -.->|root.after| FT
-    GUI -.->|root.after| CT
+    GUI -.->|call_on_main_thread| ST
+    GUI -.->|call_on_main_thread| PT
+    GUI -.->|call_on_main_thread| FT
+    GUI -.->|call_on_main_thread| CT
     RT -->|event buffer| PT
 ```
 
@@ -36,13 +36,13 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 
 ### Main thread
 
-**Owner:** tkinter event loop
+**Owner:** DearPyGui render loop
 
 **Responsibilities:**
 
 - All GUI rendering and widget updates
 - User input handling
-- Event dispatch from `root.after()` callbacks
+- Event dispatch from `call_on_main_thread()` callbacks
 
 **Rule:** No blocking operations. No serial I/O. No subprocess management. Everything that blocks goes on a background thread.
 
@@ -134,12 +134,12 @@ Each lifecycle worker is **short-lived** and does **one phase only**. When its p
 
 ## Thread safety mechanisms
 
-### `root.after(0, fn)` -- GUI marshalling
+### `call_on_main_thread(fn)` -- GUI marshalling
 
 All controller events fire on background threads. The RigWindow wraps callbacks to schedule them on the main thread:
 
 ```python
-self.root.after(0, lambda: self._on_protocol_log(message=msg))
+call_on_main_thread(lambda: self._on_protocol_log(message=msg))
 ```
 
 This is the **single marshalling point** for all cross-thread GUI updates.

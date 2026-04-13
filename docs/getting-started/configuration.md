@@ -5,11 +5,11 @@ The system uses two configuration files:
 1. **`rigs.yaml`** -- Defines your rigs, mice, cohort folders, and external processes
 2. **`board_registry.json`** -- Maps human-readable board names to USB device identifiers
 
-Both files live in `behaviour_rig_system/config/`. A template (`rigs_template.yaml`) is provided as a starting point.
+Both files live in `hexcontrol/config/`. A template (`rigs_template.yaml`) is provided as a starting point.
 
 ## Setting config paths
 
-Edit `behaviour_rig_system/main.py` to point to your config files:
+Edit `hexcontrol/main.py` to point to your config files:
 
 ```python
 CONFIG_PATH = Path(r"C:\path\to\your\rigs.yaml")
@@ -171,7 +171,7 @@ Each entry contains:
 To find the serial numbers of your connected Arduino boards, run the board registry discovery tool:
 
 ```bash
-cd behaviour_rig_system
+cd hexcontrol
 python -m core.board_registry
 ```
 

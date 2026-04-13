@@ -1,10 +1,10 @@
 # Hex Behav Control
 
-A modular behaviour rig control system for running neuroscience experiments on Arduino-based hexagonal rigs. Built with Python and tkinter, designed for training mice on complex behavioural tasks with automatic stage progression, real-time performance monitoring, and multi-rig support.
+A modular behaviour rig control system for running neuroscience experiments on Arduino-based hexagonal rigs. Built with Python and DearPyGui, featuring a VSCode-style unified viewport with activity bar, sidebar panels, and side-by-side rig views. Designed for training mice on complex behavioural tasks with automatic stage progression, real-time performance monitoring, and multi-rig support.
 
 ## What it does
 
-- **Multi-rig control** -- Run up to 4 behaviour rigs simultaneously from a single launcher, each in its own window
+- **Multi-rig control** -- Run up to 4 behaviour rigs simultaneously as side-by-side panels in a single viewport
 - **Protocol system** -- Define experiment protocols as Python classes with configurable parameters, automatic GUI generation, and hardware abstraction
 - **Autotraining** -- Automatic stage progression based on mouse performance, with persistent progress tracking across sessions
 - **Hardware abstraction** -- Control LEDs, solenoid valves, buzzers, speakers, GPIO, and IR sensors through the BehavLink serial library
@@ -33,12 +33,17 @@ The rig also includes a central platform with a load cell (scales) for detecting
 
 ```
 hex_behav_control/
-├── behaviour_rig_system/       # Main application
+├── hexcontrol/                 # Main application
 │   ├── main.py                 # Entry point
 │   ├── core/                   # Business logic (no GUI code)
 │   ├── protocols/              # Experiment protocol implementations
 │   ├── autotraining/           # Stage progression engine
-│   ├── gui/                    # tkinter GUI layer
+│   ├── gui/                    # DearPyGui GUI layer
+│   │   ├── app_layout.py       # Root layout (activity bar, sidebar, panels)
+│   │   ├── rig_window.py       # Per-rig view (setup/running/post-session)
+│   │   ├── theme.py            # Palette system and DPG themes
+│   │   ├── fonts/              # Bundled TTF fonts
+│   │   └── ...
 │   ├── config/                 # Configuration files
 │   ├── simulation/             # Virtual rig for testing
 │   └── post_processing/        # Offline analysis tools

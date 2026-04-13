@@ -61,7 +61,7 @@ Everything is in a single dependency list — there are no optional groups, so `
 |---------|---------|
 | `pyserial` | Serial communication with Arduino boards |
 | `pyyaml` | Configuration file parsing |
-| `matplotlib` | Live plots and post-session figures |
+| `dearpygui` | Native GPU-accelerated GUI and live plots |
 | `opencv-python` | Camera frame capture and processing |
 | `mkdocs`, `mkdocs-material` | Building and previewing this documentation site |
 | `pytest` | Test runner |
@@ -75,7 +75,7 @@ Everything is in a single dependency list — there are no optional groups, so `
 The simplest way is `uv run`, which activates the venv for the duration of the command:
 
 ```bash
-uv run python behaviour_rig_system/main.py
+uv run python hexcontrol/main.py
 ```
 
 Or activate the venv yourself and use `python` directly:
@@ -84,17 +84,17 @@ Or activate the venv yourself and use `python` directly:
 
     ```powershell
     .venv\Scripts\activate
-    python behaviour_rig_system/main.py
+    python hexcontrol/main.py
     ```
 
 === "macOS / Linux"
 
     ```bash
     source .venv/bin/activate
-    python behaviour_rig_system/main.py
+    python hexcontrol/main.py
     ```
 
-You should see the launcher window appear. If running without hardware, check the **Simulate** checkbox to test with virtual rigs — see [Simulation Mode](simulation.md).
+You should see the application window appear. If running without hardware, click **Mock Rig** in the sidebar Tools panel to test with virtual rigs -- see [Simulation Mode](simulation.md).
 
 !!! note "First-run configuration"
     The first time you run, you'll need to point `main.py` at your `rigs.yaml` and `board_registry.json` files. See [Configuration](configuration.md).
@@ -169,7 +169,7 @@ hex_behav/
 │   ├── uv.lock                     # locked dependency versions (committed)
 │   ├── .python-version             # pinned Python version (committed)
 │   ├── .venv/                      # virtual environment (gitignored)
-│   ├── behaviour_rig_system/       # main application
+│   ├── hexcontrol/       # main application
 │   │   ├── main.py                 # entry point
 │   │   ├── core/                   # business logic
 │   │   ├── protocols/              # experiment protocols

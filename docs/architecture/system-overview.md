@@ -34,9 +34,9 @@ graph TB
 
 ### Layer rules
 
-1. **GUI layer** (`gui/`) -- Contains all tkinter code. No business logic. Displays data from the core layer and forwards user actions. Depends on the core layer but the core layer **never imports from GUI**.
+1. **GUI layer** (`gui/`) -- Contains all DearPyGui code. No business logic. Displays data from the core layer and forwards user actions. Depends on the core layer but the core layer **never imports from GUI**.
 
-2. **Core layer** (`core/`) -- Contains all business logic: session management, protocol execution, performance tracking, hardware orchestration. Has no tkinter dependency. Communicates with the GUI via named events.
+2. **Core layer** (`core/`) -- Contains all business logic: session management, protocol execution, performance tracking, hardware orchestration. Has no GUI dependency. Communicates with the GUI via named events.
 
 3. **Peripheral libraries** (`BehavLink/`, `DAQLink/`, `ScalesLink/`) -- Independent packages for hardware communication. Usable outside the GUI application. No dependency on the core or GUI layers.
 
@@ -58,18 +58,18 @@ controller.on("protocol_log", self._on_protocol_log)
 controller.on("performance_update", self._on_performance_update)
 ```
 
-The core layer fires events on background threads. The GUI layer marshals them to the tkinter main thread:
+The core layer fires events on background threads. The GUI layer marshals them to the DearPyGui render loop:
 
 ```python
 def on_main_thread(fn):
     def wrapper(**kwargs):
-        self.root.after(0, lambda: fn(**kwargs))
+        call_on_main_thread(lambda: fn(**kwargs))
     return wrapper
 
 controller.on("protocol_log", on_main_thread(self._on_protocol_log))
 ```
 
-This pattern keeps the core layer unaware of tkinter while ensuring thread safety.
+This pattern keeps the core layer unaware of DearPyGui while ensuring thread safety.
 
 ## Key events
 

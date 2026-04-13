@@ -6,11 +6,11 @@ The application has two main windows: the **Launcher** (rig selector) and the **
 
 ## Launcher
 
-The Launcher is the first window you see when running `uv run python behaviour_rig_system/main.py`. It displays a clock, a decorative generative-art background (different each launch), and all rigs defined in your `rigs.yaml` configuration. The colour palette is set by the `global.palette` key in your config.
+The Launcher is the first window you see when running `uv run python hexcontrol/main.py`. It displays a clock, a decorative generative-art background (different each launch), and all rigs defined in your `rigs.yaml` configuration. The colour palette is set by the `global.palette` key in your config.
 
 ### Rig selection
 
-Rigs are shown as toggle buttons in a 2×2 grid. Click a rig button to select or deselect it. Disabled rigs (`enabled: false` in config) are greyed out and cannot be selected.
+Rigs are shown in the sidebar list. Click a rig to select it. Disabled rigs (`enabled: false` in config) are greyed out and cannot be selected.
 
 ### Controls
 
@@ -91,7 +91,7 @@ A scrolling text pane showing protocol messages (`self.log()` calls), trial outc
 
 ### Scales plot
 
-A live matplotlib chart showing weight readings from the platform scales over time. Useful for monitoring mouse activity and verifying platform detection.
+A live DearPyGui chart showing weight readings from the platform scales over time. Useful for monitoring mouse activity and verifying platform detection.
 
 ### Stop button
 

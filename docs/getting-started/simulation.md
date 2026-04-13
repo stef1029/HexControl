@@ -9,7 +9,7 @@ Simulation mode lets you run protocols without physical hardware. This is useful
 
 ## Enabling simulation
 
-In the **Launcher** window, check the **Simulate** checkbox next to the rig before clicking Open. The rig window will use virtual hardware instead of connecting to real Arduinos.
+In the sidebar **Tools** panel, click **Mock Rig**. This opens a rig panel using virtual hardware instead of connecting to real Arduinos. You can open multiple mock rigs simultaneously for testing multi-rig scenarios.
 
 ## What gets simulated
 
@@ -41,7 +41,7 @@ This allows you to run through a full session of hundreds of trials in minutes r
 
 ### Virtual rig window
 
-When simulation is active, a **Virtual Rig Window** can display the current state of all hardware outputs (LED brightnesses, valve activations, spotlight states). This provides visual feedback during simulated sessions.
+When simulation is active, a **Virtual Rig Panel** (floating DearPyGui panel) can display the current state of all hardware outputs (LED brightnesses, valve activations, spotlight states). This provides visual feedback during simulated sessions.
 
 ## Simulated peripherals
 
@@ -54,7 +54,7 @@ When simulation is active, a **Virtual Rig Window** can display the current stat
 A typical workflow for developing a new protocol:
 
 1. Write your protocol class (see [Writing Protocols](../user-guide/protocols/index.md))
-2. Enable simulation in the launcher
+2. Click **Mock Rig** in the sidebar Tools panel
 3. Run the protocol with accelerated time (BehaviourClock)
 4. Check the trial log and performance statistics
 5. Iterate on parameters and logic

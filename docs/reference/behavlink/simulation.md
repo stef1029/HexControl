@@ -140,7 +140,7 @@ Also provides `mock_reset_arduino_via_dtr()` which skips the real reset delay.
 Virtual clock for time acceleration during simulation. When a `BehaviourClock` is active, `protocol.sleep()` and `protocol.now()` use virtual time instead of wall clock time.
 
 ```python
-from behaviour_rig_system.simulation.behavior_clock import BehaviourClock
+from hexcontrol.simulation.behavior_clock import BehaviourClock
 
 clock = BehaviourClock(speed=5.0)  # 5x faster than real time
 clock.start()
