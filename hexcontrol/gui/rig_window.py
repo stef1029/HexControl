@@ -1,31 +1,33 @@
 """
-Rig Window - Thin view layer for mode management.
+Rig Window - Thin view layer for mode management (DearPyGui).
 
-This is the main window for a single rig, managing transitions between:
+Builds its content inside a provided parent container (typically a tab)
+and manages transitions between:
     - SetupMode: Configure and start session
     - RunningMode: Monitor active session
     - PostSessionMode: Review completed session
 
 All business logic lives in SessionController. This class only:
-    1. Creates and lays out widgets
+    1. Creates and lays out widgets inside the parent
     2. Delegates user actions to the controller
-    3. Marshals controller events onto the tkinter main thread
+    3. Marshals controller events onto the DPG main thread
 """
 
 import logging
-import tkinter as tk
 from enum import Enum, auto
-from tkinter import messagebox, ttk
+from typing import Callable
+
+import dearpygui.dearpygui as dpg
 
 from hexcontrol.core.protocol_base import ProtocolStatus
 from hexcontrol.core.session_controller import SessionController
 from hexcontrol.core.session_state import SessionStatus
-
 from hexcontrol.simulation.simulated_mouse import SimulatedMouse
 
+from .dpg_app import call_on_main_thread, call_later
+from .dpg_dialogs import show_warning, show_error
 from .modes import SetupMode, RunningMode, PostSessionMode
 from .startup_overlay import StartupOverlay
-from .theme import apply_theme
 from .virtual_rig_window import VirtualRigWindow
 
 
@@ -41,47 +43,41 @@ class WindowMode(Enum):
 
 class RigWindow:
     """
-    Main window for a single behaviour rig.
+    Main view for a single behaviour rig.
 
     Thin view layer — delegates all business logic to SessionController
-    and reacts to its events.
+    and reacts to its events. Builds content inside a parent container
+    (typically a DPG tab).
     """
 
     def __init__(
         self,
+        parent_tab: int | str,
         serial_port: str = "",
         baud_rate: int = 115200,
-        parent: tk.Toplevel = None,
         rig_config=None,
         claim_mouse_fn=None,
         release_mouse_fn=None,
         get_claimed_mice_fn=None,
         cohort_folders: tuple = (),
         mice: tuple = (),
+        on_tab_close: Callable[[], None] | None = None,
     ):
-        if parent is None:
-            raise ValueError("RigWindow requires a parent window")
-
-        self.parent = parent
+        self._parent = parent_tab
         self.rig_config = rig_config
         self.claim_mouse_fn = claim_mouse_fn
         self.release_mouse_fn = release_mouse_fn
         self.get_claimed_mice_fn = get_claimed_mice_fn
         self.cohort_folders = cohort_folders
         self.mice = mice
+        self._on_tab_close = on_tab_close
 
-        # Virtual rig window (GUI-only, managed here not in controller)
         self._virtual_rig_window: VirtualRigWindow | None = None
-
-        # Simulated mouse (created on startup_complete if enabled)
         self._simulated_mouse: SimulatedMouse | None = None
-
-        # Pending result for post-session (set by protocol_complete, used by cleanup_complete)
         self._pending_result = None
-
         self._current_mode = WindowMode.SETUP
 
-        # Create the controller (all business logic)
+        # Create the controller
         self.controller = SessionController(
             rig_config=rig_config,
             serial_port=serial_port,
@@ -89,32 +85,20 @@ class RigWindow:
             simulate=rig_config.simulate if rig_config else False,
         )
 
-        self._setup_window()
+        self.rig_name = self.rig_config.name if self.rig_config else "Unknown"
+
         self._create_modes()
         self._create_startup_overlay()
         self._bind_controller_events()
         self._show_mode(WindowMode.SETUP)
 
     # =========================================================================
-    # Window Setup
+    # Mode Creation
     # =========================================================================
 
-    def _setup_window(self) -> None:
-        """Configure the main window."""
-        self.root = self.parent
-        apply_theme(self.root)
-
-        self.rig_name = self.rig_config.name if self.rig_config else "Unknown"
-        title = f"Behaviour Rig - {self.rig_name}" if self.rig_name else "Behaviour Rig System"
-        self.root.title(title)
-        self.root.geometry("640x1200")
-        self.root.minsize(580, 580)
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
     def _create_modes(self) -> None:
-        """Create the three mode frames."""
         self.setup_mode = SetupMode(
-            self.root,
+            self._parent,
             rig_config=self.rig_config,
             on_start=self._start_session,
             claim_mouse_fn=self.claim_mouse_fn,
@@ -123,19 +107,18 @@ class RigWindow:
             mice=self.mice,
         )
         self.running_mode = RunningMode(
-            self.root,
+            self._parent,
             on_stop=self._stop_session,
         )
         self.post_session_mode = PostSessionMode(
-            self.root,
+            self._parent,
             on_new_session=self._new_session,
-            on_close_window=self._close_window,
+            on_close_window=self._close_tab,
         )
 
     def _create_startup_overlay(self) -> None:
-        """Create the overlay shown during startup sequence."""
         self.startup_overlay = StartupOverlay(
-            self.root,
+            self._parent,
             on_cancel=self._cancel_startup,
         )
 
@@ -146,27 +129,17 @@ class RigWindow:
     def _bind_controller_events(self) -> None:
         """Wire controller events to GUI methods, with thread marshalling."""
         def on_main_thread(fn):
-            """Wrap fn so it runs on the tkinter main thread."""
             def wrapper(**kwargs):
-                try:
-                    if self.root.winfo_exists():
-                        self.root.after(0, lambda: fn(**kwargs) if self.root.winfo_exists() else None)
-                except tk.TclError as e:
-                    print(f"Warning: TclError in event callback: {e}")
+                call_on_main_thread(fn, **kwargs)
             return wrapper
 
         c = self.controller
-
-        # Lifecycle chain: startup -> protocol -> finalize -> cleanup -> post-session.
-        # Each listener does its GUI work and ends by calling the next controller phase.
         c.on("startup_complete",   on_main_thread(self._on_startup_complete))
         c.on("startup_error",      on_main_thread(self._on_startup_error))
         c.on("startup_cancelled",  on_main_thread(self._on_startup_cancelled))
         c.on("protocol_complete",  on_main_thread(self._on_protocol_complete))
         c.on("finalize_complete",  on_main_thread(self._on_finalize_complete))
         c.on("cleanup_complete",   on_main_thread(self._on_cleanup_complete))
-
-        # Streaming events (fire repeatedly during a phase).
         c.on("startup_status",     on_main_thread(self._on_startup_status))
         c.on("protocol_log",       on_main_thread(self._on_protocol_log))
         c.on("performance_update", on_main_thread(self._on_performance_update))
@@ -180,53 +153,54 @@ class RigWindow:
     # =========================================================================
 
     def _show_mode(self, mode: WindowMode) -> None:
-        """Switch to the specified mode."""
         if self._current_mode == WindowMode.RUNNING and mode != WindowMode.RUNNING:
             try:
                 self.running_mode.deactivate()
             except Exception as e:
                 print(f"Warning: error deactivating running mode: {e}")
 
-        self.setup_mode.pack_forget()
-        self.running_mode.pack_forget()
-        self.post_session_mode.pack_forget()
-        self.startup_overlay.pack_forget()
+        self.setup_mode.hide()
+        self.running_mode.hide()
+        self.post_session_mode.hide()
+        self.startup_overlay.hide()
 
         self._current_mode = mode
         if mode == WindowMode.SETUP:
-            self.setup_mode.pack(fill="both", expand=True)
+            self.setup_mode.show()
         elif mode == WindowMode.RUNNING:
-            self.running_mode.pack(fill="both", expand=True)
+            self.running_mode.show()
         elif mode == WindowMode.POST_SESSION:
-            self.post_session_mode.pack(fill="both", expand=True)
+            self.post_session_mode.show()
 
     # =========================================================================
-    # User Actions → Controller
+    # User Actions -> Controller
     # =========================================================================
 
     def _start_session(self, session_config: dict) -> None:
-        """Called by SetupMode when user clicks Start."""
-        self.setup_mode.pack_forget()
+        self.setup_mode.hide()
         self.startup_overlay.show()
         self.controller.start_session(session_config)
 
     def _stop_session(self) -> None:
-        """Called by RunningMode when user clicks Stop."""
         self.running_mode.set_stopping()
         self.running_mode.log_message("Requesting stop...")
         self.controller.stop_session()
 
     def _cancel_startup(self) -> None:
-        """Called by StartupOverlay when user clicks Cancel."""
         self.controller.cancel_startup()
 
     def _new_session(self) -> None:
-        """Called by PostSessionMode when user clicks New Session."""
         self.controller.new_session()
         self._show_mode(WindowMode.SETUP)
 
+    def _close_tab(self) -> None:
+        """Close this rig's tab (called from post-session Close button)."""
+        self.controller.close()
+        if self._on_tab_close:
+            self._on_tab_close()
+
     # =========================================================================
-    # Controller Event Handlers (all run on main thread)
+    # Controller Event Handlers
     # =========================================================================
 
     def _on_startup_status(self, message: str) -> None:
@@ -238,22 +212,19 @@ class RigWindow:
     ) -> None:
         self.startup_overlay.hide()
 
-        # Determine if mouse is enabled and headless
         mouse_enabled = (
             mouse_params is not None and mouse_params.get("mouse_enabled", False)
         )
         mouse_headless = mouse_params.get("mouse_headless", False) if mouse_enabled else False
 
-        # Open VirtualRigWindow unless headless mouse is active
         if virtual_rig_state is not None and not mouse_headless:
-            self._virtual_rig_window = VirtualRigWindow(self.root, virtual_rig_state)
+            self._virtual_rig_window = VirtualRigWindow(None, virtual_rig_state)
 
         if scales_client is not None:
             self.running_mode.set_scales_client(scales_client)
             if self.rig_config and self.rig_config.simulate:
                 self.running_mode.set_battery_detection(False)
 
-        # Extract rig number from name (e.g. "Rig 1" -> 1)
         try:
             rig_number = int(self.rig_name.split()[-1])
         except (ValueError, IndexError):
@@ -264,7 +235,6 @@ class RigWindow:
             rig_number=rig_number,
         )
 
-        # Set scales threshold line if available
         scales_threshold = session_info.get("scales_threshold")
         if scales_threshold is not None:
             self.running_mode.set_scales_threshold(scales_threshold)
@@ -275,22 +245,15 @@ class RigWindow:
         self.running_mode.log_message("Session started!")
         self.running_mode.log_message(f"Running {session_info['protocol_name']}...")
 
-        # Create and start simulated mouse if enabled
         if mouse_enabled and virtual_rig_state is not None:
             self._simulated_mouse = SimulatedMouse(mouse_params, virtual_rig_state, clock=clock)
-
-            # Wire mouse events to GUI via main thread
-            def on_main_thread(fn):
-                def wrapper(**kwargs):
-                    self.root.after(0, lambda: fn(**kwargs))
-                return wrapper
-
             self._simulated_mouse.on(
-                "log", on_main_thread(lambda message: self.running_mode.log_message(message))
+                "log", lambda message: call_on_main_thread(
+                    self.running_mode.log_message, message=message
+                )
             )
             self._simulated_mouse.start()
 
-        # Start protocol execution
         self.controller.run_protocol()
 
     def _on_startup_error(self, message: str) -> None:
@@ -318,7 +281,6 @@ class RigWindow:
         self.controller.finalize_protocol(final_status)
 
     def _on_finalize_complete(self, result) -> None:
-        # Fill in elapsed time from the GUI timer (timer already stopped above)
         result.elapsed_time = self.running_mode.get_elapsed_time()
         self._pending_result = result
         self.running_mode.log_message("Cleaning up...")
@@ -328,23 +290,18 @@ class RigWindow:
         self.running_mode.log_message(message)
 
     def _on_cleanup_complete(self) -> None:
-        # Stop simulated mouse
         if self._simulated_mouse is not None:
             self._simulated_mouse.stop()
             self._simulated_mouse = None
 
-        # Close virtual rig window
         if self._virtual_rig_window is not None:
             self._virtual_rig_window.close()
             self._virtual_rig_window = None
 
         self.running_mode.log_message("Cleanup complete")
-
-        # Brief delay so user can read the final cleanup messages
-        self.root.after(500, self._transition_to_post_session)
+        call_later(500, self._transition_to_post_session)
 
     def _transition_to_post_session(self) -> None:
-        """Switch to post-session mode with the pending result."""
         if self._pending_result is not None:
             self.post_session_mode.activate({
                 "status": self._pending_result.status,
@@ -358,14 +315,12 @@ class RigWindow:
             self._pending_result = None
 
     def _on_status_changed(self, status: SessionStatus) -> None:
-        pass  # Available for future use (e.g. disabling buttons based on status)
+        pass
 
     def _on_peripheral_error(self, message: str = "") -> None:
-        """A peripheral subprocess died during the session."""
         self.running_mode.log_message(f"ERROR: {message}")
         logger.error(f"[Rig Window] {message}")
-        from tkinter import messagebox
-        messagebox.showerror(
+        show_error(
             "Peripheral Failure",
             f"{message}\n\n"
             "The session has been stopped.\n"
@@ -373,29 +328,9 @@ class RigWindow:
         )
 
     # =========================================================================
-    # Window Management
+    # Helpers
     # =========================================================================
 
     def _close_startup_error(self) -> None:
-        """Close the startup error overlay and return to setup mode."""
         self.startup_overlay.hide()
         self._show_mode(WindowMode.SETUP)
-
-    def _close_window(self) -> None:
-        """Close this rig window entirely (called from post-session)."""
-        self.controller.close()
-        try:
-            self.root.destroy()
-        except Exception as e:
-            print(f"Warning: error destroying rig window: {e}")
-
-    def _on_close(self) -> None:
-        """Handle window close event."""
-        if self._current_mode == WindowMode.RUNNING:
-            logger.warning("[Rig Window] Cannot close: session is currently running")
-            messagebox.showwarning(
-                "Session Running",
-                "A session is currently running.\n\nPlease stop the session before closing the window."
-            )
-            return
-        self._close_window()

@@ -1,5 +1,5 @@
 """
-Post-Session Mode - Review completed session.
+Post-Session Mode - Review completed session (DearPyGui).
 
 Shows:
     - Session summary (status, protocol, mouse, duration, save path)
@@ -10,114 +10,94 @@ Shows:
 import os
 import subprocess
 import sys
-import tkinter as tk
-from tkinter import ttk
 from typing import Callable
 
-from hexcontrol.gui.theme import Theme
+import dearpygui.dearpygui as dpg
+
+from hexcontrol.gui.theme import Theme, hex_to_rgba
 from hexcontrol.gui.tracker_report_widget import TrackerReportWidget
 
 
-class PostSessionMode(ttk.Frame):
-    """
-    Post-session mode - shows session summary and new session button.
-    """
+class PostSessionMode:
+    """Post-session mode — shows session summary and action buttons."""
 
     def __init__(
         self,
-        parent: tk.Widget,
+        parent: int | str,
         on_new_session: Callable[[], None],
         on_close_window: Callable[[], None] | None = None,
     ):
-        """
-        Args:
-            parent: Parent widget
-            on_new_session: Callback when Ctrl+click (new session in same folder)
-            on_close_window: Callback when normal click (close window)
-        """
-        super().__init__(parent)
+        self._parent = parent
         self._on_new_session = on_new_session
         self._on_close_window = on_close_window
         self._save_path: str = ""
 
-        self._create_widgets()
+        # DPG IDs
+        self._window_id: int | None = None
+        self._header_text: int | None = None
+        self._summary_labels: dict[str, int] = {}
+        self._perf_container: int | None = None
 
-    def _create_widgets(self) -> None:
-        """Create the post-session UI widgets."""
+        self._build()
+
+    def _build(self) -> None:
         palette = Theme.palette
+        self._window_id = dpg.add_group(parent=self._parent, show=False)
+        root = self._window_id
 
-        # Close / New Session button (packed first so it's always visible at bottom)
-        button_frame = ttk.Frame(self)
-        button_frame.pack(side="bottom", fill="x", padx=18, pady=14)
-
-        hint = ttk.Label(
-            button_frame,
-            text="Ctrl+click for new session (same session folder)",
-            style="Muted.TLabel"
+        # Header
+        self._header_text = dpg.add_text(
+            "Session Complete", parent=root,
+            color=hex_to_rgba(palette.text_primary),
         )
-        hint.pack(side="right", padx=10)
+        if Theme.font_title():
+            dpg.bind_item_font(self._header_text, Theme.font_title())
 
-        self._new_session_button = ttk.Button(
-            button_frame, text="Close Window",
-            style="Primary.TButton"
-        )
-        self._new_session_button.pack(side="right", padx=5)
-        self._new_session_button.bind("<Button-1>", self._on_button_click)
+        dpg.add_spacer(height=8, parent=root)
 
-        # Resizable paned area for summary and performance report
-        self._paned = ttk.PanedWindow(self, orient="vertical")
-        self._paned.pack(fill="both", expand=True, padx=10, pady=6)
+        # Summary
+        with dpg.collapsing_header(label="Session Summary", default_open=True, parent=root):
+            for key, label_text in [
+                ("status", "Status:"),
+                ("protocol", "Protocol:"),
+                ("mouse", "Mouse:"),
+                ("duration", "Duration:"),
+                ("save_path", "Data saved to:"),
+            ]:
+                with dpg.group(horizontal=True):
+                    dpg.add_text(label_text, color=hex_to_rgba(palette.text_secondary))
+                    self._summary_labels[key] = dpg.add_text("")
 
-        # --- Pane 1: Session Summary ---
-        summary_pane = ttk.Frame(self._paned)
+        # Performance Report
+        with dpg.collapsing_header(label="Performance Report", default_open=True, parent=root):
+            self._perf_container = dpg.add_group()
 
-        self._header = ttk.Label(
-            summary_pane, text="Session Complete",
-            style="Title.TLabel"
-        )
-        self._header.pack(pady=14)
-
-        summary_frame = ttk.LabelFrame(summary_pane, text="Session Summary", padding=(14, 10))
-        summary_frame.pack(fill="x", padx=8, pady=8)
-
-        self._summary_labels = {}
-        summary_items = [
-            ("status", "Status:"),
-            ("protocol", "Protocol:"),
-            ("mouse", "Mouse:"),
-            ("duration", "Duration:"),
-            ("save_path", "Data saved to:"),
-        ]
-
-        for key, label_text in summary_items:
-            row = ttk.Frame(summary_frame)
-            row.pack(fill="x", pady=2)
-            ttk.Label(
-                row, text=label_text,
-                style="Subheading.TLabel", width=16, anchor="e"
-            ).pack(side="left")
-            value_label = ttk.Label(
-                row, text="",
-                foreground=palette.text_secondary,
-                font=Theme.font_body()
+        # Buttons
+        dpg.add_spacer(height=8, parent=root)
+        with dpg.group(horizontal=True, parent=root):
+            close_btn = dpg.add_button(
+                label="Close Window",
+                callback=lambda: self._on_close_click(),
             )
-            value_label.pack(side="left", padx=8)
-            self._summary_labels[key] = value_label
+            if Theme.primary_button_theme:
+                dpg.bind_item_theme(close_btn, Theme.primary_button_theme)
 
-        self._paned.add(summary_pane, weight=1)
+            new_btn = dpg.add_button(
+                label="New Session",
+                callback=lambda: self._on_new_session_click(),
+            )
+            if Theme.secondary_button_theme:
+                dpg.bind_item_theme(new_btn, Theme.secondary_button_theme)
 
-        # --- Pane 2: Performance Report ---
-        self._perf_frame = ttk.LabelFrame(self._paned, text="Performance Report", padding=(14, 10))
-        self._paned.add(self._perf_frame, weight=3)
+            dpg.add_text(
+                "  (New Session keeps the same session folder)",
+                color=hex_to_rgba(palette.text_secondary),
+            )
 
     def activate(self, session_result: dict) -> None:
-        """
-        Called when this mode becomes active.
+        """Called when this mode becomes active."""
+        palette = Theme.palette
 
-        Args:
-            session_result: Dict with status, protocol_name, mouse_id,
-                          elapsed_time, save_path, and performance_reports
-        """
         # Format duration
         elapsed = session_result.get("elapsed_time", 0)
         hours = int(elapsed // 3600)
@@ -125,54 +105,55 @@ class PostSessionMode(ttk.Frame):
         seconds = int(elapsed % 60)
         duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-        # Store save path for folder-open button
         self._save_path = session_result.get("save_path", "")
 
         # Set summary values
         status = session_result.get("status", "Unknown")
-        self._summary_labels["status"].config(text=status)
-        self._summary_labels["protocol"].config(text=session_result.get("protocol_name", ""))
-        self._summary_labels["mouse"].config(text=session_result.get("mouse_id", ""))
-        self._summary_labels["duration"].config(text=duration_str)
-        self._summary_labels["save_path"].config(text=session_result.get("save_path", ""))
+        _set(self._summary_labels.get("status"), str(status))
+        _set(self._summary_labels.get("protocol"), session_result.get("protocol_name", ""))
+        _set(self._summary_labels.get("mouse"), session_result.get("mouse_id", ""))
+        _set(self._summary_labels.get("duration"), duration_str)
+        _set(self._summary_labels.get("save_path"), session_result.get("save_path", ""))
 
         # Color-code status
-        palette = Theme.palette
         status_colors = {
             "Completed": palette.success,
             "Stopped": palette.warning,
             "Error": palette.error,
         }
-        color = status_colors.get(status, "black")
-        self._summary_labels["status"].config(foreground=color)
+        color = status_colors.get(str(status), palette.text_primary)
+        status_id = self._summary_labels.get("status")
+        if status_id and dpg.does_item_exist(status_id):
+            dpg.configure_item(status_id, color=hex_to_rgba(color))
 
-        # Build tracker report widget
+        # Build tracker report
         self._update_performance_reports(session_result.get("performance_reports"))
 
-    def _update_performance_reports(self, reports: dict[str, dict] | None) -> None:
-        """Replace the performance section with a TrackerReportWidget."""
-        for child in self._perf_frame.winfo_children():
-            child.destroy()
+    def _update_performance_reports(self, reports) -> None:
+        if self._perf_container and dpg.does_item_exist(self._perf_container):
+            for child in dpg.get_item_children(self._perf_container, 1) or []:
+                dpg.delete_item(child)
+            TrackerReportWidget(self._perf_container, reports or {})
 
-        widget = TrackerReportWidget(self._perf_frame, reports or {})
-        widget.pack(fill="both", expand=True)
+    def _on_close_click(self) -> None:
+        if self._on_close_window:
+            self._on_close_window()
 
-    def _open_session_folder(self) -> None:
-        """Open the session save folder in the system file explorer."""
-        if not self._save_path or not os.path.isdir(self._save_path):
-            return
-        if sys.platform == "win32":
-            os.startfile(self._save_path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", self._save_path])
-        else:
-            subprocess.Popen(["xdg-open", self._save_path])
+    def _on_new_session_click(self) -> None:
+        if self._on_new_session:
+            self._on_new_session()
 
-    def _on_button_click(self, event: tk.Event) -> None:
-        """Handle button click: Ctrl+click = new session, normal click = close window."""
-        if event.state & 0x4:  # Ctrl key held
-            if self._on_new_session:
-                self._on_new_session()
-        else:
-            if self._on_close_window:
-                self._on_close_window()
+    # ----- Show / hide -----
+
+    def show(self) -> None:
+        if self._window_id and dpg.does_item_exist(self._window_id):
+            dpg.configure_item(self._window_id, show=True)
+
+    def hide(self) -> None:
+        if self._window_id and dpg.does_item_exist(self._window_id):
+            dpg.configure_item(self._window_id, show=False)
+
+
+def _set(item_id: int | None, text: str) -> None:
+    if item_id is not None and dpg.does_item_exist(item_id):
+        dpg.set_value(item_id, text)

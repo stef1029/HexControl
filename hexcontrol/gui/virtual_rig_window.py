@@ -1,371 +1,243 @@
 """
-Virtual Rig Window — Interactive top-down hex rig visualisation.
+Virtual Rig Window — Interactive top-down hex rig visualisation (DearPyGui).
 
-Opens as a separate Toplevel alongside the RigWindow when in simulate mode.
-Renders the 6.port hexagonal rig with clickable nose-poke ports, a weight
+Opens as a DPG window alongside the RigWindow when in simulate mode.
+Renders the 6-port hexagonal rig with clickable nose-poke ports, a weight
 slider for platform simulation, GPIO toggles, and real-time visual feedback
 for LEDs, spotlights, valves, speaker and IR state.
-
-Usage (from rig_window.py):
-    from gui.virtual_rig_window import VirtualRigWindow
-    vr_win = VirtualRigWindow(parent, virtual_rig_state)
-    ...
-    vr_win.close()
 """
 
 from __future__ import annotations
 
 import math
-import tkinter as tk
-from tkinter import ttk
 from typing import Optional, TYPE_CHECKING
 
-from .theme import Theme, apply_theme
+import dearpygui.dearpygui as dpg
+
+from .dpg_app import frame_poller
+from .theme import Theme, hex_to_rgba
 
 if TYPE_CHECKING:
     from BehavLink.simulation import VirtualRigState, RigStateSnapshot
 
 
-# ── Colour helpers ──────────────────────────────────────────────────────────
-
-def _lerp_colour(colour_off: str, colour_on: str, fraction: float) -> str:
-    """
-    Linearly interpolate between two hex colours.
-
-    *fraction* is clamped to [0, 1].
-    """
-    fraction = max(0.0, min(1.0, fraction))
-    r1, g1, b1 = int(colour_off[1:3], 16), int(colour_off[3:5], 16), int(colour_off[5:7], 16)
-    r2, g2, b2 = int(colour_on[1:3], 16), int(colour_on[3:5], 16), int(colour_on[5:7], 16)
-    r = int(r1 + (r2 - r1) * fraction)
-    g = int(g1 + (g2 - g1) * fraction)
-    b = int(b1 + (b2 - b1) * fraction)
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-# ── Constants ───────────────────────────────────────────────────────────────
+# ── Constants ───────────────────────────────────────────────────────────
 
 _CANVAS_SIZE = 420
 _CENTRE = _CANVAS_SIZE // 2
 _PORT_RADIUS = 38
-_PORT_ORBIT = 145  # distance from centre to port centre
+_PORT_ORBIT = 145
 _PLATFORM_RADIUS = 60
 
-# Port positions: 0 = top, going clockwise
-_PORT_ANGLES_DEG = [90, 30, 330, 270, 210, 150]  # 0=top, 1=upper-right, ...
+_PORT_ANGLES_DEG = [90, 30, 330, 270, 210, 150]
 
-_COLOUR_PORT_OFF = "#2a3040"
-_COLOUR_PORT_OUTLINE = "#4a5568"
-_COLOUR_LED_ON = "#3498db"
-_COLOUR_SPOTLIGHT = "#f1c40f"
-_COLOUR_VALVE = "#2ecc71"
-_COLOUR_PLATFORM_EMPTY = "#1e2530"
-_COLOUR_PLATFORM_MOUSE = "#27ae60"
-_COLOUR_SPEAKER_ON = "#e67e22"
-_COLOUR_IR_ON = "#9b59b6"
-_COLOUR_CANVAS_BG = "#141820"
-_COLOUR_TEXT = "#cdd5e0"
+_COLOUR_PORT_OFF = [42, 48, 64, 255]
+_COLOUR_PORT_OUTLINE = [74, 85, 104, 255]
+_COLOUR_LED_ON = [52, 152, 219, 255]
+_COLOUR_SPOTLIGHT = [241, 196, 15, 255]
+_COLOUR_VALVE = [46, 204, 113, 255]
+_COLOUR_PLATFORM_EMPTY = [30, 37, 48, 255]
+_COLOUR_PLATFORM_MOUSE = [39, 174, 96, 255]
+_COLOUR_SPEAKER_ON = [230, 126, 34, 255]
+_COLOUR_IR_ON = [155, 89, 182, 255]
+_COLOUR_CANVAS_BG = [20, 24, 32, 255]
+_COLOUR_TEXT = [205, 213, 224, 255]
+_COLOUR_DIM = [85, 85, 85, 255]
+
+
+def _lerp_colour(c_off: list[int], c_on: list[int], fraction: float) -> list[int]:
+    fraction = max(0.0, min(1.0, fraction))
+    return [
+        int(c_off[i] + (c_on[i] - c_off[i]) * fraction)
+        for i in range(4)
+    ]
 
 
 class VirtualRigWindow:
-    """
-    Tkinter Toplevel window showing an interactive top-down rig schematic.
-    """
+    """DPG window showing an interactive top-down rig schematic."""
 
-    def __init__(self, parent: tk.Misc, state: "VirtualRigState") -> None:
+    def __init__(self, parent: int | str, state: "VirtualRigState") -> None:
         self._state = state
         self._closed = False
 
-        # ── Window setup ────────────────────────────────────────────────
-        self._win = tk.Toplevel(parent)
-        self._win.title("Virtual Rig")
-        self._win.geometry("480x720")
-        self._win.minsize(420, 600)
-        self._win.protocol("WM_DELETE_WINDOW", self._on_close_request)
-        self._win.configure(bg=Theme.palette.bg_primary)
+        self._port_items: list[dict] = []
+        self._platform_item: int | None = None
+        self._platform_text: int | None = None
+        self._speaker_item: int | None = None
+        self._speaker_text: int | None = None
+        self._ir_item: int | None = None
+        self._ir_text: int | None = None
 
-        self._win.lift()
+        self._weight_text: int | None = None
+        self._gpio_indicators: list[int] = []
+        self._gpio_buttons: list[int] = []
+        self._daq_indicators: list[int] = []
 
-        # ── Main layout ─────────────────────────────────────────────────
-        self._build_canvas()
-        self._build_controls()
-        self._build_gpio_panel()
-        self._build_daq_link_panel()
-
-        # Port canvas item IDs
-        self._port_items: list[dict] = []  # [{circle, label, glow, ...}, ...]
-        self._platform_item: Optional[int] = None
-        self._speaker_item: Optional[int] = None
-        self._ir_item: Optional[int] = None
-
-        # Draw the initial rig
-        self._draw_rig()
-
-        # Store the last snapshot for diff-based redraws
         self._last_snap: Optional["RigStateSnapshot"] = None
 
-        # Polling-based redraw (~30 fps).  No observer callbacks.
-        self._POLL_INTERVAL_MS = 33  # ~30 Hz
-        self._poll_timer_id: Optional[str] = None
-        self._start_polling()
+        self._build_window()
+        self._draw_rig()
 
-    # ── Build UI ────────────────────────────────────────────────────────
+        # Start polling
+        frame_poller.register(33, self._poll_tick)
 
-    def _build_canvas(self) -> None:
-        """Create the hex schematic Canvas."""
-        frame = ttk.LabelFrame(
-            self._win, text="  Rig Schematic  ", padding=6
+    def _build_window(self) -> None:
+        palette = Theme.palette
+        self._window_id = dpg.add_window(
+            label="Virtual Rig", width=500, height=720,
+            on_close=self._on_close_request,
         )
-        frame.pack(fill="x", padx=10, pady=(10, 4))
 
-        self._canvas = tk.Canvas(
-            frame,
-            width=_CANVAS_SIZE,
-            height=_CANVAS_SIZE,
-            bg=_COLOUR_CANVAS_BG,
-            highlightthickness=0,
-        )
-        self._canvas.pack(padx=4, pady=4)
-
-    def _build_controls(self) -> None:
-        """Create weight slider and mouse-on-platform toggle."""
-        frame = ttk.LabelFrame(
-            self._win, text="  Platform Weight  ", padding=8
-        )
-        frame.pack(fill="x", padx=10, pady=4)
-
-        # Weight slider
-        slider_frame = ttk.Frame(frame)
-        slider_frame.pack(fill="x")
-
-        ttk.Label(slider_frame, text="0 g", style="Muted.TLabel").pack(side="left")
-        ttk.Label(slider_frame, text="50 g", style="Muted.TLabel").pack(side="right")
-
-        self._weight_var = tk.DoubleVar(value=0.0)
-        self._weight_scale = tk.Scale(
-            slider_frame,
-            from_=0, to=50,
-            resolution=0.1,
-            orient="horizontal",
-            variable=self._weight_var,
-            command=self._on_weight_change,
-            bg=Theme.palette.bg_secondary,
-            fg=Theme.palette.text_primary,
-            troughcolor=Theme.palette.bg_tertiary,
-            highlightthickness=0,
-            length=340,
-        )
-        self._weight_scale.pack(fill="x", padx=4, pady=(0, 2))
-
-        # Weight readout and quick-toggle
-        bottom_row = ttk.Frame(frame)
-        bottom_row.pack(fill="x")
-
-        self._weight_label = ttk.Label(
-            bottom_row, text="Weight: 0.0 g",
-            font=Theme.font_mono(size=11),
-        )
-        self._weight_label.pack(side="left", padx=4)
-
-        self._mouse_on_var = tk.BooleanVar(value=False)
-        self._mouse_btn = ttk.Checkbutton(
-            bottom_row,
-            text="Quick: Mouse on (25 g)",
-            variable=self._mouse_on_var,
-            command=self._on_mouse_toggle,
-        )
-        self._mouse_btn.pack(side="right", padx=4)
-
-    def _build_gpio_panel(self) -> None:
-        """Create the GPIO simulation panel."""
-        frame = ttk.LabelFrame(
-            self._win, text="  GPIO Pins  ", padding=8
-        )
-        frame.pack(fill="x", padx=10, pady=4)
-
-        self._gpio_buttons: list[ttk.Button] = []
-        self._gpio_indicators: list[ttk.Label] = []
-
-        grid = ttk.Frame(frame)
-        grid.pack(fill="x")
-
-        for pin in range(4):
-            col_frame = ttk.Frame(grid)
-            col_frame.pack(side="left", expand=True, padx=2)
-
-            lbl = ttk.Label(col_frame, text=f"Pin {pin}", style="Muted.TLabel")
-            lbl.pack()
-
-            indicator = ttk.Label(
-                col_frame, text="—", width=6, anchor="center",
-                font=Theme.font_mono(size=9),
+        # Rig schematic drawlist
+        with dpg.collapsing_header(label="Rig Schematic", default_open=True,
+                                   parent=self._window_id):
+            self._drawlist = dpg.add_drawlist(
+                width=_CANVAS_SIZE, height=_CANVAS_SIZE,
+                parent=dpg.last_item(),
             )
-            indicator.pack(pady=(2, 2))
-            self._gpio_indicators.append(indicator)
 
-            btn = ttk.Button(
-                col_frame, text="Toggle",
-                command=lambda p=pin: self._on_gpio_click(p),
-                width=7,
-            )
-            btn.pack()
-            self._gpio_buttons.append(btn)
+        # Platform Weight controls
+        with dpg.collapsing_header(label="Platform Weight", default_open=True,
+                                   parent=self._window_id):
+            with dpg.group(horizontal=True):
+                dpg.add_text("0 g", color=hex_to_rgba(palette.text_secondary))
+                dpg.add_slider_float(
+                    min_value=0, max_value=50, default_value=0,
+                    width=300, format="%.1f g",
+                    callback=self._on_weight_change, tag="vr_weight_slider",
+                )
+                dpg.add_text("50 g", color=hex_to_rgba(palette.text_secondary))
+            with dpg.group(horizontal=True):
+                self._weight_text = dpg.add_text("Weight: 0.0 g")
+                dpg.add_checkbox(
+                    label="Quick: Mouse on (25g)",
+                    callback=self._on_mouse_toggle, tag="vr_mouse_toggle",
+                )
 
-        # Status hint
-        self._gpio_hint = ttk.Label(
-            frame,
-            text="Click Toggle to inject a GPIO event (for INPUT pins)",
-            style="Muted.TLabel",
-        )
-        self._gpio_hint.pack(pady=(4, 0))
+        # GPIO pins
+        with dpg.collapsing_header(label="GPIO Pins", default_open=True,
+                                   parent=self._window_id):
+            with dpg.group(horizontal=True):
+                for pin in range(4):
+                    with dpg.group():
+                        dpg.add_text(f"Pin {pin}", color=hex_to_rgba(palette.text_secondary))
+                        indicator = dpg.add_text("--")
+                        self._gpio_indicators.append(indicator)
+                        btn = dpg.add_button(
+                            label="Toggle",
+                            callback=lambda s, a, p=pin: self._on_gpio_click(p),
+                        )
+                        self._gpio_buttons.append(btn)
 
-    def _build_daq_link_panel(self) -> None:
-        """Create the DAQ link pin display panel."""
-        frame = ttk.LabelFrame(
-            self._win, text="  DAQ Link Pins  ", padding=8
-        )
-        frame.pack(fill="x", padx=10, pady=(4, 10))
-
-        self._daq_link_indicators: list[ttk.Label] = []
-
-        grid = ttk.Frame(frame)
-        grid.pack(fill="x")
-
-        for idx in range(2):
-            col_frame = ttk.Frame(grid)
-            col_frame.pack(side="left", expand=True, padx=2)
-
-            lbl = ttk.Label(col_frame, text=f"DAQ {idx}", style="Muted.TLabel")
-            lbl.pack()
-
-            indicator = ttk.Label(
-                col_frame, text="LO", width=6, anchor="center",
-                font=Theme.font_mono(size=9),
-            )
-            indicator.pack(pady=(2, 2))
-            self._daq_link_indicators.append(indicator)
-
-    # ── Draw rig schematic ──────────────────────────────────────────────
+        # DAQ link pins
+        with dpg.collapsing_header(label="DAQ Link Pins", default_open=True,
+                                   parent=self._window_id):
+            with dpg.group(horizontal=True):
+                for idx in range(2):
+                    with dpg.group():
+                        dpg.add_text(f"DAQ {idx}", color=hex_to_rgba(palette.text_secondary))
+                        indicator = dpg.add_text("LO")
+                        self._daq_indicators.append(indicator)
 
     def _draw_rig(self) -> None:
-        """Draw the initial rig layout on the canvas."""
-        c = self._canvas
+        dl = self._drawlist
 
-        # Platform (centre circle)
-        r = _PLATFORM_RADIUS
-        self._platform_item = c.create_oval(
-            _CENTRE - r, _CENTRE - r, _CENTRE + r, _CENTRE + r,
-            fill=_COLOUR_PLATFORM_EMPTY, outline="#3a4555", width=2,
+        # Platform
+        self._platform_item = dpg.draw_circle(
+            center=[_CENTRE, _CENTRE], radius=_PLATFORM_RADIUS,
+            fill=_COLOUR_PLATFORM_EMPTY, color=[58, 69, 85, 255], thickness=2,
+            parent=dl,
         )
-        self._platform_text = c.create_text(
-            _CENTRE, _CENTRE,
-            text="0.0 g", fill=_COLOUR_TEXT,
-            font=Theme.font_mono(size=11),
+        self._platform_text = dpg.draw_text(
+            pos=[_CENTRE - 20, _CENTRE - 6], text="0.0 g",
+            color=_COLOUR_TEXT, size=14, parent=dl,
         )
 
-        # Speaker indicator (small circle top-right of platform)
+        # Speaker indicator
         sx, sy = _CENTRE + _PLATFORM_RADIUS + 18, _CENTRE - _PLATFORM_RADIUS - 18
-        self._speaker_item = c.create_oval(
-            sx - 10, sy - 10, sx + 10, sy + 10,
-            fill=_COLOUR_CANVAS_BG, outline="#4a5568", width=1,
+        self._speaker_item = dpg.draw_circle(
+            center=[sx, sy], radius=10,
+            fill=_COLOUR_CANVAS_BG, color=_COLOUR_PORT_OUTLINE, thickness=1,
+            parent=dl,
         )
-        self._speaker_label = c.create_text(
-            sx, sy, text="♪", fill="#555", font=Theme.font(size=12),
+        self._speaker_text = dpg.draw_text(
+            pos=[sx - 4, sy - 6], text="M", color=_COLOUR_DIM, size=12, parent=dl,
         )
 
-        # IR indicator (small circle top-left of platform)
+        # IR indicator
         ix, iy = _CENTRE - _PLATFORM_RADIUS - 18, _CENTRE - _PLATFORM_RADIUS - 18
-        self._ir_item = c.create_oval(
-            ix - 10, iy - 10, ix + 10, iy + 10,
-            fill=_COLOUR_CANVAS_BG, outline="#4a5568", width=1,
+        self._ir_item = dpg.draw_circle(
+            center=[ix, iy], radius=10,
+            fill=_COLOUR_CANVAS_BG, color=_COLOUR_PORT_OUTLINE, thickness=1,
+            parent=dl,
         )
-        self._ir_label = c.create_text(
-            ix, iy, text="IR", fill="#555", font=Theme.font(size=8, weight="bold"),
+        self._ir_text = dpg.draw_text(
+            pos=[ix - 5, iy - 5], text="IR", color=_COLOUR_DIM, size=10, parent=dl,
         )
 
-        # 6 ports
+        # 6 Ports
         for port in range(6):
             angle_deg = _PORT_ANGLES_DEG[port]
             angle_rad = math.radians(angle_deg)
             px = _CENTRE + _PORT_ORBIT * math.cos(angle_rad)
-            py = _CENTRE - _PORT_ORBIT * math.sin(angle_rad)  # canvas Y is inverted
+            py = _CENTRE - _PORT_ORBIT * math.sin(angle_rad)
 
-            r = _PORT_RADIUS
-
-            # Glow ring (invisible at start, shown when LED/spotlight is on)
-            glow = c.create_oval(
-                px - r - 6, py - r - 6, px + r + 6, py + r + 6,
-                fill="", outline="", width=3,
+            glow = dpg.draw_circle(
+                center=[px, py], radius=_PORT_RADIUS + 6,
+                fill=[0, 0, 0, 0], color=[0, 0, 0, 0], thickness=3,
+                parent=dl,
             )
-
-            # Main port circle
-            circle = c.create_oval(
-                px - r, py - r, px + r, py + r,
-                fill=_COLOUR_PORT_OFF, outline=_COLOUR_PORT_OUTLINE, width=2,
+            circle = dpg.draw_circle(
+                center=[px, py], radius=_PORT_RADIUS,
+                fill=_COLOUR_PORT_OFF, color=_COLOUR_PORT_OUTLINE, thickness=2,
+                parent=dl,
             )
-
-            # Port label
-            label = c.create_text(
-                px, py - 8,
-                text=f"Port {port}", fill=_COLOUR_TEXT,
-                font=Theme.font(size=9),
+            label = dpg.draw_text(
+                pos=[px - 18, py - 12], text=f"Port {port}",
+                color=_COLOUR_TEXT, size=12, parent=dl,
             )
-
-            # Sensor label (below port number)
-            sensor_lbl = c.create_text(
-                px, py + 10,
-                text="⬡", fill="#555",
-                font=Theme.font(size=12),
-            )
-
-            # Click binding on the port circle
-            for item in (circle, label, sensor_lbl):
-                c.tag_bind(item, "<Button-1>", lambda e, p=port: self._on_port_click(p))
-                c.tag_bind(item, "<Enter>", lambda e, cid=circle: c.configure(cursor="hand2"))
-                c.tag_bind(item, "<Leave>", lambda e, cid=circle: c.configure(cursor=""))
 
             self._port_items.append({
                 "circle": circle,
-                "label": label,
-                "sensor": sensor_lbl,
                 "glow": glow,
-                "cx": px,
-                "cy": py,
+                "label": label,
+                "cx": px, "cy": py,
             })
+
+        # Click handler for the drawlist — hit-test port circles
+        with dpg.item_handler_registry() as handler:
+            dpg.add_item_clicked_handler(callback=self._on_canvas_click)
+        dpg.bind_item_handler_registry(self._drawlist, handler)
+
+    def _on_canvas_click(self, sender, app_data) -> None:
+        mx, my = dpg.get_drawing_mouse_pos()
+        for port, items in enumerate(self._port_items):
+            dx = mx - items["cx"]
+            dy = my - items["cy"]
+            if dx * dx + dy * dy <= _PORT_RADIUS * _PORT_RADIUS:
+                self._on_port_click(port)
+                break
 
     # ── Polling-based redraw ───────────────────────────────────────────
 
-    def _start_polling(self) -> None:
-        """Start the fixed-rate polling loop."""
-        self._poll_tick()
-
     def _poll_tick(self) -> None:
-        """Called at ~30 Hz.  Takes a snapshot only if state is dirty."""
         if self._closed:
             return
-        try:
-            snap = self._state.take_snapshot_if_dirty()
-            if snap is not None:
-                self._redraw(snap)
-            self._poll_timer_id = self._win.after(self._POLL_INTERVAL_MS, self._poll_tick)
-        except tk.TclError as e:
-            print(f"Warning: virtual rig poll error (window destroyed?): {e}")
+        snap = self._state.take_snapshot_if_dirty()
+        if snap is not None:
+            self._redraw(snap)
 
     def _redraw(self, snap: "RigStateSnapshot") -> None:
-        """Redraw only the elements that changed since the last snapshot."""
         if self._closed:
             return
-        c = self._canvas
         prev = self._last_snap
 
-        # ── Ports (only update changed ones) ────────────────────────────
         for port in range(6):
             items = self._port_items[port]
             led_br = snap.led_brightness[port]
             spot_br = snap.spotlight_brightness[port]
             valve = snap.valve_pulsing[port]
 
-            # Skip if nothing changed for this port
             if prev is not None and (
                 led_br == prev.led_brightness[port]
                 and spot_br == prev.spotlight_brightness[port]
@@ -373,25 +245,23 @@ class VirtualRigWindow:
             ):
                 continue
 
-            # Port fill: blend with LED colour
             if led_br > 0:
                 fill = _lerp_colour(_COLOUR_PORT_OFF, _COLOUR_LED_ON, led_br / 255)
             else:
                 fill = _COLOUR_PORT_OFF
-            c.itemconfigure(items["circle"], fill=fill)
+            dpg.configure_item(items["circle"], fill=fill)
 
-            # Glow ring: spotlight = yellow, valve = green, LED = blue, off = hidden
             if spot_br > 0:
-                glow_colour = _lerp_colour("#332800", _COLOUR_SPOTLIGHT, spot_br / 255)
-                c.itemconfigure(items["glow"], outline=glow_colour, width=4)
+                glow_colour = _lerp_colour([51, 40, 0, 255], _COLOUR_SPOTLIGHT, spot_br / 255)
+                dpg.configure_item(items["glow"], color=glow_colour, thickness=4)
             elif valve:
-                c.itemconfigure(items["glow"], outline=_COLOUR_VALVE, width=4)
+                dpg.configure_item(items["glow"], color=_COLOUR_VALVE, thickness=4)
             elif led_br > 0:
-                c.itemconfigure(items["glow"], outline=_COLOUR_LED_ON, width=2)
+                dpg.configure_item(items["glow"], color=_COLOUR_LED_ON, thickness=2)
             else:
-                c.itemconfigure(items["glow"], outline="", width=0)
+                dpg.configure_item(items["glow"], color=[0, 0, 0, 0], thickness=0)
 
-        # ── Platform (only if weight changed) ───────────────────────────
+        # Platform
         if prev is None or snap.platform_weight != prev.platform_weight:
             w = snap.platform_weight
             if w > 5:
@@ -400,129 +270,101 @@ class VirtualRigWindow:
                 )
             else:
                 plat_fill = _COLOUR_PLATFORM_EMPTY
-            c.itemconfigure(self._platform_item, fill=plat_fill)
-            c.itemconfigure(self._platform_text, text=f"{w:.1f} g")
+            dpg.configure_item(self._platform_item, fill=plat_fill)
+            dpg.configure_item(self._platform_text, text=f"{w:.1f} g")
 
-        # ── Speaker (only if changed) ──────────────────────────────────
+        # Speaker
         if prev is None or snap.speaker_active != prev.speaker_active:
             if snap.speaker_active:
-                c.itemconfigure(self._speaker_item, fill=_COLOUR_SPEAKER_ON)
-                c.itemconfigure(self._speaker_label, fill="#fff")
+                dpg.configure_item(self._speaker_item, fill=_COLOUR_SPEAKER_ON)
+                dpg.configure_item(self._speaker_text, color=[255, 255, 255, 255])
             else:
-                c.itemconfigure(self._speaker_item, fill=_COLOUR_CANVAS_BG)
-                c.itemconfigure(self._speaker_label, fill="#555")
+                dpg.configure_item(self._speaker_item, fill=_COLOUR_CANVAS_BG)
+                dpg.configure_item(self._speaker_text, color=_COLOUR_DIM)
 
-        # ── IR (only if changed) ────────────────────────────────────────
+        # IR
         if prev is None or snap.ir_brightness != prev.ir_brightness:
             if snap.ir_brightness > 0:
                 ir_fill = _lerp_colour(
                     _COLOUR_CANVAS_BG, _COLOUR_IR_ON, snap.ir_brightness / 255
                 )
-                c.itemconfigure(self._ir_item, fill=ir_fill)
-                c.itemconfigure(self._ir_label, fill="#fff")
+                dpg.configure_item(self._ir_item, fill=ir_fill)
+                dpg.configure_item(self._ir_text, color=[255, 255, 255, 255])
             else:
-                c.itemconfigure(self._ir_item, fill=_COLOUR_CANVAS_BG)
-                c.itemconfigure(self._ir_label, fill="#555")
+                dpg.configure_item(self._ir_item, fill=_COLOUR_CANVAS_BG)
+                dpg.configure_item(self._ir_text, color=_COLOUR_DIM)
 
-        # ── GPIO indicators (only if changed) ──────────────────────────
+        # GPIO
         for pin in range(4):
             if prev is not None and (
                 snap.gpio_modes[pin] == prev.gpio_modes[pin]
                 and snap.gpio_output_states[pin] == prev.gpio_output_states[pin]
             ):
                 continue
-
             mode = snap.gpio_modes[pin]
             out_state = snap.gpio_output_states[pin]
-            indicator = self._gpio_indicators[pin]
+            ind = self._gpio_indicators[pin]
             btn = self._gpio_buttons[pin]
-
             if mode is None:
-                indicator.configure(text="—")
-                btn.state(["disabled"])
+                dpg.set_value(ind, "--")
+                dpg.configure_item(btn, enabled=False)
             elif mode.value == 0:  # OUTPUT
-                indicator.configure(text="OUT:" + ("HI" if out_state else "LO"))
-                btn.state(["disabled"])
+                dpg.set_value(ind, "OUT:" + ("HI" if out_state else "LO"))
+                dpg.configure_item(btn, enabled=False)
             else:  # INPUT
-                indicator.configure(text="INPUT")
-                btn.state(["!disabled"])
+                dpg.set_value(ind, "INPUT")
+                dpg.configure_item(btn, enabled=True)
 
-        # ── DAQ link indicators (only if changed) ───────────────────────
+        # DAQ link
         for idx in range(2):
             if prev is not None and snap.daq_link_states[idx] == prev.daq_link_states[idx]:
                 continue
             state = snap.daq_link_states[idx]
-            indicator = self._daq_link_indicators[idx]
-            indicator.configure(text="HI" if state else "LO")
+            dpg.set_value(self._daq_indicators[idx], "HI" if state else "LO")
 
         self._last_snap = snap
 
     # ── User interactions ───────────────────────────────────────────────
 
     def _on_port_click(self, port: int) -> None:
-        """User clicked a port — inject a sensor event (beam break)."""
         self._state.inject_sensor_event(port, is_activation=True)
-        # Brief visual flash on the sensor icon
-        items = self._port_items[port]
-        self._canvas.itemconfigure(items["sensor"], fill="#fff")
-        self._win.after(200, lambda: self._canvas.itemconfigure(items["sensor"], fill="#555"))
 
-    def _on_weight_change(self, value: str) -> None:
-        """Weight slider moved."""
-        w = float(value)
+    def _on_weight_change(self, sender, app_data) -> None:
+        w = app_data
         self._state.set_weight(w)
-        self._weight_label.configure(text=f"Weight: {w:.1f} g")
+        if self._weight_text and dpg.does_item_exist(self._weight_text):
+            dpg.set_value(self._weight_text, f"Weight: {w:.1f} g")
 
-    def _on_mouse_toggle(self) -> None:
-        """Quick toggle button for mouse on/off platform."""
-        if self._mouse_on_var.get():
-            self._weight_var.set(25.0)
-            self._weight_scale.set(25.0)
+    def _on_mouse_toggle(self, sender, app_data) -> None:
+        if app_data:
+            dpg.set_value("vr_weight_slider", 25.0)
             self._state.set_weight(25.0)
-            self._weight_label.configure(text="Weight: 25.0 g")
+            if self._weight_text:
+                dpg.set_value(self._weight_text, "Weight: 25.0 g")
         else:
-            self._weight_var.set(0.0)
-            self._weight_scale.set(0.0)
+            dpg.set_value("vr_weight_slider", 0.0)
             self._state.set_weight(0.0)
-            self._weight_label.configure(text="Weight: 0.0 g")
+            if self._weight_text:
+                dpg.set_value(self._weight_text, "Weight: 0.0 g")
 
     def _on_gpio_click(self, pin: int) -> None:
-        """User clicked GPIO toggle — inject a GPIO event."""
         self._state.inject_gpio_event(pin, is_activation=True)
-        # Brief visual flash
-        btn = self._gpio_buttons[pin]
-        original_text = btn.cget("text")
-        btn.configure(text="⚡")
-        self._win.after(300, lambda: btn.configure(text=original_text))
 
     # ── Lifecycle ───────────────────────────────────────────────────────
 
     def _on_close_request(self) -> None:
-        """User tried to close the virtual rig window directly."""
-        # Don't allow closing while session is running — just hide
-        self._win.withdraw()
+        # Don't destroy, just hide
+        if self._window_id and dpg.does_item_exist(self._window_id):
+            dpg.configure_item(self._window_id, show=False)
 
     def close(self) -> None:
-        """Programmatic close (called by rig_window cleanup)."""
         if self._closed:
             return
         self._closed = True
-        # Cancel the polling timer
-        if self._poll_timer_id is not None:
-            try:
-                self._win.after_cancel(self._poll_timer_id)
-            except (tk.TclError, ValueError) as e:
-                print(f"Warning: error cancelling poll timer: {e}")
-            self._poll_timer_id = None
-        try:
-            self._win.destroy()
-        except tk.TclError as e:
-            print(f"Warning: error destroying virtual rig window: {e}")
+        frame_poller.unregister(self._poll_tick)
+        if hasattr(self, '_window_id') and dpg.does_item_exist(self._window_id):
+            dpg.delete_item(self._window_id)
 
     def show(self) -> None:
-        """Show the window if it was hidden."""
-        if not self._closed:
-            try:
-                self._win.deiconify()
-            except tk.TclError as e:
-                print(f"Warning: error showing virtual rig window: {e}")
+        if not self._closed and hasattr(self, '_window_id') and dpg.does_item_exist(self._window_id):
+            dpg.configure_item(self._window_id, show=True)

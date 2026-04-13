@@ -1,9 +1,9 @@
 """
-Modern Theme Configuration for Behaviour Rig System GUI.
+Modern Theme Configuration for Behaviour Rig System GUI (DearPyGui).
 
 Provides a consistent, professional appearance across all windows with:
 - Dark/light color palette with accent colors
-- Custom ttk styles for all widget types
+- DearPyGui theme objects for all widget types
 - Consistent fonts and spacing
 - Status color coding (success, warning, error)
 
@@ -15,24 +15,26 @@ Available palettes:
 
 Usage:
     from gui.theme import apply_theme, Theme
-    
-    root = tk.Tk()
-    Theme.palette = DARK_GREEN_PALETTE  # Switch palette before applying
-    apply_theme(root)  # Applies modern styling to all widgets
+
+    Theme.palette = DARK_GREEN_PALETTE
+    apply_theme()
 """
 
 from __future__ import annotations
 
-import ctypes
 import sys
-import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
 from typing import NamedTuple
+
+import dearpygui.dearpygui as dpg
 
 # Icon path (relative to this file)
 _ICON_PATH = Path(__file__).parent / "favicon.ico"
 
+
+# =========================================================================
+# Color palette definition (pure data — no toolkit dependency)
+# =========================================================================
 
 class ColorPalette(NamedTuple):
     """Color palette for the theme."""
@@ -79,373 +81,202 @@ class ColorPalette(NamedTuple):
     rig_open: str            # Open rig button
 
 
-# Modern blue theme - professional and clean
+# =========================================================================
+# Palette definitions
+# =========================================================================
+#
+# Design rules for DPG palettes:
+#   1. 3-tier depth: bg_primary (deepest) < bg_secondary (panels) < bg_tertiary (inputs)
+#      Each tier must be visibly distinct so panels/inputs don't disappear.
+#   2. text_primary must be legible on ALL 3 bg tiers.
+#   3. text_inverse must be legible on accent_primary (used for button labels).
+#   4. For monochrome themes where accent == text, use a darker accent for buttons
+#      so text_inverse (dark) is readable, and keep text_primary bright for body text.
+#   5. bg_header should be darker than bg_primary (used for activity bar, info bar).
+
+# Modern blue — professional and clean
 LIGHT_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Segoe UI",
-    font_family_mono="Consolas",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - light slate grey tones
-    bg_primary="#f5f7fa",          # Light blue-grey
-    bg_secondary="#ffffff",        # White for cards
-    bg_tertiary="#eef2f7",         # Light input fields
-    bg_header="#2c3e50",           # Dark blue-grey header
-    
-    # Text colors
-    text_primary="#1a2530",        # Dark blue-grey
-    text_secondary="#5a6b7d",      # Muted blue-grey
-    text_disabled="#9ca8b5",       # Light grey
-    text_inverse="#ffffff",        # White
-    
-    # Accent colors - professional blue
-    accent_primary="#3498db",      # Clear blue
-    accent_secondary="#2980b9",    # Darker blue
-    accent_hover="#5dade2",        # Lighter blue
-    accent_active="#21618c",       # Dark blue
-    
-    # Status colors
-    success="#27ae60",             # Green
-    success_light="#d4efdf",       # Light green
-    warning="#f39c12",             # Orange
-    warning_light="#fdebd0",       # Light orange
-    error="#e74c3c",               # Red
-    error_light="#fadbd8",         # Light red
-    info="#3498db",                # Blue
-    info_light="#d6eaf8",          # Light blue
-    
-    # Border colors
-    border_light="#e8ecf1",        # Very light
-    border_medium="#ced4da",       # Medium
-    border_dark="#8fa0b0",         # Darker
-    
-    # Special colors
-    rig_selected="#58d68d",        # Light green for selected
-    rig_open="#95a5a6",            # Grey for open/disabled
+    font_family="Segoe UI", font_family_mono="Consolas", font_special="Old English Text MT",
+    bg_primary="#eaecf0",          # Light grey viewport
+    bg_secondary="#f5f7fa",        # Slightly lighter panels
+    bg_tertiary="#ffffff",         # White inputs (brightest)
+    bg_header="#2c3e50",           # Dark header bar
+    text_primary="#1a2530",        # Dark text on all light bgs
+    text_secondary="#5a6b7d",      # Muted
+    text_disabled="#9ca8b5",       # Greyed
+    text_inverse="#ffffff",        # White on blue buttons
+    accent_primary="#3498db",      # Blue buttons
+    accent_secondary="#2980b9",
+    accent_hover="#5dade2",
+    accent_active="#21618c",
+    success="#27ae60", success_light="#d4efdf",
+    warning="#f39c12", warning_light="#fdebd0",
+    error="#e74c3c", error_light="#fadbd8",
+    info="#3498db", info_light="#d6eaf8",
+    border_light="#dce1e8", border_medium="#ced4da", border_dark="#8fa0b0",
+    rig_selected="#58d68d", rig_open="#95a5a6",
 )
 
-
-# Dark theme - easy on the eyes for long sessions
+# Dark blue — easy on the eyes
 DARK_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Segoe UI",
-    font_family_mono="Consolas",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - dark blue-grey tones
-    bg_primary="#1e1e2e",          # Dark base
-    bg_secondary="#2a2a3d",        # Slightly lighter for cards
-    bg_tertiary="#33334d",         # Input fields
-    bg_header="#16162a",           # Deepest dark for headers
-
-    # Text colors
-    text_primary="#e0e0ef",        # Off-white
-    text_secondary="#8888a8",      # Muted lavender-grey
-    text_disabled="#555570",       # Dim grey
-    text_inverse="#1e1e2e",        # Dark (for use on bright buttons)
-
-    # Accent colors - softer blue
+    font_family="Segoe UI", font_family_mono="Consolas", font_special="Old English Text MT",
+    bg_primary="#1a1a2e",          # Deep blue-grey
+    bg_secondary="#252540",        # Mid panels
+    bg_tertiary="#30304a",         # Input frames
+    bg_header="#12121f",           # Deepest
+    text_primary="#e0e0ef",        # Light text
+    text_secondary="#8888a8",
+    text_disabled="#555570",
+    text_inverse="#1a1a2e",        # Dark on bright buttons
     accent_primary="#5b9bd5",      # Muted blue
-    accent_secondary="#4a89c8",    # Slightly darker blue
-    accent_hover="#74b3e8",        # Lighter blue hover
-    accent_active="#3570a5",       # Pressed blue
-
-    # Status colors
-    success="#4caf79",             # Soft green
-    success_light="#1e3d2b",       # Dark green tint
-    warning="#e5a832",             # Amber
-    warning_light="#3d3520",       # Dark amber tint
-    error="#e05555",               # Soft red
-    error_light="#3d1e1e",         # Dark red tint
-    info="#5b9bd5",                # Matches accent
-    info_light="#1e2d3d",          # Dark blue tint
-
-    # Border colors
-    border_light="#3a3a55",        # Subtle
-    border_medium="#50506b",       # Medium
-    border_dark="#6a6a85",         # Visible
-
-    # Special colors
-    rig_selected="#3d8c5c",        # Muted green for selected
-    rig_open="#4a4a60",            # Dark grey for open/disabled
+    accent_secondary="#4a89c8",
+    accent_hover="#74b3e8",
+    accent_active="#3570a5",
+    success="#4caf79", success_light="#1e3d2b",
+    warning="#e5a832", warning_light="#3d3520",
+    error="#e05555", error_light="#3d1e1e",
+    info="#5b9bd5", info_light="#1e2d3d",
+    border_light="#3a3a55", border_medium="#50506b", border_dark="#6a6a85",
+    rig_selected="#3d8c5c", rig_open="#3a3a55",
 )
 
-
-# Green theme
+# Matrix green — neon on black
 DARK_GREEN_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Small Fonts",
-    font_family_mono="Terminal",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - pure black/dark charcoal
-    bg_primary="#0a0a0a",          # Near black base
-    bg_secondary="#0f0f0f",        # Slightly lighter for cards
-    bg_tertiary="#161616",         # Input fields
-    bg_header="#050505",           # Deepest black for headers
-
-    # Text colors - neon green glow
-    text_primary="#00ff41",        # Bright matrix green
-    text_secondary="#00cc33",      # Dimmer green
-    text_disabled="#004d1a",       # Dark muted green
-    text_inverse="#0a0a0a",        # Black for text on bright buttons
-
-    # Accent colors - phosphor green variants
-    accent_primary="#00ff41",      # Bright neon green
-    accent_secondary="#00cc33",    # Medium green
-    accent_hover="#33ff66",        # Lighter hover green
-    accent_active="#009926",       # Pressed darker green
-
-    # Status colors
-    success="#00ff41",             # Bright green
-    success_light="#0a1f0f",       # Dark green tint
-    warning="#ccff00",             # Yellow-green warning
-    warning_light="#1a1f0a",       # Dark warning tint
-    error="#ff3333",               # Red stands out
-    error_light="#1f0a0a",         # Dark red tint
-    info="#00ffcc",                # Cyan-green info
-    info_light="#0a1f1a",          # Dark cyan tint
-
-    # Border colors - subtle green glow
-    border_light="#003314",        # Subtle dark green
-    border_medium="#004d1a",       # Medium green
-    border_dark="#006622",         # Brighter green
-
-    # Special colors
-    rig_selected="#00cc33",        # Selected green
-    rig_open="#1a1a1a",            # Dark grey for open/disabled
+    font_family="Lucida Console", font_family_mono="Lucida Console", font_special="Old English Text MT",
+    bg_primary="#080808",          # Near black
+    bg_secondary="#101810",        # Slight green tint
+    bg_tertiary="#182818",         # Visible green-black
+    bg_header="#040604",           # Deepest
+    text_primary="#00ff41",        # Bright green text
+    text_secondary="#00bb33",
+    text_disabled="#004d1a",
+    text_inverse="#050505",        # Black on green buttons
+    accent_primary="#00cc33",      # Slightly darker than text so text_inverse is readable
+    accent_secondary="#00aa28",
+    accent_hover="#33ff66",
+    accent_active="#008820",
+    success="#00ff41", success_light="#0a1f0f",
+    warning="#ccff00", warning_light="#1a1f0a",
+    error="#ff3333", error_light="#1f0a0a",
+    info="#00ffcc", info_light="#0a1f1a",
+    border_light="#0a2a0a", border_medium="#0f3f0f", border_dark="#1a5a1a",
+    rig_selected="#00cc33", rig_open="#0a2a0a",
 )
 
-
-# Red theme
+# Cyberpunk red — neon on black
 DARK_RED_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Small Fonts",
-    font_family_mono="Terminal",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - pure black/dark charcoal
-    bg_primary="#0a0a0a",          # Near black base
-    bg_secondary="#0f0f0f",        # Slightly lighter for cards
-    bg_tertiary="#161616",         # Input fields
-    bg_header="#050505",           # Deepest black for headers
-
-    # Text colors - neon red glow
-    text_primary="#ff3333",        # Bright neon red
-    text_secondary="#cc2929",      # Dimmer red
-    text_disabled="#4d1414",       # Dark muted red
-    text_inverse="#0a0a0a",        # Black for text on bright buttons
-
-    # Accent colors - crimson/neon red variants
-    accent_primary="#ff3333",      # Bright neon red
-    accent_secondary="#cc2929",    # Medium red
-    accent_hover="#ff6666",        # Lighter hover red
-    accent_active="#991f1f",       # Pressed darker red
-
-    # Status colors
-    success="#33ff77",             # Green still means success
-    success_light="#0a1f10",       # Dark green tint
-    warning="#ffcc00",             # Amber warning
-    warning_light="#1f1a0a",       # Dark amber tint
-    error="#ff3333",               # Red (matches theme)
-    error_light="#1f0a0a",         # Dark red tint
-    info="#ff6699",                # Pink info
-    info_light="#1f0a10",          # Dark pink tint
-
-    # Border colors - subtle red glow
-    border_light="#331414",        # Subtle dark red
-    border_medium="#4d1a1a",       # Medium red
-    border_dark="#662222",         # Brighter red
-
-    # Special colors
-    rig_selected="#cc2929",        # Selected red
-    rig_open="#1a1a1a",            # Dark grey for open/disabled
+    font_family="Lucida Console", font_family_mono="Lucida Console", font_special="Old English Text MT",
+    bg_primary="#080808",          # Near black
+    bg_secondary="#180808",        # Slight red tint
+    bg_tertiary="#281010",         # Visible red-black
+    bg_header="#040202",           # Deepest
+    text_primary="#ff4444",        # Bright red text
+    text_secondary="#cc3030",
+    text_disabled="#4d1414",
+    text_inverse="#050505",        # Black on red buttons
+    accent_primary="#cc2929",      # Darker than text for readable button labels
+    accent_secondary="#aa2020",
+    accent_hover="#ff6666",
+    accent_active="#881818",
+    success="#33ff77", success_light="#0a1f10",
+    warning="#ffcc00", warning_light="#1f1a0a",
+    error="#ff4444", error_light="#1f0a0a",
+    info="#ff6699", info_light="#1f0a10",
+    border_light="#2a0a0a", border_medium="#3f0f0f", border_dark="#5a1a1a",
+    rig_selected="#cc2929", rig_open="#2a0a0a",
 )
 
-
-# Black & white theme - clean monochrome
+# Monochrome — white on black
 DARK_BW_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Small Fonts",
-    font_family_mono="Terminal",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - pure black
-    bg_primary="#0a0a0a",
-    bg_secondary="#111111",
-    bg_tertiary="#1a1a1a",
-    bg_header="#050505",
-
-    # Text colors - white
-    text_primary="#ffffff",
-    text_secondary="#aaaaaa",
+    font_family="Lucida Console", font_family_mono="Lucida Console", font_special="Old English Text MT",
+    bg_primary="#0a0a0a",          # Black
+    bg_secondary="#151515",        # Dark grey panels
+    bg_tertiary="#222222",         # Input frames
+    bg_header="#050505",           # Deepest
+    text_primary="#e8e8e8",        # Off-white text
+    text_secondary="#999999",
     text_disabled="#444444",
-    text_inverse="#0a0a0a",
-
-    # Accent colors - white/grey
-    accent_primary="#ffffff",
-    accent_secondary="#cccccc",
+    text_inverse="#0a0a0a",        # Black on white buttons
+    accent_primary="#cccccc",      # Light grey buttons (not pure white)
+    accent_secondary="#aaaaaa",
     accent_hover="#e0e0e0",
-    accent_active="#999999",
-
-    # Status colors
-    success="#33ff77",
-    success_light="#0a1f10",
-    warning="#ffcc00",
-    warning_light="#1f1a0a",
-    error="#ff3333",
-    error_light="#1f0a0a",
-    info="#66ccff",
-    info_light="#0a1520",
-
-    # Border colors
-    border_light="#222222",
-    border_medium="#333333",
-    border_dark="#555555",
-
-    # Special colors
-    rig_selected="#cccccc",
-    rig_open="#1a1a1a",
+    accent_active="#888888",
+    success="#33ff77", success_light="#0a1f10",
+    warning="#ffcc00", warning_light="#1f1a0a",
+    error="#ff3333", error_light="#1f0a0a",
+    info="#66ccff", info_light="#0a1520",
+    border_light="#252525", border_medium="#383838", border_dark="#555555",
+    rig_selected="#aaaaaa", rig_open="#252525",
 )
 
-
-# Boring mode - professional, no fun allowed
+# Corporate blue — professional, no frills
 BORING_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Segoe UI",
-    font_family_mono="Consolas",
-    font_special="Segoe UI",
-
-    # Main backgrounds - corporate grey
-    bg_primary="#f0f0f0",
-    bg_secondary="#ffffff",
-    bg_tertiary="#e8e8e8",
-    bg_header="#333333",
-
-    # Text colors
-    text_primary="#222222",
+    font_family="Segoe UI", font_family_mono="Consolas", font_special="Segoe UI",
+    bg_primary="#e8e8e8",          # Light grey viewport
+    bg_secondary="#f2f2f2",        # Slightly lighter panels
+    bg_tertiary="#ffffff",         # White inputs
+    bg_header="#333333",           # Dark header
+    text_primary="#222222",        # Dark text
     text_secondary="#666666",
     text_disabled="#999999",
-    text_inverse="#ffffff",
-
-    # Accent colors - safe corporate blue
-    accent_primary="#0066cc",
+    text_inverse="#ffffff",        # White on blue buttons
+    accent_primary="#0066cc",      # Corporate blue
     accent_secondary="#004c99",
     accent_hover="#3388dd",
     accent_active="#003d80",
-
-    # Status colors
-    success="#2e7d32",
-    success_light="#e8f5e9",
-    warning="#f57c00",
-    warning_light="#fff3e0",
-    error="#c62828",
-    error_light="#ffebee",
-    info="#0066cc",
-    info_light="#e3f2fd",
-
-    # Border colors
-    border_light="#dddddd",
-    border_medium="#bbbbbb",
-    border_dark="#888888",
-
-    # Special colors
-    rig_selected="#4caf50",
-    rig_open="#9e9e9e",
+    success="#2e7d32", success_light="#e8f5e9",
+    warning="#f57c00", warning_light="#fff3e0",
+    error="#c62828", error_light="#ffebee",
+    info="#0066cc", info_light="#e3f2fd",
+    border_light="#d0d0d0", border_medium="#bbbbbb", border_dark="#888888",
+    rig_selected="#4caf50", rig_open="#cccccc",
 )
 
-
-# Dark magenta theme
+# Neon magenta — purple-pink on black
 DARK_MAGENTA_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Small Fonts",
-    font_family_mono="Terminal",
-    font_special="Old English Text MT",
-
-    # Main backgrounds
-    bg_primary="#0a0a0a",
-    bg_secondary="#0f0f0f",
-    bg_tertiary="#161616",
-    bg_header="#050505",
-
-    # Text colors - magenta glow
-    text_primary="#ff33ff",
-    text_secondary="#cc29cc",
+    font_family="Lucida Console", font_family_mono="Lucida Console", font_special="Old English Text MT",
+    bg_primary="#080808",          # Near black
+    bg_secondary="#140818",        # Slight magenta tint
+    bg_tertiary="#201028",         # Visible magenta-black
+    bg_header="#040206",           # Deepest
+    text_primary="#ff55ff",        # Bright magenta text
+    text_secondary="#cc33cc",
     text_disabled="#4d144d",
-    text_inverse="#0a0a0a",
-
-    # Accent colors - magenta/purple variants
-    accent_primary="#ff33ff",
-    accent_secondary="#cc29cc",
+    text_inverse="#050505",        # Black on magenta buttons
+    accent_primary="#cc29cc",      # Darker than text for readable labels
+    accent_secondary="#aa20aa",
     accent_hover="#ff66ff",
-    accent_active="#991f99",
-
-    # Status colors
-    success="#33ff77",
-    success_light="#0a1f10",
-    warning="#ffcc00",
-    warning_light="#1f1a0a",
-    error="#ff3333",
-    error_light="#1f0a0a",
-    info="#cc66ff",
-    info_light="#1a0a1f",
-
-    # Border colors - subtle magenta glow
-    border_light="#331433",
-    border_medium="#4d1a4d",
-    border_dark="#662266",
-
-    # Special colors
-    rig_selected="#cc29cc",
-    rig_open="#1a1a1a",
+    accent_active="#881888",
+    success="#33ff77", success_light="#0a1f10",
+    warning="#ffcc00", warning_light="#1f1a0a",
+    error="#ff3333", error_light="#1f0a0a",
+    info="#cc66ff", info_light="#1a0a1f",
+    border_light="#200a20", border_medium="#3f0f3f", border_dark="#5a1a5a",
+    rig_selected="#cc29cc", rig_open="#200a20",
 )
 
-
-# Light pink theme
+# Soft pink — rose on white
 LIGHT_PINK_PALETTE = ColorPalette(
-    # Fonts
-    font_family="Segoe UI",
-    font_family_mono="Consolas",
-    font_special="Old English Text MT",
-
-    # Main backgrounds - soft pink tones
-    bg_primary="#fff0f5",
-    bg_secondary="#ffffff",
-    bg_tertiary="#fce4ec",
-    bg_header="#880e4f",
-
-    # Text colors
-    text_primary="#33111a",
+    font_family="Segoe UI", font_family_mono="Consolas", font_special="Old English Text MT",
+    bg_primary="#f5e6ee",          # Soft pink base
+    bg_secondary="#fdf0f5",        # Lighter panels
+    bg_tertiary="#ffffff",         # White inputs
+    bg_header="#880e4f",           # Deep rose header
+    text_primary="#33111a",        # Dark text
     text_secondary="#7a4a5a",
     text_disabled="#bda0aa",
-    text_inverse="#ffffff",
-
-    # Accent colors - rose pink
-    accent_primary="#e91e63",
+    text_inverse="#ffffff",        # White on pink buttons
+    accent_primary="#e91e63",      # Rose pink
     accent_secondary="#c2185b",
     accent_hover="#f06292",
     accent_active="#ad1457",
-
-    # Status colors
-    success="#2e7d32",
-    success_light="#e8f5e9",
-    warning="#f57c00",
-    warning_light="#fff3e0",
-    error="#c62828",
-    error_light="#ffebee",
-    info="#e91e63",
-    info_light="#fce4ec",
-
-    # Border colors
-    border_light="#f8bbd0",
-    border_medium="#f48fb1",
-    border_dark="#ec407a",
-
-    # Special colors
-    rig_selected="#f06292",
-    rig_open="#cfa8b5",
+    success="#2e7d32", success_light="#e8f5e9",
+    warning="#f57c00", warning_light="#fff3e0",
+    error="#c62828", error_light="#ffebee",
+    info="#e91e63", info_light="#fce4ec",
+    border_light="#f0c0d5", border_medium="#e8a0be", border_dark="#d080a5",
+    rig_selected="#f06292", rig_open="#e0c0d0",
 )
-
 
 PALETTES = {
     "light": LIGHT_PALETTE,
@@ -459,10 +290,27 @@ PALETTES = {
 }
 
 
+# =========================================================================
+# Hex → RGBA conversion
+# =========================================================================
+
+def hex_to_rgba(hex_color: str, alpha: int = 255) -> list[int]:
+    """Convert '#RRGGBB' to [R, G, B, alpha]."""
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return [r, g, b, alpha]
+
+
+# =========================================================================
+# Theme class
+# =========================================================================
+
 class Theme:
     """Theme configuration and utilities."""
 
-    palette = DARK_RED_PALETTE
+    palette: ColorPalette = DARK_RED_PALETTE
 
     FONT_FAMILY = palette.font_family
     FONT_FAMILY_MONO = palette.font_family_mono
@@ -474,16 +322,34 @@ class Theme:
     FONT_SIZE_BODY = 10
     FONT_SIZE_SMALL = 9
     FONT_SIZE_TINY = 8
-    
+
     # Spacing (compact)
     PAD_SMALL = 3
     PAD_MEDIUM = 6
     PAD_LARGE = 10
     PAD_XLARGE = 14
-    
+
     # Widget dimensions
     BUTTON_HEIGHT = 26
     ENTRY_HEIGHT = 24
+
+    # DPG font IDs (populated by apply_theme)
+    _font_default: int | None = None
+    _font_mono: int | None = None
+    _font_heading: int | None = None
+    _font_title: int | None = None
+    _font_small: int | None = None
+
+    # DPG named themes (populated by apply_theme)
+    _global_theme: int | None = None
+    primary_button_theme: int | None = None
+    secondary_button_theme: int | None = None
+    danger_button_theme: int | None = None
+    success_button_theme: int | None = None
+    activity_bar_theme: int | None = None
+    icon_button_theme: int | None = None
+    sidebar_theme: int | None = None
+    info_bar_theme: int | None = None
 
     @classmethod
     def set_palette(cls, palette: ColorPalette) -> None:
@@ -493,747 +359,366 @@ class Theme:
         cls.FONT_FAMILY_MONO = palette.font_family_mono
         cls.FONT_SPECIAL = palette.font_special
 
-    @classmethod
-    def font(cls, size: int = None, weight: str = "normal") -> tuple:
-        """Get a font tuple for standard fonts."""
-        size = size or cls.FONT_SIZE_BODY
-        return (cls.FONT_FAMILY, size, weight)
-    
-    @classmethod
-    def font_mono(cls, size: int = None, weight: str = "normal") -> tuple:
-        """Get a font tuple for monospace fonts."""
-        size = size or cls.FONT_SIZE_BODY
-        if weight == "normal":
-            return (cls.FONT_FAMILY_MONO, size)
-        return (cls.FONT_FAMILY_MONO, size, weight)
-    
-    @classmethod
-    def font_special(cls, size: int = 24) -> tuple:
-        """Get the display/decorative font (e.g. launcher title)."""
-        return (cls.FONT_SPECIAL, size)
+    # ----- Font accessors (DPG font IDs) -----
 
     @classmethod
-    def font_title(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_TITLE, "bold")
-    
+    def font(cls, size: int | None = None, weight: str = "normal"):
+        """Get the default font ID.  *size* and *weight* are accepted for
+        API compatibility but DPG fonts are pre-loaded at fixed sizes."""
+        return cls._font_default
+
     @classmethod
-    def font_heading(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_HEADING, "bold")
-    
+    def font_mono(cls, size: int | None = None, weight: str = "normal"):
+        return cls._font_mono
+
     @classmethod
-    def font_subheading(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_SUBHEADING, "bold")
-    
+    def font_special(cls, size: int = 24):
+        return cls._font_title  # best available approximation
+
     @classmethod
-    def font_body(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_BODY)
-    
+    def font_title(cls):
+        return cls._font_title
+
     @classmethod
-    def font_small(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_SMALL)
-    
+    def font_heading(cls):
+        return cls._font_heading
+
     @classmethod
-    def font_tiny(cls) -> tuple:
-        return (cls.FONT_FAMILY, cls.FONT_SIZE_TINY)
+    def font_subheading(cls):
+        return cls._font_heading
 
+    @classmethod
+    def font_body(cls):
+        return cls._font_default
 
-def apply_dark_title_bar(window: tk.Tk | tk.Toplevel) -> bool:
-    """
-    Apply dark mode to the Windows title bar using the DWM API.
-    
-    This uses the official DWMWA_USE_IMMERSIVE_DARK_MODE attribute
-    available in Windows 10 build 18985+ and Windows 11.
-    
-    Args:
-        window: The tkinter window to apply dark title bar to.
-        
-    Returns:
-        True if dark title bar was applied, False if not supported.
-    """
-    if sys.platform != "win32":
-        return False
-    
-    try:
-        # Ensure window is created so we can get its handle
-        window.update_idletasks()
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-        
-        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        value = ctypes.c_int(1)  # 1 = enable dark mode
-        
-        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_USE_IMMERSIVE_DARK_MODE,
-            ctypes.byref(value),
-            ctypes.sizeof(value)
-        )
-        return result == 0  # S_OK = 0
-    except Exception:
-        return False
+    @classmethod
+    def font_small(cls):
+        return cls._font_small
 
-
-def apply_theme(root: tk.Tk | tk.Toplevel) -> None:
-    """
-    Apply the modern theme to a tkinter root window.
-    
-    This configures ttk styles and sets default options for standard
-    tk widgets to provide a consistent modern appearance.
-    
-    Args:
-        root: The root or toplevel window to theme.
-    """
-    palette = Theme.palette
-    style = ttk.Style(root)
-    
-    # Use 'clam' as base theme - it's the most customizable
-    style.theme_use("clam")
-    
-    # Configure root window
-    root.configure(bg=palette.bg_primary)
-    
-    # Apply dark title bar on Windows
-    apply_dark_title_bar(root)
-    
-    # Apply custom icon
-    if _ICON_PATH.exists():
-        try:
-            root.iconbitmap(_ICON_PATH)
-        except tk.TclError as e:
-            print(f"Warning: could not load window icon: {e}")
-    
-    # =========================================================================
-    # Frame Styles
-    # =========================================================================
-    
-    style.configure(
-        "TFrame",
-        background=palette.bg_primary
-    )
-    
-    style.configure(
-        "Card.TFrame",
-        background=palette.bg_secondary,
-        relief="flat",
-    )
-    
-    style.configure(
-        "Header.TFrame",
-        background=palette.bg_header
-    )
-    
-    # =========================================================================
-    # Label Styles
-    # =========================================================================
-    
-    style.configure(
-        "TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_body()
-    )
-    
-    style.configure(
-        "Title.TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_title()
-    )
-    
-    style.configure(
-        "Heading.TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_heading()
-    )
-    
-    style.configure(
-        "Subheading.TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_subheading()
-    )
-    
-    style.configure(
-        "Muted.TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_secondary,
-        font=Theme.font_small()
-    )
-    
-    style.configure(
-        "Tiny.TLabel",
-        background=palette.bg_primary,
-        foreground=palette.text_secondary,
-        font=Theme.font_tiny()
-    )
-    
-    style.configure(
-        "Card.TLabel",
-        background=palette.bg_secondary,
-        foreground=palette.text_primary,
-        font=Theme.font_body()
-    )
-    
-    # Status label styles
-    style.configure(
-        "Success.TLabel",
-        foreground=palette.success,
-        font=Theme.font(weight="bold")
-    )
-    
-    style.configure(
-        "Warning.TLabel",
-        foreground=palette.warning,
-        font=Theme.font(weight="bold")
-    )
-    
-    style.configure(
-        "Error.TLabel",
-        foreground=palette.error,
-        font=Theme.font(weight="bold")
-    )
-    
-    style.configure(
-        "Info.TLabel",
-        foreground=palette.info,
-        font=Theme.font(weight="bold")
-    )
-    
-    # =========================================================================
-    # Button Styles
-    # =========================================================================
-    
-    style.configure(
-        "TButton",
-        background=palette.accent_primary,
-        foreground=palette.text_inverse,
-        bordercolor=palette.accent_secondary,
-        lightcolor=palette.accent_hover,
-        darkcolor=palette.accent_active,
-        focuscolor=palette.accent_primary,
-        font=Theme.font_body(),
-        padding=(12, 5),
-    )
-    
-    style.map(
-        "TButton",
-        background=[
-            ("active", palette.accent_hover),
-            ("pressed", palette.accent_active),
-            ("disabled", palette.text_disabled)
-        ],
-        foreground=[
-            ("disabled", palette.bg_secondary)
-        ]
-    )
-    
-    # Primary action button (more prominent)
-    style.configure(
-        "Primary.TButton",
-        background=palette.accent_primary,
-        foreground=palette.text_inverse,
-        font=Theme.font(size=10, weight="bold"),
-        padding=(14, 6),
-    )
-    
-    style.map(
-        "Primary.TButton",
-        background=[
-            ("active", palette.accent_hover),
-            ("pressed", palette.accent_active),
-            ("disabled", palette.text_disabled)
-        ]
-    )
-    
-    # Secondary/outline button
-    style.configure(
-        "Secondary.TButton",
-        background=palette.bg_secondary,
-        foreground=palette.accent_primary,
-        bordercolor=palette.accent_primary,
-        font=Theme.font_body(),
-        padding=(12, 5),
-    )
-    
-    style.map(
-        "Secondary.TButton",
-        background=[
-            ("active", palette.bg_tertiary),
-            ("pressed", palette.border_light),
-        ],
-        foreground=[
-            ("disabled", palette.text_disabled)
-        ]
-    )
-    
-    # Danger button (for stop/cancel actions)
-    style.configure(
-        "Danger.TButton",
-        background=palette.error,
-        foreground=palette.text_inverse,
-        font=Theme.font_body(),
-        padding=(12, 5),
-    )
-    
-    style.map(
-        "Danger.TButton",
-        background=[
-            ("active", "#c0392b"),
-            ("pressed", "#922b21"),
-            ("disabled", palette.text_disabled)
-        ]
-    )
-    
-    # Success button
-    style.configure(
-        "Success.TButton",
-        background=palette.success,
-        foreground=palette.text_inverse,
-        font=Theme.font_body(),
-        padding=(12, 5),
-    )
-    
-    style.map(
-        "Success.TButton",
-        background=[
-            ("active", "#2ecc71"),
-            ("pressed", "#1e8449"),
-            ("disabled", palette.text_disabled)
-        ]
-    )
-    
-    # =========================================================================
-    # Entry and Spinbox Styles
-    # =========================================================================
-    
-    style.configure(
-        "TEntry",
-        fieldbackground=palette.bg_secondary,
-        foreground=palette.text_primary,
-        bordercolor=palette.border_medium,
-        lightcolor=palette.bg_secondary,
-        darkcolor=palette.border_medium,
-        insertcolor=palette.text_primary,
-        padding=3,
-    )
-    
-    style.map(
-        "TEntry",
-        fieldbackground=[
-            ("focus", palette.bg_secondary),
-            ("disabled", palette.bg_tertiary),
-        ],
-        bordercolor=[
-            ("focus", palette.accent_primary),
-        ]
-    )
-    
-    style.configure(
-        "TSpinbox",
-        fieldbackground=palette.bg_secondary,
-        foreground=palette.text_primary,
-        bordercolor=palette.border_medium,
-        arrowcolor=palette.text_secondary,
-        padding=3,
-    )
-    
-    style.map(
-        "TSpinbox",
-        fieldbackground=[
-            ("disabled", palette.bg_tertiary),
-        ],
-        bordercolor=[
-            ("focus", palette.accent_primary),
-        ]
-    )
-    
-    # =========================================================================
-    # Combobox Style
-    # =========================================================================
-    
-    style.configure(
-        "TCombobox",
-        fieldbackground=palette.bg_secondary,
-        background=palette.bg_secondary,
-        foreground=palette.text_primary,
-        bordercolor=palette.border_medium,
-        arrowcolor=palette.text_secondary,
-        padding=3,
-    )
-    
-    style.map(
-        "TCombobox",
-        fieldbackground=[
-            ("readonly", palette.bg_secondary),
-            ("disabled", palette.bg_tertiary),
-        ],
-        bordercolor=[
-            ("focus", palette.accent_primary),
-        ],
-        arrowcolor=[
-            ("disabled", palette.text_disabled),
-        ]
-    )
-    
-    # Combobox dropdown listbox styling (requires option_add)
-    root.option_add("*TCombobox*Listbox*Background", palette.bg_secondary)
-    root.option_add("*TCombobox*Listbox*Foreground", palette.text_primary)
-    root.option_add("*TCombobox*Listbox*selectBackground", palette.accent_primary)
-    root.option_add("*TCombobox*Listbox*selectForeground", palette.text_inverse)
-    
-    # =========================================================================
-    # Checkbutton and Radiobutton Styles
-    # =========================================================================
-    
-    style.configure(
-        "TCheckbutton",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_body(),
-    )
-    
-    style.map(
-        "TCheckbutton",
-        background=[
-            ("active", palette.bg_primary),
-        ],
-        indicatorcolor=[
-            ("selected", palette.accent_primary),
-            ("!selected", palette.bg_secondary),
-        ]
-    )
-    
-    style.configure(
-        "Card.TCheckbutton",
-        background=palette.bg_secondary,
-    )
-    
-    style.configure(
-        "TRadiobutton",
-        background=palette.bg_primary,
-        foreground=palette.text_primary,
-        font=Theme.font_body(),
-    )
-    
-    style.map(
-        "TRadiobutton",
-        background=[
-            ("active", palette.bg_primary),
-        ],
-        indicatorcolor=[
-            ("selected", palette.accent_primary),
-            ("!selected", palette.bg_secondary),
-        ]
-    )
-    
-    style.configure(
-        "Card.TRadiobutton",
-        background=palette.bg_secondary,
-    )
-    
-    # =========================================================================
-    # LabelFrame Style
-    # =========================================================================
-    
-    style.configure(
-        "TLabelframe",
-        background=palette.bg_secondary,
-        bordercolor=palette.border_light,
-        lightcolor=palette.bg_secondary,
-        darkcolor=palette.border_light,
-        relief="solid",
-    )
-    
-    style.configure(
-        "TLabelframe.Label",
-        background=palette.bg_secondary,
-        foreground=palette.accent_secondary,
-        font=Theme.font(size=10, weight="bold"),
-    )
-    
-    # =========================================================================
-    # Notebook (Tabs) Style
-    # =========================================================================
-    
-    style.configure(
-        "TNotebook",
-        background=palette.bg_primary,
-        bordercolor=palette.border_light,
-        tabmargins=(5, 5, 0, 0),
-    )
-    
-    style.configure(
-        "TNotebook.Tab",
-        background=palette.bg_tertiary,
-        foreground=palette.text_secondary,
-        bordercolor=palette.border_light,
-        lightcolor=palette.bg_tertiary,
-        padding=(10, 4),
-        font=Theme.font_body(),
-    )
-    
-    style.map(
-        "TNotebook.Tab",
-        background=[
-            ("selected", palette.bg_secondary),
-            ("active", palette.border_light),
-        ],
-        foreground=[
-            ("selected", palette.accent_primary),
-        ],
-        expand=[
-            ("selected", (0, 0, 2, 0)),
-        ]
-    )
-    
-    # =========================================================================
-    # Progressbar Style
-    # =========================================================================
-    
-    style.configure(
-        "TProgressbar",
-        background=palette.accent_primary,
-        troughcolor=palette.bg_tertiary,
-        bordercolor=palette.border_light,
-        lightcolor=palette.accent_primary,
-        darkcolor=palette.accent_secondary,
-        thickness=20,
-    )
-    
-    style.configure(
-        "Success.TProgressbar",
-        background=palette.success,
-    )
-    
-    # =========================================================================
-    # Separator Style
-    # =========================================================================
-    
-    style.configure(
-        "TSeparator",
-        background=palette.border_light,
-    )
-    
-    # =========================================================================
-    # Scrollbar Style
-    # =========================================================================
-    
-    style.configure(
-        "TScrollbar",
-        background=palette.bg_tertiary,
-        bordercolor=palette.border_light,
-        troughcolor=palette.bg_primary,
-        arrowcolor=palette.text_secondary,
-    )
-    
-    style.map(
-        "TScrollbar",
-        background=[
-            ("active", palette.border_medium),
-            ("pressed", palette.accent_primary),
-        ]
-    )
-    
-    # =========================================================================
-    # Canvas (used for scrollable frames)
-    # =========================================================================
-    
-    # Note: Canvas uses tk options, not ttk style
-    root.option_add("*Canvas*Background", palette.bg_secondary)
-    root.option_add("*Canvas*HighlightThickness", 0)
-
-
-def enable_mousewheel_scrolling(canvas: tk.Canvas) -> None:
-    """
-    Bind mousewheel scrolling to a scrollable canvas.
-
-    Activates when the mouse enters the canvas area and deactivates
-    when it leaves, so only the hovered canvas scrolls.
-    """
-    def _on_mousewheel(event):
-        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
-
-
-def style_scrolled_text(widget, log_style: bool = False) -> None:
-    """
-    Apply theme styling to a ScrolledText widget.
-    
-    Args:
-        widget: The ScrolledText widget to style.
-        log_style: If True, use dark log styling. If False, use light style.
-    """
-    palette = Theme.palette
-    
-    if log_style:
-        # Dark terminal-like appearance for logs
-        widget.configure(
-            background="#1a1d21",
-            foreground="#e8eaed",
-            insertbackground="#e8eaed",
-            selectbackground=palette.accent_primary,
-            selectforeground=palette.text_inverse,
-            font=Theme.font_mono(size=9),
-            relief="flat",
-            borderwidth=0,
-            padx=10,
-            pady=10,
-        )
-    else:
-        # Light appearance for editable text
-        widget.configure(
-            background=palette.bg_secondary,
-            foreground=palette.text_primary,
-            insertbackground=palette.text_primary,
-            selectbackground=palette.accent_primary,
-            selectforeground=palette.text_inverse,
-            font=Theme.font_mono(size=9),
-            relief="flat",
-            borderwidth=1,
-            padx=8,
-            pady=8,
-        )
-
-
-def create_card_frame(parent, **kwargs) -> ttk.Frame:
-    """
-    Create a card-style frame with subtle elevation effect.
-    
-    Args:
-        parent: Parent widget
-        **kwargs: Additional frame options
-    
-    Returns:
-        A styled ttk.Frame widget
-    """
-    frame = ttk.Frame(parent, style="Card.TFrame", **kwargs)
-    return frame
-
-
-def create_header_label(parent, text: str, **kwargs) -> ttk.Label:
-    """Create a styled header label."""
-    return ttk.Label(parent, text=text, style="Heading.TLabel", **kwargs)
-
-
-def create_title_label(parent, text: str, **kwargs) -> ttk.Label:
-    """Create a styled title label."""
-    return ttk.Label(parent, text=text, style="Title.TLabel", **kwargs)
-
-
-def create_muted_label(parent, text: str, **kwargs) -> ttk.Label:
-    """Create a styled muted/secondary label."""
-    return ttk.Label(parent, text=text, style="Muted.TLabel", **kwargs)
-
-
-def create_primary_button(parent, text: str, **kwargs) -> ttk.Button:
-    """Create a primary action button."""
-    return ttk.Button(parent, text=text, style="Primary.TButton", **kwargs)
-
-
-def create_danger_button(parent, text: str, **kwargs) -> ttk.Button:
-    """Create a danger/stop action button."""
-    return ttk.Button(parent, text=text, style="Danger.TButton", **kwargs)
-
-
-def create_success_button(parent, text: str, **kwargs) -> ttk.Button:
-    """Create a success action button."""
-    return ttk.Button(parent, text=text, style="Success.TButton", **kwargs)
+    @classmethod
+    def font_tiny(cls):
+        return cls._font_small
 
 
 # =========================================================================
-# Rig Button Styling (uses tk.Button for full color control)
+# Font loading
 # =========================================================================
+
+# Bundled font files (shipped with the project)
+_FONTS_DIR = Path(__file__).parent / "fonts"
+
+# Map font family names to bundled .ttf filenames
+_FONT_FILES = {
+    "segoe ui":            ("segoeui.ttf",     "segoeuib.ttf"),
+    "consolas":            ("consola.ttf",     "consolab.ttf"),
+    "lucida console":      ("lucon.ttf",       "lucon.ttf"),
+    "cascadia mono":       ("CascadiaMono.ttf", "CascadiaMono.ttf"),
+    "old english text mt": ("OLDENGL.TTF",     "OLDENGL.TTF"),
+}
+
+
+def _resolve_font(family: str, bold: bool = False) -> str | None:
+    """Resolve a font family name to a bundled .ttf file path."""
+    key = family.lower()
+    if key in _FONT_FILES:
+        regular, bold_name = _FONT_FILES[key]
+        path = _FONTS_DIR / (bold_name if bold else regular)
+        if path.exists():
+            return str(path)
+
+    # Fallback: try Segoe UI
+    if key != "segoe ui":
+        return _resolve_font("Segoe UI", bold)
+
+    return None
+
+
+def _load_fonts() -> None:
+    """Register fonts with DPG.  Called once by apply_theme()."""
+    import logging
+    _log = logging.getLogger(__name__)
+
+    palette = Theme.palette
+
+    body_path = _resolve_font(palette.font_family)
+    bold_path = _resolve_font(palette.font_family, bold=True) or body_path
+    mono_path = _resolve_font(palette.font_family_mono) or body_path
+    special_path = _resolve_font(palette.font_special) or bold_path
+
+    if body_path is None:
+        _log.warning(
+            f"No bundled font found for '{palette.font_family}'. "
+            "Using DPG built-in font. Check hexcontrol/gui/fonts/ directory."
+        )
+        return
+
+    _log.info(f"Loading fonts from {_FONTS_DIR}")
+
+    with dpg.font_registry():
+        Theme._font_default = dpg.add_font(body_path, 14)
+        Theme._font_small = dpg.add_font(body_path, 12)
+        Theme._font_heading = dpg.add_font(bold_path, 16)
+        Theme._font_title = dpg.add_font(special_path or bold_path, 22)
+        Theme._font_mono = dpg.add_font(mono_path, 14)
+
+    if Theme._font_default is not None:
+        dpg.bind_font(Theme._font_default)
+
+
+# =========================================================================
+# Theme application
+# =========================================================================
+
+def apply_theme() -> None:
+    """Create DPG theme objects from the active palette and bind globally.
+
+    Must be called once after :func:`dpg_app.create_app`.
+    """
+    _load_fonts()
+    palette = Theme.palette
+
+    bg = hex_to_rgba(palette.bg_primary)
+    bg2 = hex_to_rgba(palette.bg_secondary)
+    bg3 = hex_to_rgba(palette.bg_tertiary)
+    txt = hex_to_rgba(palette.text_primary)
+    txt2 = hex_to_rgba(palette.text_secondary)
+    txt_dis = hex_to_rgba(palette.text_disabled)
+    accent = hex_to_rgba(palette.accent_primary)
+    accent2 = hex_to_rgba(palette.accent_secondary)
+    accent_h = hex_to_rgba(palette.accent_hover)
+    accent_a = hex_to_rgba(palette.accent_active)
+    border = hex_to_rgba(palette.border_light)
+    border_m = hex_to_rgba(palette.border_medium)
+
+    # --- Global theme ---
+    with dpg.theme() as global_theme:
+        with dpg.theme_component(dpg.mvAll):
+            # Window / frame backgrounds
+            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, bg)
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, bg2)
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, bg2)
+            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, bg)
+
+            # Text
+            dpg.add_theme_color(dpg.mvThemeCol_Text, txt)
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, txt_dis)
+
+            # Borders
+            dpg.add_theme_color(dpg.mvThemeCol_Border, border)
+            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, [0, 0, 0, 0])
+
+            # Frame (input) backgrounds
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, border)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, border_m)
+
+            # Title bar
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBg, hex_to_rgba(palette.bg_header))
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, hex_to_rgba(palette.bg_header))
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgCollapsed, hex_to_rgba(palette.bg_header))
+
+            # Buttons
+            dpg.add_theme_color(dpg.mvThemeCol_Button, accent)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, accent_h)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, accent_a)
+
+            # Headers (collapsing headers, tree nodes)
+            dpg.add_theme_color(dpg.mvThemeCol_Header, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, border)
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, border_m)
+
+            # Tabs
+            dpg.add_theme_color(dpg.mvThemeCol_Tab, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_TabHovered, accent_h)
+            dpg.add_theme_color(dpg.mvThemeCol_TabActive, accent)
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, accent2)
+
+            # Scrollbar
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, bg)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, border_m)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, accent_h)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, accent)
+
+            # Slider
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, accent)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, accent_a)
+
+            # Checkbox
+            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, accent)
+
+            # Separator
+            dpg.add_theme_color(dpg.mvThemeCol_Separator, border)
+
+            # Resize grip
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGrip, border)
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripHovered, accent_h)
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripActive, accent)
+
+            # Table
+            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_TableBorderStrong, border_m)
+            dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, border)
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg, [0, 0, 0, 0])
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt, [
+                border[0], border[1], border[2], 40])
+
+            # Text selection
+            dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, [
+                accent[0], accent[1], accent[2], 90])
+
+            # Style
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_TabRounding, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 6, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
+
+        # Plot colors need their own theme component with mvThemeCat_Plots category
+        with dpg.theme_component(0):
+            dpg.add_theme_color(dpg.mvPlotCol_PlotBg, bg2, category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_color(dpg.mvPlotCol_PlotBorder, border_m, category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_color(dpg.mvPlotCol_FrameBg, bg3, category=dpg.mvThemeCat_Plots)
+
+    dpg.bind_theme(global_theme)
+    Theme._global_theme = global_theme
+
+    # --- Button variant themes ---
+
+    with dpg.theme() as primary_btn:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, accent)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, accent_h)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, accent_a)
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+    Theme.primary_button_theme = primary_btn
+
+    with dpg.theme() as secondary_btn:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, bg2)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, border)
+            dpg.add_theme_color(dpg.mvThemeCol_Text, accent)
+    Theme.secondary_button_theme = secondary_btn
+
+    with dpg.theme() as danger_btn:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.error))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba("#c0392b"))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba("#922b21"))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+    Theme.danger_button_theme = danger_btn
+
+    with dpg.theme() as success_btn:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.success))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba("#2ecc71"))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba("#1e8449"))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+    Theme.success_button_theme = success_btn
+
+    # --- Layout component themes ---
+
+    with dpg.theme() as activity_bar_theme:
+        with dpg.theme_component(0):
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, hex_to_rgba(palette.bg_header))
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 0)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 4, 8)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 4, 8)
+    Theme.activity_bar_theme = activity_bar_theme
+
+    with dpg.theme() as icon_btn_theme:
+        with dpg.theme_component(dpg.mvImageButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, [0, 0, 0, 0])
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, [255, 255, 255, 25])
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, [255, 255, 255, 50])
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
+    Theme.icon_button_theme = icon_btn_theme
+
+    with dpg.theme() as sidebar_theme:
+        with dpg.theme_component(0):
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, bg2)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 0)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 8, 6)
+    Theme.sidebar_theme = sidebar_theme
+
+    with dpg.theme() as info_bar_theme:
+        with dpg.theme_component(0):
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, hex_to_rgba(palette.bg_header))
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 0)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 10, 4)
+    Theme.info_bar_theme = info_bar_theme
+
+    # Set viewport background
+    dpg.set_viewport_clear_color(bg)
+
+
+# =========================================================================
+# Helper: rig button themes  (replaces style_rig_button / create_rig_button)
+# =========================================================================
+
+_rig_button_themes: dict[str, int] = {}
+
+
+def _ensure_rig_button_themes() -> None:
+    """Lazily create the three rig-button theme variants."""
+    if _rig_button_themes:
+        return
+    palette = Theme.palette
+
+    with dpg.theme() as normal:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.bg_secondary))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.bg_tertiary))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.border_light))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_primary))
+    _rig_button_themes["normal"] = normal
+
+    with dpg.theme() as selected:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.rig_selected))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.accent_hover))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.accent_active))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_primary))
+    _rig_button_themes["selected"] = selected
+
+    with dpg.theme() as opened:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.rig_open))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.rig_open))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.rig_open))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+    _rig_button_themes["open"] = opened
+
 
 def style_rig_button(
-    button: tk.Button,
-    state: str = "normal",
+    button_id: int | str,
     is_selected: bool = False,
-    is_open: bool = False
+    is_open: bool = False,
 ) -> None:
-    """
-    Apply consistent styling to a rig selection button.
-    
-    Args:
-        button: The tk.Button to style
-        state: 'normal', 'selected', 'open', or 'disabled'
-        is_selected: Whether the rig is selected for launch
-        is_open: Whether the rig window is open
-    """
-    palette = Theme.palette
-    
-    base_config = {
-        "font": Theme.font(size=13, weight="bold"),
-        "relief": "flat",
-        "borderwidth": 0,
-        "cursor": "hand2",
-        "padx": 16,
-        "pady": 10,
-    }
-    
+    """Apply the appropriate rig-button theme to *button_id*."""
+    _ensure_rig_button_themes()
+
     if is_open:
-        # Rig is open - greyed out
-        open_config = {**base_config, "cursor": "arrow"}  # Override cursor
-        button.configure(
-            **open_config,
-            state="disabled",
-            bg=palette.rig_open,
-            fg=palette.text_inverse,
-            activebackground=palette.rig_open,
-        )
+        dpg.bind_item_theme(button_id, _rig_button_themes["open"])
+        dpg.configure_item(button_id, enabled=False)
     elif is_selected:
-        # Rig is selected - highlighted
-        button.configure(
-            **base_config,
-            state="normal",
-            bg=palette.rig_selected,
-            fg=palette.text_primary,
-            activebackground="#7dcea0",
-        )
+        dpg.bind_item_theme(button_id, _rig_button_themes["selected"])
+        dpg.configure_item(button_id, enabled=True)
     else:
-        # Normal unselected state
-        button.configure(
-            **base_config,
-            state="normal",
-            bg=palette.bg_secondary,
-            fg=palette.text_primary,
-            activebackground=palette.bg_tertiary,
-        )
+        dpg.bind_item_theme(button_id, _rig_button_themes["normal"])
+        dpg.configure_item(button_id, enabled=True)
 
 
-def create_rig_button(parent, text: str, command, **kwargs) -> tk.Button:
-    """
-    Create a styled rig selection button.
-    
-    Args:
-        parent: Parent widget
-        text: Button text
-        command: Button command
-        **kwargs: Additional button options
-    
-    Returns:
-        A styled tk.Button widget
-    """
-    palette = Theme.palette
-    
-    btn = tk.Button(
-        parent,
-        text=text,
-        command=command,
-        font=Theme.font(size=13, weight="bold"),
-        relief="flat",
-        borderwidth=0,
-        cursor="hand2",
-        bg=palette.bg_secondary,
-        fg=palette.text_primary,
-        activebackground=palette.bg_tertiary,
-        padx=16,
-        pady=10,
-        **kwargs
-    )
-    
+def create_rig_button(parent, text: str, command, **kwargs) -> int:
+    """Create a rig selection button and return its DPG item ID."""
+    _ensure_rig_button_themes()
+    btn = dpg.add_button(label=text, callback=lambda: command(), parent=parent,
+                         width=-1, height=44, **kwargs)
+    dpg.bind_item_theme(btn, _rig_button_themes["normal"])
     return btn
 
 
@@ -1242,15 +727,13 @@ def create_rig_button(parent, text: str, command, **kwargs) -> tk.Button:
 # =========================================================================
 
 def get_status_color(status: str) -> str:
-    """Get the appropriate color for a status string."""
+    """Get the appropriate hex color for a status string."""
     palette = Theme.palette
-    
     status_lower = status.lower()
-    
     if status_lower in ("running", "started", "active"):
         return palette.success
     elif status_lower in ("completed", "success", "done"):
-        return "#1e8449"  # Darker green
+        return "#1e8449"
     elif status_lower in ("stopped", "paused", "warning"):
         return palette.warning
     elif status_lower in ("error", "failed"):
@@ -1262,12 +745,25 @@ def get_status_color(status: str) -> str:
 
 
 def get_accuracy_color(accuracy: float) -> str:
-    """Get a color based on accuracy percentage (green=good, red=poor)."""
+    """Get a hex color based on accuracy percentage."""
     palette = Theme.palette
-    
     if accuracy >= 70:
         return palette.success
     elif accuracy >= 50:
         return palette.warning
     else:
         return palette.error
+
+
+# =========================================================================
+# Legacy API stubs (no-ops for smooth migration)
+# =========================================================================
+
+def enable_mousewheel_scrolling(canvas=None) -> None:
+    """No-op — DPG child windows handle scrolling automatically."""
+    pass
+
+
+def style_scrolled_text(widget=None, log_style: bool = False) -> None:
+    """No-op — DPG does not use ScrolledText widgets."""
+    pass
