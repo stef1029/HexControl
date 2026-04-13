@@ -32,11 +32,21 @@ class WindowMode(Enum):
 
 
 class PostProcessingWindow:
-    """Window for post-processing cohort data."""
+    """Window for post-processing cohort data.
 
-    def __init__(self, cohort_folders: tuple = ()):
+    Args:
+        cohort_folders: Tuple of CohortFolder from the config file.
+        parent: If given, builds content inside this container (embedded mode).
+                If None, creates a floating DPG window.
+        on_close: Optional callback when closing (embedded mode).
+    """
+
+    def __init__(self, cohort_folders: tuple = (), parent: int | str | None = None,
+                 on_close=None):
         self._cohort_folders_typed = cohort_folders
         self.cohort_folders = self._load_cohort_folders()
+        self._embedded = parent is not None
+        self._on_close_callback = on_close
 
         self.is_processing = False
         self.cancel_requested = False
@@ -51,6 +61,7 @@ class PostProcessingWindow:
 
         # DPG IDs
         self._window_id: int | None = None
+        self._root: int | None = None
         self._config_group: int | None = None
         self._progress_group: int | None = None
         self._progress_label: int | None = None
@@ -59,7 +70,7 @@ class PostProcessingWindow:
         self._cancel_btn: int | None = None
         self._back_btn: int | None = None
 
-        self._build()
+        self._build(parent)
         self._show_mode(WindowMode.CONFIG)
 
     def _load_cohort_folders(self) -> list[dict]:
@@ -68,16 +79,20 @@ class PostProcessingWindow:
             for c in self._cohort_folders_typed
         ]
 
-    def _build(self) -> None:
+    def _build(self, parent: int | str | None) -> None:
         palette = Theme.palette
 
-        self._window_id = dpg.add_window(
-            label="Post-Processing", width=800, height=650,
-            on_close=self._on_close,
-        )
+        if parent is not None:
+            self._root = parent
+        else:
+            self._window_id = dpg.add_window(
+                label="Post-Processing", width=800, height=650,
+                on_close=self._on_close,
+            )
+            self._root = self._window_id
 
         # --- Config mode ---
-        self._config_group = dpg.add_group(parent=self._window_id, show=True)
+        self._config_group = dpg.add_group(parent=self._root, show=True)
 
         dpg.add_text("Post-Processing", parent=self._config_group,
                      color=hex_to_rgba(palette.text_primary))
@@ -143,7 +158,7 @@ class PostProcessingWindow:
                 dpg.bind_item_theme(close_btn, Theme.secondary_button_theme)
 
         # --- Progress mode ---
-        self._progress_group = dpg.add_group(parent=self._window_id, show=False)
+        self._progress_group = dpg.add_group(parent=self._root, show=False)
 
         dpg.add_text("Processing in Progress", parent=self._progress_group,
                      color=hex_to_rgba(palette.text_primary))
@@ -329,10 +344,14 @@ class PostProcessingWindow:
             show_warning("Processing In Progress",
                          "Cannot close while processing. Cancel first.")
             return
-        if self._window_id and dpg.does_item_exist(self._window_id):
+        if self._embedded:
+            if self._on_close_callback:
+                self._on_close_callback()
+        elif self._window_id and dpg.does_item_exist(self._window_id):
             dpg.delete_item(self._window_id)
 
 
-def open_post_processing_window(cohort_folders: tuple = ()) -> None:
+def open_post_processing_window(cohort_folders: tuple = (), parent=None,
+                                on_close=None) -> PostProcessingWindow:
     """Open the post-processing window."""
-    PostProcessingWindow(cohort_folders)
+    return PostProcessingWindow(cohort_folders, parent=parent, on_close=on_close)

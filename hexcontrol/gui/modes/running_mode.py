@@ -413,7 +413,7 @@ class RunningMode:
             _set_text(w["rolling"], "--")
 
     def _log_trial(self, trial, prefix: str = "") -> None:
-        from core.tracker import TrialOutcome
+        from hexcontrol.core.tracker import TrialOutcome
         palette = Theme.palette
 
         trial_num = trial.trial_number

@@ -343,6 +343,7 @@ class Theme:
     # DPG named themes (populated by apply_theme)
     _global_theme: int | None = None
     primary_button_theme: int | None = None
+    disabled_button_theme: int | None = None
     secondary_button_theme: int | None = None
     danger_button_theme: int | None = None
     success_button_theme: int | None = None
@@ -597,7 +598,16 @@ def apply_theme() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, accent_h)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, accent_a)
             dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, hex_to_rgba(palette.text_disabled))
     Theme.primary_button_theme = primary_btn
+
+    with dpg.theme() as disabled_btn:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, bg3)
+            dpg.add_theme_color(dpg.mvThemeCol_Text, txt2)
+    Theme.disabled_button_theme = disabled_btn
 
     with dpg.theme() as secondary_btn:
         with dpg.theme_component(dpg.mvButton):
@@ -613,6 +623,7 @@ def apply_theme() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba("#c0392b"))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba("#922b21"))
             dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, hex_to_rgba(palette.text_secondary))
     Theme.danger_button_theme = danger_btn
 
     with dpg.theme() as success_btn:
@@ -621,6 +632,7 @@ def apply_theme() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba("#2ecc71"))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba("#1e8449"))
             dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, hex_to_rgba(palette.text_secondary))
     Theme.success_button_theme = success_btn
 
     # --- Layout component themes ---
@@ -677,9 +689,9 @@ def _ensure_rig_button_themes() -> None:
 
     with dpg.theme() as normal:
         with dpg.theme_component(dpg.mvButton):
-            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.bg_secondary))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.bg_tertiary))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.border_light))
+            dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.bg_tertiary))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.border_light))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.border_medium))
             dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_primary))
     _rig_button_themes["normal"] = normal
 
@@ -688,7 +700,8 @@ def _ensure_rig_button_themes() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.rig_selected))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.accent_hover))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.accent_active))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_primary))
+            # Use text_inverse (dark) on bright selected bg
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
     _rig_button_themes["selected"] = selected
 
     with dpg.theme() as opened:
@@ -696,7 +709,8 @@ def _ensure_rig_button_themes() -> None:
             dpg.add_theme_color(dpg.mvThemeCol_Button, hex_to_rgba(palette.rig_open))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hex_to_rgba(palette.rig_open))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, hex_to_rgba(palette.rig_open))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_inverse))
+            # Use text_secondary (muted but visible) on disabled bg
+            dpg.add_theme_color(dpg.mvThemeCol_Text, hex_to_rgba(palette.text_secondary))
     _rig_button_themes["open"] = opened
 
 

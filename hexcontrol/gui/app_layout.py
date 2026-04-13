@@ -98,7 +98,7 @@ class AppLayout:
     """Single-viewport layout: activity bar + sidebar + tabbed content + info bar."""
 
     def __init__(self, config_path: Path, board_registry_path: Path):
-        from core.rig_config import RigsFile
+        from hexcontrol.core.rig_config import RigsFile
         self._rigs_file = RigsFile.load(config_path)
 
         # Apply palette
@@ -118,7 +118,7 @@ class AppLayout:
         self.rig_buttons: dict[str, int] = {}
         self.rig_status_texts: dict[str, int] = {}
 
-        from core.mouse_claims import MouseClaims
+        from hexcontrol.core.mouse_claims import MouseClaims
         self._mouse_claims = MouseClaims()
         self._shared_multi_session_folder: str | None = None
         self._active_panel: str | None = "rigs"
@@ -383,6 +383,8 @@ class AppLayout:
 
     def _build_rigs_panel(self) -> None:
         palette = Theme.palette
+        self.rig_selected: dict[str, bool] = {}
+
         with dpg.group(tag="panel_rigs", show=True, parent="sidebar") as g:
             self._sidebar_panels["rigs"] = g
             t = dpg.add_text("Rigs", color=hex_to_rgba(palette.text_primary))
@@ -394,10 +396,11 @@ class AppLayout:
             for rig in self.rigs[:4]:
                 rig_name = rig.name
                 enabled = rig.enabled
+                self.rig_selected[rig_name] = False
 
                 btn = dpg.add_button(
                     label=rig_name, width=-1, height=32,
-                    callback=lambda s, a, u: self._on_rig_click(u),
+                    callback=lambda s, a, u: self._on_rig_toggle(u),
                     user_data=rig,
                 )
                 _ensure_rig_button_themes()
@@ -407,7 +410,26 @@ class AppLayout:
                 if not enabled:
                     style_rig_button(btn, is_open=True)
 
-            dpg.add_spacer(height=8)
+            dpg.add_spacer(height=10)
+            div = dpg.add_child_window(
+                height=3, no_scrollbar=True,
+                no_scroll_with_mouse=True, border=False,
+            )
+            with dpg.theme() as div_theme:
+                with dpg.theme_component(0):
+                    dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
+                                        hex_to_rgba(palette.border_dark))
+            dpg.bind_item_theme(div, div_theme)
+            dpg.add_spacer(height=10)
+
+            self._launch_btn = dpg.add_button(
+                label="Launch Selected Rigs", width=-1, height=32,
+                callback=lambda: self._on_launch_selected_click(),
+            )
+            _ensure_rig_button_themes()
+            style_rig_button(self._launch_btn, is_selected=False)
+
+            dpg.add_spacer(height=4)
 
     def _build_tools_panel(self) -> None:
         palette = Theme.palette
@@ -500,39 +522,96 @@ class AppLayout:
     # Rig management
     # =====================================================================
 
-    def _on_rig_click(self, rig) -> None:
-        """Clicked a rig button — open it (test connection first) or switch to its tab."""
+    def _on_rig_toggle(self, rig) -> None:
+        """Toggle rig selection for launch."""
         rig_name = rig.name
         if rig_name in self.open_rigs:
-            # Already open: switch to its tab
-            tab_id, _ = self.open_rigs[rig_name]
-            if dpg.does_item_exist(tab_id):
-                dpg.set_value("rig_tab_bar", tab_id)
+            return  # Already open, can't select
+
+        self.rig_selected[rig_name] = not self.rig_selected.get(rig_name, False)
+        is_selected = self.rig_selected[rig_name]
+        style_rig_button(self.rig_buttons[rig_name], is_selected=is_selected)
+        self._update_launch_button()
+
+    def _update_launch_button(self) -> None:
+        """Update launch button state and theme based on selections."""
+        selected_count = sum(1 for s in self.rig_selected.values() if s)
+        if self._launch_btn and dpg.does_item_exist(self._launch_btn):
+            if selected_count > 0:
+                dpg.configure_item(self._launch_btn, enabled=True,
+                    label=f"Launch {selected_count} Rig{'s' if selected_count > 1 else ''}")
+                style_rig_button(self._launch_btn, is_selected=True)
+            else:
+                dpg.configure_item(self._launch_btn, enabled=True,
+                    label="Launch Selected Rigs")
+                style_rig_button(self._launch_btn, is_selected=False)
+
+    def _on_launch_selected_click(self) -> None:
+        """Test connections and open all selected rigs with a shared session folder."""
+        selected_rigs = [
+            rig for rig in self.rigs
+            if self.rig_selected.get(rig.name, False) and rig.name not in self.open_rigs
+        ]
+        if not selected_rigs:
             return
 
-        # Test connection in background, then open
-        self._set_status(f"Testing {rig_name}...")
+        # Create shared session folder timestamp
+        date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+        self._shared_multi_session_folder = date_time
 
-        def test_and_open():
-            success, message = test_rig_connection(
-                rig.board_name, rig.board_type, registry=self.board_registry
-            )
-            if success:
-                call_on_main_thread(self._open_rig_tab, rig=rig)
-            else:
-                call_on_main_thread(
-                    lambda: (
-                        show_warning("Connection Failed", f"{rig_name}: {message}"),
-                        self._set_status(f"{rig_name}: connection failed"),
-                    )
+        # Disable launch button during testing
+        if self._launch_btn and dpg.does_item_exist(self._launch_btn):
+            dpg.configure_item(self._launch_btn, enabled=False)
+        self._set_status(f"Testing connections to {len(selected_rigs)} rig(s)...")
+
+        def test_and_open_all():
+            successful, failed = [], []
+            for rig in selected_rigs:
+                call_on_main_thread(self._set_status,
+                                    message=f"Testing {rig.name}...")
+                success, message = test_rig_connection(
+                    rig.board_name, rig.board_type, registry=self.board_registry
                 )
+                if success:
+                    successful.append(rig)
+                else:
+                    failed.append((rig, message))
+            call_on_main_thread(self._handle_launch_result,
+                                successful_rigs=successful, failed_rigs=failed)
 
-        threading.Thread(target=test_and_open, daemon=True).start()
+        threading.Thread(target=test_and_open_all, daemon=True).start()
 
-    def _open_rig_tab(self, rig, simulate: bool = False) -> None:
+    def _handle_launch_result(self, successful_rigs, failed_rigs) -> None:
+        """Handle results of connection tests for selected rigs."""
+        # Clear selections
+        for rig_name in self.rig_selected:
+            self.rig_selected[rig_name] = False
+            btn = self.rig_buttons.get(rig_name)
+            if btn and dpg.does_item_exist(btn):
+                style_rig_button(btn, is_selected=False,
+                                 is_open=(rig_name in self.open_rigs))
+        self._update_launch_button()
+
+        if failed_rigs:
+            msgs = "\n".join(f"  - {rig.name}: {msg}" for rig, msg in failed_rigs)
+            show_warning("Some Connections Failed",
+                         f"Could not connect to:\n\n{msgs}")
+
+        if successful_rigs:
+            for rig in successful_rigs:
+                self._open_rig_tab(rig,
+                    shared_multi_session=self._shared_multi_session_folder)
+            names = ", ".join(r.name for r in successful_rigs)
+            self._set_status(f"Opened: {names}")
+        else:
+            self._set_status("No rigs connected")
+            self._shared_multi_session_folder = None
+
+    def _open_rig_tab(self, rig, simulate: bool = False,
+                      shared_multi_session: str | None = None) -> None:
         """Create a new tab for a rig and build RigWindow content inside it."""
         from .rig_window import RigWindow
-        from core.rig_config import RigConfig
+        from hexcontrol.core.rig_config import RigConfig
 
         if isinstance(rig, RigConfig):
             base_config = rig
@@ -547,7 +626,7 @@ class AppLayout:
             reward_durations=base_config.reward_durations, processes=base_config.processes,
             board_registry_path=str(self.board_registry._path),
             simulate=simulate,
-            shared_multi_session=self._shared_multi_session_folder or "",
+            shared_multi_session=shared_multi_session or self._shared_multi_session_folder or "",
         )
 
         rig_name = rig_config.name
@@ -779,9 +858,48 @@ class AppLayout:
                          f"Cannot open post-processing while rigs are open.\n\n"
                          f"Currently open: {open_names}")
             return
+
+        # Check if already open
+        if getattr(self, '_postproc_panel', None) is not None:
+            self._set_status("Post-processing already open")
+            return
+
         from .post_processing_window import open_post_processing_window
-        self._set_status("Opening post-processing...")
-        open_post_processing_window(self._rigs_file.cohort_folders)
+
+        # Hide welcome view
+        if self._welcome_group and dpg.does_item_exist(self._welcome_group):
+            dpg.configure_item(self._welcome_group, show=False)
+        if dpg.does_item_exist("welcome_card"):
+            dpg.configure_item("welcome_card", show=False)
+
+        # Show rig panel row and create a panel for post-processing
+        dpg.configure_item("rig_panel_row", show=True)
+        panel_id = dpg.add_child_window(
+            width=-1, height=-1, parent="rig_panel_row", border=False,
+        )
+        self._postproc_panel = panel_id
+
+        def on_postproc_close():
+            if dpg.does_item_exist(panel_id):
+                dpg.delete_item(panel_id)
+            self._postproc_panel = None
+            self._postproc_window = None
+            # Show welcome if no rigs open
+            if not self.open_rigs:
+                dpg.configure_item("rig_panel_row", show=False)
+                if self._welcome_group and dpg.does_item_exist(self._welcome_group):
+                    dpg.configure_item(self._welcome_group, show=True)
+                    import random as _rnd
+                    self._welcome_rng_seed = _rnd.randint(0, 999999)
+                    self._welcome_drawn = False
+            self._set_status("Ready")
+
+        self._postproc_window = open_post_processing_window(
+            self._rigs_file.cohort_folders,
+            parent=panel_id,
+            on_close=on_postproc_close,
+        )
+        self._set_status("Post-processing opened")
 
     # =====================================================================
     # Mouse claims
